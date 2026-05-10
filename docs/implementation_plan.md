@@ -6,21 +6,21 @@ Buy gift cards (merchant + prepaid Visa/MC/Amex) from deal sites → manage inve
 
 **Stack**: Node.js + Express + SQLite (`better-sqlite3`) backend, Vite + React 18 + `@tanstack/react-query` frontend, Vanilla CSS dark theme.
 
-**Supplementary spec**: See [constraints_and_security.md](file:///home/opc/.gemini/antigravity/brain/197a3cfe-9178-4e20-890c-c4bc5243464a/constraints_and_security.md) for CHECK constraints, indexes, FK behavior, security hardening, backup/import details, and full verification plan.
+**Supplementary spec**: See [constraints_and_security.md](constraints_and_security.md) for CHECK constraints, indexes, FK behavior, security hardening, backup/import details, and full verification plan.
 
 ---
 
 ## Data Model
 
 > [!NOTE]
-> All monetary values: `INTEGER` cents. All dates: ISO 8601. Encrypted fields: `base64(IV):base64(AuthTag):base64(Ciphertext)`. scrypt: `N=2^17, r=8, p=1`. Card numbers normalized (strip non-digits) before encrypt/hash/search/redact.
+> All monetary values: `INTEGER` cents. All dates: ISO 8601. Encrypted fields: `base64(IV):base64(AuthTag):base64(Ciphertext)`. scrypt: `N=2^17, r=8, p=1`. Card numbers normalized (strip non-digits) before encrypt/hash/search/redact. The user secret is an unlock passphrase/code, not a short 4-6 digit PIN.
 
 ### Users
 | Field | Type | Description |
 |-------|------|-------------|
 | `id` | INTEGER PK AUTO | |
-| `pinHash` | TEXT | bcrypt-hashed PIN |
-| `encryptionSalt` | TEXT | Salt for scrypt KEK derivation. **Rotated on PIN change** |
+| `pinHash` | TEXT | bcrypt-hashed unlock secret (legacy API names may say PIN) |
+| `encryptionSalt` | TEXT | Salt for scrypt KEK derivation. **Rotated on secret change** |
 | `encryptedDEK` | TEXT | DEK wrapped by KEK |
 | `createdAt` | DATETIME | |
 
@@ -45,14 +45,14 @@ Buy gift cards (merchant + prepaid Visa/MC/Amex) from deal sites → manage inve
 | `dealId` | INTEGER FK → deals | ON DELETE SET NULL |
 | `brand` | TEXT NOT NULL | |
 | `cardType` | TEXT NOT NULL | `CHECK(cardType IN ('merchant','prepaid'))` |
-| `faceValueCents` | INTEGER NOT NULL | `CHECK(faceValueCents >= 0)`. **Immutable via PUT** |
+| `faceValueCents` | INTEGER NOT NULL | `CHECK(faceValueCents > 0)`. **Immutable via PUT** |
 | `remainingBalanceCents` | INTEGER NOT NULL | `CHECK(remainingBalanceCents >= 0 AND remainingBalanceCents <= faceValueCents)`. **Immutable via PUT** |
 | `purchaseCostCents` | INTEGER NOT NULL DEFAULT 0 | `CHECK(purchaseCostCents >= 0)` |
 | `cardNumber` | TEXT | **Encrypted**. Normalized (digits only) before encrypt/hash |
 | `cardNumberHash` | TEXT | HMAC-SHA256 blind index via `HKDF(DEK, "blind-index-hmac")`. Exact-match only |
 | `pin` | TEXT | **Encrypted** |
 | `expirationDate` | TEXT | Plaintext (needed for "Expiring Soon" queries). See security tradeoff in supplementary |
-| `cvv` | TEXT | **Encrypted** |
+| `cvv` | TEXT | **Encrypted only when retention is allowed**. For network-branded prepaid Visa/MC/Amex CVV/CID, default behavior is do not persist; keep NULL after authorization unless the operator has a documented issuing/support exception |
 | `cardholderName` | TEXT | |
 | `billingZip` | TEXT | **Encrypted** (payment auth field for prepaid cards) |
 | `status` | TEXT NOT NULL | `CHECK(status IN ('available','reserved','sold','in_use','used_up','void'))` |
@@ -110,13 +110,16 @@ Buy gift cards (merchant + prepaid Visa/MC/Amex) from deal sites → manage inve
 
 ## Encryption Design
 
-- **Envelope**: random DEK → wrapped by KEK → `scrypt(PIN, salt, N=2^17, r=8, p=1)`
+- **Envelope**: random DEK → wrapped by KEK → `scrypt(unlockSecret, salt, N=2^17, r=8, p=1)`
+- **Unlock secret policy**: reject short/common secrets. Require either a passphrase with at least 12 characters or an 8+ digit random numeric code. This is the primary defense if an attacker copies the `.db`; online rate limiting does not protect against offline guessing.
 - **HMAC key**: `HKDF(DEK, "blind-index-hmac")` — in memory alongside DEK
 - **Card number normalization**: `input.replace(/\D/g, '')` before encrypt, hash, search, redact
-- **Encrypted fields**: `cardNumber`, `pin`, `cvv`, `billingZip`
+- **Encrypted fields**: `cardNumber`, `pin`, permitted `cvv`, `billingZip`
+- **CVV retention**: merchant gift-card PINs may be stored encrypted. Network-branded prepaid card CVV/CID must not be retained after authorization by default, even encrypted; collect transiently only when needed unless a documented compliance exception applies.
 - **Plaintext tradeoff**: `expirationDate` kept plaintext for "Expiring Soon" dashboard queries. Without card number (encrypted), expiration alone is not actionable
-- **PIN change**: new salt, new KEK, DEK re-wrapped. Card data untouched
+- **Secret change**: new salt, new KEK, DEK re-wrapped. Card data untouched
 - **Server restart**: DEK lost → 401 `dekLoaded: false` → re-login
+- **CSRF**: SameSite cookies are defense-in-depth only. Authenticated state-changing endpoints and sensitive export endpoints require a per-session CSRF token plus Origin/Referer validation against the configured app origin. Setup/login enforce Origin/Referer because no authenticated session token exists yet.
 - **Single-process only**
 
 > [!IMPORTANT]
@@ -159,11 +162,11 @@ stateDiagram-v2
 ### Auth
 | Method | Path | Notes |
 |--------|------|-------|
-| GET | `/api/auth/status` | `{ setupComplete, sessionValid, dekLoaded }` |
+| GET | `/api/auth/status` | `{ setupComplete, sessionValid, dekLoaded, csrfToken? }` when a session is valid |
 | POST | `/api/auth/setup` | **409 if exists** |
 | POST | `/api/auth/login` | Rate limited (3→30s, 5→5min, 10→30min). `req.session.regenerate()` |
 | POST | `/api/auth/logout` | Clears DEK + session |
-| POST | `/api/auth/change-pin` | Old PIN required. New salt. DEK re-wrapped |
+| POST | `/api/auth/change-pin` | Old unlock secret required. New salt. DEK re-wrapped |
 
 ### Cards — CRUD
 | Method | Path | Notes |
@@ -180,7 +183,7 @@ stateDiagram-v2
 | `.../reserve` | available → reserved | Audit |
 | `.../unreserve` | reserved → available | Audit |
 | `.../sell` | available/reserved/**in_use** → sold | `sale` transaction (snapshots `remainingBalanceAtSaleCents` + `statusAtSale`). Sets `remainingBalanceCents = 0` |
-| `.../use` | available/in_use → in_use/used_up | Usage record. `CHECK(amountCents <= remainingBalanceCents)`. Auto `used_up` at 0 |
+| `.../use` | available/in_use → in_use/used_up | Usage record. Application validates `amountCents <= current remainingBalanceCents`. Auto `used_up` at 0 |
 | `.../void` | available/reserved/in_use → void | **Always** creates write-off usage for `remainingBalanceCents` (`isWriteOff=1`). Sets balance to 0 |
 | `.../undo-sale` | sold → **statusAtSale** | `sale_reversal` transaction. Restores `remainingBalanceAtSaleCents`. `reason` required |
 | `.../undo-usage` | in_use/used_up → in_use/available | Any `usageId` (flexible, not stack-based). **Rejects write-offs (409)**. `reason` required (stored in audit only). Recalculates status from remaining balance |
@@ -205,8 +208,8 @@ stateDiagram-v2
 ### Backup
 | Path | Notes |
 |------|-------|
-| `GET /api/backup/export` | **Plaintext** JSON. **Requires PIN re-entry** (or auth within 5 min). Includes `schemaVersion`, `exportedAt`, `appVersion`. UI: type "EXPORT" to confirm. Filename: `gc-backup-YYYY-MM-DD.json` |
-| `GET /api/backup/db-file` | Raw `.db` (encrypted canonical) |
+| `POST /api/backup/export` | **Plaintext** JSON. **Requires fresh unlock secret re-entry** and CSRF/origin checks. Includes `schemaVersion`, `exportedAt`, `appVersion`. UI: type "EXPORT" to confirm. Response uses `Cache-Control: no-store`, audits the event, and downloads as `gc-backup-YYYY-MM-DD.json` |
+| `POST /api/backup/db-file` | Raw `.db` (encrypted canonical). Requires fresh unlock secret re-entry, CSRF/origin checks, `Cache-Control: no-store`, and audit |
 | `POST /api/backup/import` | Excludes `users`. Re-encrypts sensitive fields + computes hashes via current DEK. Resets `sqlite_sequence`. `replace`: drop+restore exact IDs. `merge`: cards-only (transactions/usages/audit ignored), new IDs, dedup by normalized cardNumberHash+brand (skip if null), **409 on conflicts** |
 
 ---
@@ -214,19 +217,19 @@ stateDiagram-v2
 ## Project Structure
 
 ```
-/home/opc/dev/gc-management/
+gc-management/
 ├── server/
 │   ├── index.js              # Express entry. Single-process. BEGIN IMMEDIATE config
 │   ├── db.js                 # Schema + WAL + CHECKs + indexes + FKs
-│   ├── auth.js               # Session + DEK check + rate limiting + CSRF (sameSite:strict)
+│   ├── auth.js               # Session + DEK check + rate limiting + CSRF token + Origin checks
 │   ├── encryption.js         # DEK/KEK, AES-256-GCM, HMAC, HKDF, scrypt, normalize
 │   ├── cardHelpers.js        # Shared creation, validation, audit redaction, normalization
 │   ├── routes/
-│   │   ├── auth.js           # setup(409), login(regenerate), logout, change-pin(salt rotate)
+│   │   ├── auth.js           # setup(409), login(regenerate), logout, change-pin(secret salt rotate)
 │   │   ├── cards.js          # CRUD + 7 action endpoints (BEGIN IMMEDIATE)
 │   │   ├── deals.js          # CRUD + archive + transient allocation
 │   │   ├── transactions.js / usages.js / audit.js / lookup.js
-│   │   └── backup.js         # JSON(plaintext+PIN re-entry), .db, import(re-encrypt)
+│   │   └── backup.js         # JSON(plaintext+fresh secret), .db, import(re-encrypt)
 │   └── gcmanager.db
 ├── src/
 │   ├── main.jsx / App.jsx / index.css

@@ -1,6 +1,6 @@
 # Constraints, Security & Verification (Supplementary Spec)
 
-Companion to [implementation_plan.md](file:///home/opc/.gemini/antigravity/brain/197a3cfe-9178-4e20-890c-c4bc5243464a/implementation_plan.md).
+Companion to [implementation_plan.md](implementation_plan.md).
 
 ---
 
@@ -13,7 +13,7 @@ Companion to [implementation_plan.md](file:///home/opc/.gemini/antigravity/brain
 CHECK(cardType IN ('merchant','prepaid'))
 CHECK(status IN ('available','reserved','sold','in_use','used_up','void'))
 CHECK(format IS NULL OR format IN ('digital','physical'))
-CHECK(faceValueCents >= 0)
+CHECK(faceValueCents > 0)
 CHECK(remainingBalanceCents >= 0)
 CHECK(remainingBalanceCents <= faceValueCents)
 CHECK(purchaseCostCents >= 0)
@@ -66,16 +66,28 @@ usages.cardId    → cards.id        ON DELETE RESTRICT
 
 ## Security
 
-### Session & Cookies
+### Session, Cookies & CSRF
 
 ```text
 httpOnly: true
 secure: true (in production, false for localhost dev)
-sameSite: 'strict'    -- provides CSRF protection for same-origin
+sameSite: 'strict'    -- defense-in-depth, not the only CSRF control
 maxAge: 24 hours
 ```
 
-`sameSite: 'strict'` prevents cross-origin request forgery for this same-origin local app. Token-based CSRF deferred to v2 if multi-origin support is needed.
+`sameSite: 'strict'` reduces ambient cross-site cookie use, but it is not a complete same-origin authorization policy.
+
+Authenticated state-changing endpoints and sensitive export endpoints must enforce:
+
+```text
+Origin/Referer: must match configured app origin
+X-CSRF-Token: per-session token returned by GET /api/auth/status after login
+Failure: 403 with no side effects
+```
+
+All `GET` endpoints remain read-only. Plaintext export and raw `.db` export are `POST` because they are sensitive actions even though they primarily return data.
+
+Setup/login do not have an authenticated CSRF token yet, so they enforce Origin/Referer validation and never accept cross-origin form posts.
 
 ### Encryption Field Decisions
 
@@ -83,7 +95,7 @@ maxAge: 24 hours
 |-------|-----------|-----------|
 | `cardNumber` | ✅ Yes + blind index | Primary credential |
 | `pin` | ✅ Yes | Primary credential |
-| `cvv` | ✅ Yes | Primary credential |
+| `cvv` | ⚠️ Conditional | Store encrypted only when retention is allowed. For network-branded prepaid Visa/MC/Amex CVV/CID, default behavior is **do not persist** after authorization; keep NULL unless the operator has a documented issuing/support exception |
 | `billingZip` | ✅ Yes | Direct payment auth field for prepaid cards |
 | `expirationDate` | ❌ No | **Tradeoff**: needed for "Expiring Soon" dashboard queries (date range filtering). Without card number (encrypted), expiration alone is not actionable |
 | `cardholderName` | ❌ No | Needed for display. Not directly exploitable without card number |
@@ -114,12 +126,30 @@ Scope: global (= per-identity for single-user app)
 Storage: in-memory (resets on server restart — acceptable for local app)
 ```
 
+### Unlock Secret & Offline Database Threat
+
+The `.db` contains `pinHash`, `encryptedDEK`, and `encryptionSalt`. If an attacker copies the database, they can make offline guesses; online rate limiting does not help.
+
+Requirements:
+
+- Do not allow 4-6 digit PINs.
+- Require either a passphrase with at least 12 characters or an 8+ digit random numeric code.
+- Reject common secrets and obvious sequences (`password1234`, `12345678`, repeated digits).
+- Keep bcrypt cost at 12+ for `pinHash`; keep scrypt at `N=2^17, r=8, p=1` for KEK derivation.
+- Treat raw `.db` backups as sensitive even though card credentials are encrypted.
+
 ### Plaintext Export Security
 
-- Requires **PIN re-entry** (or auth within last 5 minutes)
+- Uses `POST /api/backup/export`
+- Requires **fresh unlock secret re-entry**
+- Requires valid `X-CSRF-Token` and matching Origin/Referer
 - UI confirmation: user must **type "EXPORT"** to proceed
 - Warning text: "This file contains full card numbers, PINs, CVVs, and balances in plaintext. Anyone with this file can spend your cards."
 - Filename: `gc-backup-YYYY-MM-DD.json`
+- Response headers: `Cache-Control: no-store`
+- Audit: record export event without sensitive payload contents
+
+Raw `.db` export uses `POST /api/backup/db-file` and the same fresh secret, CSRF/origin, no-store, and audit requirements.
 
 ---
 
@@ -142,15 +172,18 @@ Storage: in-memory (resets on server restart — acceptable for local app)
 }
 ```
 
-Sensitive fields (`cardNumber`, `pin`, `cvv`, `billingZip`) exported as **plaintext** (user is authenticated + PIN confirmed). `users` table never exported.
+Sensitive fields (`cardNumber`, `pin`, permitted/stored `cvv`, `billingZip`) exported as **plaintext** (user is authenticated + unlock secret confirmed). `users` table never exported. Network-branded prepaid CVV/CID values that were not retained are exported as `null`/omitted.
 
 ### Import: Replace Mode
 
 1. Auto-backup current `.db` file
 2. Validate `schemaVersion` — reject unsupported versions
-3. Drop and restore: `deals`, `cards`, `transactions`, `usages`, `audit_log`
-4. **Exclude `users` table** — current PIN/DEK untouched
-5. Re-encrypt `cardNumber`, `pin`, `cvv`, `billingZip` with current DEK
+3. Restore in one transaction with FK-safe ordering:
+   - Delete children before parents: `usages`, `transactions`, `cards`, `deals`, then `audit_log`
+   - Insert parents before children: `deals`, `cards`, `transactions`, `usages`, then `audit_log`
+   - Run `PRAGMA foreign_key_check` before commit and abort on any row
+4. **Exclude `users` table** — current unlock secret/DEK untouched
+5. Re-encrypt `cardNumber`, `pin`, permitted/stored `cvv`, `billingZip` with current DEK
 6. Compute `cardNumberHash` using current HKDF-derived hmacKey
 7. Normalize card numbers before re-encryption
 8. Redact sensitive fields in imported audit entries
@@ -171,7 +204,7 @@ Sensitive fields (`cardNumber`, `pin`, `cvv`, `billingZip`) exported as **plaint
 
 | Status | Editable Fields |
 |--------|----------------|
-| `available` | All non-blocked fields (brand, cardType, cardNumber, pin, cvv, billingZip, expirationDate, cardholderName, format, source, notes, purchaseCostCents, dealId) |
+| `available` | All non-blocked fields (brand, cardType, cardNumber, pin, permitted cvv, billingZip, expirationDate, cardholderName, format, source, notes, purchaseCostCents, dealId) |
 | `reserved` | Same as available |
 | `in_use` | Same as available |
 | `sold` | `notes` only |
@@ -182,22 +215,22 @@ Sensitive fields (`cardNumber`, `pin`, `cvv`, `billingZip`) exported as **plaint
 
 ---
 
-## Verification Plan (55 tests)
+## Verification Plan (57 tests)
 
 ### Auth & Security (1–8)
-1. Setup → logout → login → 3x wrong → 30s lockout → retry
-2. Setup when PIN exists → 409
+1. Setup rejects weak unlock secret; valid setup → logout → login → 3x wrong → 30s lockout → retry
+2. Setup when unlock secret exists → 409
 3. Server restart → 401 `dekLoaded:false` → re-login → cards readable
-4. Change PIN (new salt) → all cards still decryptable
+4. Change unlock secret (new salt) → all cards still decryptable
 5. Session regeneration on login (new session ID)
-6. Session cookie has HttpOnly, SameSite=strict
-7. Plaintext export requires PIN re-entry
+6. Session cookie has HttpOnly, SameSite=strict; missing/invalid CSRF token or Origin rejected for mutating endpoints
+7. Plaintext export and raw DB export require fresh unlock secret, CSRF/origin checks, `Cache-Control: no-store`, and audit
 8. Logout clears DEK and session; old session cookie returns 401
 
 ### Encryption (9–13)
-9. Inspect `.db` → cardNumber/pin/cvv/billingZip are `IV:AuthTag:Ciphertext`
+9. Inspect `.db` → cardNumber/pin/permitted cvv/billingZip are `IV:AuthTag:Ciphertext`
 10. Encrypt same value twice → different IVs
-11. JSON export → fields are plaintext + UI warning + type "EXPORT"
+11. JSON export → retained sensitive fields are plaintext + UI warning + type "EXPORT"; non-retained prepaid CVV/CID is null/omitted
 12. `cardNumberHash` is deterministic (same input → same hash)
 13. `expirationDate` is plaintext in DB (verified for Expiring Soon feature)
 
@@ -226,7 +259,7 @@ Sensitive fields (`cardNumber`, `pin`, `cvv`, `billingZip`) exported as **plaint
 29. All voided cards: verify `faceValueCents = SUM(amountCents WHERE isReversed=0)`
 
 ### Numeric Constraints (30–33)
-30. `remainingBalanceCents` never negative (CHECK constraint)
+30. `faceValueCents > 0` and `remainingBalanceCents` never negative (CHECK constraints)
 31. `remainingBalanceCents` never exceeds `faceValueCents`
 32. Usage with `amountCents > remainingBalanceCents` → rejected
 33. Usage with `amountCents = 0` → rejected
@@ -256,7 +289,7 @@ Sensitive fields (`cardNumber`, `pin`, `cvv`, `billingZip`) exported as **plaint
 47. Import (merge) → cards-only, new IDs. Transactions/usages/audit ignored
 48. Merge with null cardNumber → all inserted (no false dedup)
 49. Merge with conflicting status → 409 with conflict list
-50. Malformed JSON → rejected. Auto-backup before replace
+50. Malformed JSON → rejected. Auto-backup before replace. Replace import passes `PRAGMA foreign_key_check`
 
 ### Deals & Batch (51–53)
 51. Deal with transient `totalCostCents`, mixed explicit/proportional → verify allocation + remainder to last card
