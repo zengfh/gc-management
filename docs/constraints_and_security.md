@@ -95,7 +95,7 @@ Setup/login do not have an authenticated CSRF token yet, so they enforce Origin/
 |-------|-----------|-----------|
 | `cardNumber` | ✅ Yes + blind index | Primary credential |
 | `pin` | ✅ Yes | Primary credential |
-| `cvv` | ⚠️ Conditional | Store encrypted only when retention is allowed. For network-branded prepaid Visa/MC/Amex CVV/CID, default behavior is **do not persist** after authorization; keep NULL unless the operator has a documented issuing/support exception |
+| `cvv` | ⚠️ Conditional | Store encrypted only when retention is allowed. For network-branded prepaid Visa/MC/Amex CVV/CID, default behavior is **do not persist** after authorization; keep NULL/export null unless the operator has a documented issuing/support exception |
 | `billingZip` | ✅ Yes | Direct payment auth field for prepaid cards |
 | `expirationDate` | ❌ No | **Tradeoff**: needed for "Expiring Soon" dashboard queries (date range filtering). Without card number (encrypted), expiration alone is not actionable |
 | `cardholderName` | ❌ No | Needed for display. Not directly exploitable without card number |
@@ -144,7 +144,7 @@ Requirements:
 - Requires **fresh unlock secret re-entry**
 - Requires valid `X-CSRF-Token` and matching Origin/Referer
 - UI confirmation: user must **type "EXPORT"** to proceed
-- Warning text: "This file contains full card numbers, PINs, CVVs, and balances in plaintext. Anyone with this file can spend your cards."
+- Warning text: "This file contains full card numbers, card PINs, permitted/stored CVVs, billing ZIPs, and balances in plaintext. Anyone with this file can spend your cards."
 - Filename: `gc-backup-YYYY-MM-DD.json`
 - Response headers: `Cache-Control: no-store`
 - Audit: record export event without sensitive payload contents
@@ -187,8 +187,9 @@ Sensitive fields (`cardNumber`, `pin`, permitted/stored `cvv`, `billingZip`) exp
 6. Compute `cardNumberHash` using current HKDF-derived hmacKey
 7. Normalize card numbers before re-encryption
 8. Redact sensitive fields in imported audit entries
-9. **Reset `sqlite_sequence`** for each table to MAX(id)
-10. Rebuild indexes
+9. Record a local import audit event without sensitive payload contents
+10. **Reset `sqlite_sequence`** for each table to MAX(id)
+11. Rebuild indexes
 
 ### Import: Merge Mode
 
@@ -289,7 +290,7 @@ Sensitive fields (`cardNumber`, `pin`, permitted/stored `cvv`, `billingZip`) exp
 47. Import (merge) → cards-only, new IDs. Transactions/usages/audit ignored
 48. Merge with null cardNumber → all inserted (no false dedup)
 49. Merge with conflicting status → 409 with conflict list
-50. Malformed JSON → rejected. Auto-backup before replace. Replace import passes `PRAGMA foreign_key_check`
+50. Malformed JSON → rejected. Auto-backup before replace. Replace import records a local import audit event and passes `PRAGMA foreign_key_check`
 
 ### Deals & Batch (51–53)
 51. Deal with transient `totalCostCents`, mixed explicit/proportional → verify allocation + remainder to last card

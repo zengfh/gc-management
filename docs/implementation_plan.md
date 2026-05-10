@@ -52,7 +52,7 @@ Buy gift cards (merchant + prepaid Visa/MC/Amex) from deal sites → manage inve
 | `cardNumberHash` | TEXT | HMAC-SHA256 blind index via `HKDF(DEK, "blind-index-hmac")`. Exact-match only |
 | `pin` | TEXT | **Encrypted** |
 | `expirationDate` | TEXT | Plaintext (needed for "Expiring Soon" queries). See security tradeoff in supplementary |
-| `cvv` | TEXT | **Encrypted only when retention is allowed**. For network-branded prepaid Visa/MC/Amex CVV/CID, default behavior is do not persist; keep NULL after authorization unless the operator has a documented issuing/support exception |
+| `cvv` | TEXT | **Encrypted only when retention is allowed**. For network-branded prepaid Visa/MC/Amex CVV/CID, default behavior is do not persist; keep NULL/export null after authorization unless the operator has a documented issuing/support exception |
 | `cardholderName` | TEXT | |
 | `billingZip` | TEXT | **Encrypted** (payment auth field for prepaid cards) |
 | `status` | TEXT NOT NULL | `CHECK(status IN ('available','reserved','sold','in_use','used_up','void'))` |
@@ -210,7 +210,7 @@ stateDiagram-v2
 |------|-------|
 | `POST /api/backup/export` | **Plaintext** JSON. **Requires fresh unlock secret re-entry** and CSRF/origin checks. Includes `schemaVersion`, `exportedAt`, `appVersion`. UI: type "EXPORT" to confirm. Response uses `Cache-Control: no-store`, audits the event, and downloads as `gc-backup-YYYY-MM-DD.json` |
 | `POST /api/backup/db-file` | Raw `.db` (encrypted canonical). Requires fresh unlock secret re-entry, CSRF/origin checks, `Cache-Control: no-store`, and audit |
-| `POST /api/backup/import` | Excludes `users`. Re-encrypts sensitive fields + computes hashes via current DEK. Resets `sqlite_sequence`. `replace`: drop+restore exact IDs. `merge`: cards-only (transactions/usages/audit ignored), new IDs, dedup by normalized cardNumberHash+brand (skip if null), **409 on conflicts** |
+| `POST /api/backup/import` | Excludes `users`. Re-encrypts sensitive fields + computes hashes via current DEK. Resets `sqlite_sequence` and records a local import audit event. `replace`: drop+restore exact IDs. `merge`: cards-only (transactions/usages/audit ignored), new IDs, dedup by normalized cardNumberHash+brand (skip if null), **409 on conflicts** |
 
 ---
 
@@ -229,7 +229,7 @@ gc-management/
 │   │   ├── cards.js          # CRUD + 7 action endpoints (BEGIN IMMEDIATE)
 │   │   ├── deals.js          # CRUD + archive + transient allocation
 │   │   ├── transactions.js / usages.js / audit.js / lookup.js
-│   │   └── backup.js         # JSON(plaintext+fresh secret), .db, import(re-encrypt)
+│   │   └── backup.js         # JSON(plaintext+fresh secret), .db, import(re-encrypt + import audit)
 │   └── gcmanager.db
 ├── src/
 │   ├── main.jsx / App.jsx / index.css

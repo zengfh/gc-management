@@ -25,12 +25,12 @@
 ### 3.2. Data Tables (Grid)
 - **Dense Padding:** Maximize rows visible.
 - **Sticky Headers:** Keep context while scrolling.
-- **Action Menu (Hover):** 'Sell', 'Use', 'Reserve', 'Edit' appear on row hover to save space.
+- **Action Menu:** 'Sell', 'Use', 'Reserve', 'Edit' appear on row hover and on keyboard focus. The same actions must be reachable through a visible row menu button for keyboard, screen-reader, and touch users.
 
 ### 3.3. Modals & Forms
 - **Slide-overs for Data Entry:** Use right-side panels for adding Deals/Cards to keep background context visible.
 - **Confirmation Dialogs:** Destructive actions (Void, Undo Sale) require explicit confirmation and reason input.
 
 ## 4. Key Interactions
-- **Reveal on Click:** Card numbers, PINs, and CVVs are masked (`•••• 1234`) by default. Click to copy to clipboard and reveal for 5 seconds.
+- **Reveal/Copy Credentials:** Card numbers, card PINs, and billing ZIPs are masked (`•••• 1234`) by default. Click, Enter, or Space can reveal/copy for 5 seconds only when the session is valid and the DEK is loaded; prompt for the unlock secret again if the last confirmation is stale. Credential reveal/copy records an audit event without secret values. Do not render or reveal network-branded prepaid CVV/CID values unless retention is explicitly allowed and a value exists.
 - **Batch Entry:** Keyboard-friendly grid for adding multiple cards to a deal. Tab navigates to the next cell; Enter creates a new row.

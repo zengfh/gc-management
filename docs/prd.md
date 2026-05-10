@@ -17,13 +17,14 @@ Managing a high volume of gift cards (merchant and prepaid) via spreadsheets lea
 - **Partial Usage Tracking:** Deduct specific amounts from prepaid cards and track exact remaining balances.
 
 ### 4.2. Security & Compliance
-- **Envelope Encryption:** Sensitive data (Card Number, PIN, CVV, Billing ZIP) must be encrypted at rest using AES-256-GCM.
-- **Zero-Knowledge Search:** Enable blind indexing (HMAC-SHA256) for card search without decrypting database rows.
-- **Immutable Audit Trail:** Log every state change, transaction, and balance update with redacted plaintext diffs.
+- **Envelope Encryption:** Sensitive data (card number, card PIN, billing ZIP, and permitted CVV values) must be encrypted at rest using AES-256-GCM.
+- **CVV Retention Guardrails:** Network-branded prepaid Visa/MC/Amex CVV/CID values are not persisted by default after authorization, even encrypted. Merchant gift-card PINs may be stored encrypted. Any exception for CVV retention must be documented before enabling storage.
+- **Blind-Index Search:** Enable exact-match card-number lookup with an HMAC-SHA256 blind index without decrypting every database row.
+- **Audit Trail:** Log every state change, transaction, balance update, backup export, and import with redacted plaintext diffs. Normal app activity is append-only; replace-import restores historical audit entries from backup and also records a local import event.
 
 ### 4.3. Import & Export
 - **Stateless CSV Import:** Support bulk ingestion with dry-run validation.
-- **Encrypted & Plaintext Backups:** Allow full SQLite database backup or PIN-protected plaintext JSON export.
+- **Encrypted & Plaintext Backups:** Allow full SQLite database backup or unlock-secret-protected plaintext JSON export. Both backup paths require fresh unlock-secret confirmation, CSRF/origin checks, no-store response headers, and audit logging.
 
 ## 5. User Flows
 - **Acquisition:** User buys a deal -> Inputs Deal details -> Adds N cards -> System calculates cost basis.
