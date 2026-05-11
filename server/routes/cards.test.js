@@ -145,4 +145,46 @@ describe('card routes', () => {
     expect(auditText).not.toContain('1234');
     expect(auditText).not.toContain('94105');
   }, 45_000);
+
+  it('reserves and unreserves an available card with audit records', async () => {
+    const csrfToken = await setupOwner();
+    const createResponse = await postWithCsrf('/api/cards', csrfToken).send({
+      cards: [sampleCard()],
+    });
+    const cardId = createResponse.body.data[0].id;
+
+    const reserveResponse = await postWithCsrf(`/api/cards/${cardId}/reserve`, csrfToken).send({
+      reservedFor: 'Dealer A',
+      reservedUntil: '2026-06-01',
+      reservedNotes: 'Awaiting payment',
+    });
+    expect(reserveResponse.status).toBe(200);
+    expect(reserveResponse.body.data).toMatchObject({
+      id: cardId,
+      status: 'reserved',
+      rowVersion: 2,
+    });
+
+    const duplicateReserve = await postWithCsrf(`/api/cards/${cardId}/reserve`, csrfToken).send({});
+    expect(duplicateReserve.status).toBe(409);
+    expect(duplicateReserve.body.error.code).toBe('INVALID_CARD_TRANSITION');
+
+    const unreserveResponse = await postWithCsrf(`/api/cards/${cardId}/unreserve`, csrfToken).send({});
+    expect(unreserveResponse.status).toBe(200);
+    expect(unreserveResponse.body.data).toMatchObject({
+      id: cardId,
+      status: 'available',
+      rowVersion: 3,
+    });
+
+    const duplicateUnreserve = await postWithCsrf(`/api/cards/${cardId}/unreserve`, csrfToken).send({});
+    expect(duplicateUnreserve.status).toBe(409);
+    expect(duplicateUnreserve.body.error.code).toBe('INVALID_CARD_TRANSITION');
+
+    const actions = db
+      .prepare("SELECT action FROM audit_log WHERE entityType = 'card' AND entityId = ? ORDER BY id")
+      .all(cardId)
+      .map((row) => row.action);
+    expect(actions).toEqual(['card.create', 'card.reserve', 'card.unreserve']);
+  }, 45_000);
 });

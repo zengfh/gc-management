@@ -240,6 +240,13 @@ paths:
       operationId: reserveCard
       parameters:
         - $ref: "#/components/parameters/CardId"
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReserveCardRequest"
       responses:
         "200":
           description: Reserved card
@@ -247,6 +254,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CardResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "409":
           $ref: "#/components/responses/Conflict"
   /api/cards/{cardId}/unreserve:
@@ -256,6 +267,7 @@ paths:
       operationId: unreserveCard
       parameters:
         - $ref: "#/components/parameters/CardId"
+        - $ref: "#/components/parameters/CsrfToken"
       responses:
         "200":
           description: Unreserved card
@@ -263,6 +275,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CardResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "409":
           $ref: "#/components/responses/Conflict"
   /api/cards/{cardId}/sell:
@@ -619,6 +635,15 @@ components:
         notes:
           type: string
         expirationDate:
+          type: string
+    ReserveCardRequest:
+      type: object
+      properties:
+        reservedFor:
+          type: string
+        reservedUntil:
+          type: string
+        reservedNotes:
           type: string
     SellCardRequest:
       type: object

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { insertAuditEvent } from '../audit/index.js';
 import { requireUnlockedSession } from '../auth/requireAuth.js';
+import { transitionFor } from '../cards/stateMachine.js';
 import { asyncHandler, badRequest, conflict, notFound } from '../http/errors.js';
 import { objectResponse } from '../http/response.js';
 import {
@@ -33,6 +34,14 @@ const cardInputSchema = z
 const createCardsSchema = z
   .object({
     cards: z.array(cardInputSchema).min(1).max(100),
+  })
+  .strict();
+
+const reserveCardSchema = z
+  .object({
+    reservedFor: z.string().trim().nullable().optional(),
+    reservedUntil: z.string().trim().nullable().optional(),
+    reservedNotes: z.string().trim().nullable().optional(),
   })
   .strict();
 
@@ -143,6 +152,15 @@ function createCardAuditValue(card) {
     purchaseCostCents: card.purchaseCostCents,
     cardNumberLast4: card.cardNumberLast4,
     status: card.status,
+  };
+}
+
+function mutationAuditValue(card) {
+  return {
+    brand: card.brand,
+    status: card.status,
+    remainingBalanceCents: card.remainingBalanceCents,
+    rowVersion: card.rowVersion,
   };
 }
 
@@ -302,6 +320,93 @@ export function createCardsRouter({ db }) {
       } catch (error) {
         throw translateSqliteError(error);
       }
+    }),
+  );
+
+  function loadCard(auth, cardId) {
+    const card = db
+      .prepare('SELECT * FROM cards WHERE accountId = ? AND id = ?')
+      .get(auth.accountId, cardId);
+
+    if (!card) {
+      throw notFound('CARD_NOT_FOUND', 'Card not found.');
+    }
+
+    return card;
+  }
+
+  function mutateCardStatus({ req, cardId, transitionAction, body = {} }) {
+    const timestamp = nowIso();
+
+    return db.transaction(() => {
+      const before = loadCard(req.auth, cardId);
+      const transition = transitionFor(transitionAction, before.status);
+
+      db.prepare(
+        `UPDATE cards
+         SET status = ?,
+             reservedFor = ?,
+             reservedUntil = ?,
+             reservedNotes = ?,
+             updatedByUserId = ?,
+             updatedAt = ?,
+             rowVersion = rowVersion + 1
+         WHERE id = ? AND accountId = ?`,
+      ).run(
+        transition.status,
+        transitionAction === 'reserve' ? body.reservedFor ?? null : null,
+        transitionAction === 'reserve' ? body.reservedUntil ?? null : null,
+        transitionAction === 'reserve' ? body.reservedNotes ?? null : null,
+        req.auth.userId,
+        timestamp,
+        cardId,
+        req.auth.accountId,
+      );
+
+      const after = loadCard(req.auth, cardId);
+      insertAuditEvent(db, {
+        accountId: req.auth.accountId,
+        userId: req.auth.userId,
+        requestId: req.requestId,
+        entityType: 'card',
+        entityId: cardId,
+        action: transition.action,
+        oldValue: mutationAuditValue(before),
+        newValue: mutationAuditValue(after),
+        timestamp,
+      });
+
+      return after;
+    })();
+  }
+
+  router.post(
+    '/:cardId/reserve',
+    asyncHandler(async (req, res) => {
+      const cardId = parsePositiveInt(req.params.cardId, null, { min: 1 });
+      const body = validateBody(reserveCardSchema, req.body || {});
+      const card = mutateCardStatus({
+        req,
+        cardId,
+        transitionAction: 'reserve',
+        body,
+      });
+
+      res.json(objectResponse(toCardResponse(card)));
+    }),
+  );
+
+  router.post(
+    '/:cardId/unreserve',
+    asyncHandler(async (req, res) => {
+      const cardId = parsePositiveInt(req.params.cardId, null, { min: 1 });
+      const card = mutateCardStatus({
+        req,
+        cardId,
+        transitionAction: 'unreserve',
+      });
+
+      res.json(objectResponse(toCardResponse(card)));
     }),
   );
 
