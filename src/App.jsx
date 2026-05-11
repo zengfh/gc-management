@@ -49,6 +49,13 @@ const statusLabels = {
 
 const terminalCardStatuses = new Set(['sold', 'used_up', 'void']);
 
+function createUiIdempotencyKey() {
+  if (globalThis.crypto?.randomUUID) {
+    return `ui_${globalThis.crypto.randomUUID()}`;
+  }
+  return `ui_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
+}
+
 async function apiFetch(path, { method = 'GET', body, csrfToken } = {}) {
   const options = {
     method,
@@ -65,15 +72,21 @@ async function apiFetch(path, { method = 'GET', body, csrfToken } = {}) {
 
   if (csrfToken) {
     options.headers['X-CSRF-Token'] = csrfToken;
+    if (!['GET', 'HEAD'].includes(method.toUpperCase())) {
+      options.headers['Idempotency-Key'] = createUiIdempotencyKey();
+    }
   }
 
   const response = await fetch(path, options);
   const payload = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    const error = new Error(payload.error?.message || 'Request failed.');
+    const requestId = payload.error?.requestId || response.headers.get('x-request-id');
+    const message = payload.error?.message || 'Request failed.';
+    const error = new Error(requestId ? `${message} Request ID: ${requestId}` : message);
     error.code = payload.error?.code;
     error.fieldErrors = payload.error?.fieldErrors || [];
+    error.requestId = requestId;
     error.status = response.status;
     throw error;
   }
@@ -97,14 +110,20 @@ async function apiDownload(path, { method = 'GET', body, csrfToken } = {}) {
 
   if (csrfToken) {
     options.headers['X-CSRF-Token'] = csrfToken;
+    if (!['GET', 'HEAD'].includes(method.toUpperCase())) {
+      options.headers['Idempotency-Key'] = createUiIdempotencyKey();
+    }
   }
 
   const response = await fetch(path, options);
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}));
-    const error = new Error(payload.error?.message || 'Request failed.');
+    const requestId = payload.error?.requestId || response.headers.get('x-request-id');
+    const message = payload.error?.message || 'Request failed.';
+    const error = new Error(requestId ? `${message} Request ID: ${requestId}` : message);
     error.code = payload.error?.code;
     error.fieldErrors = payload.error?.fieldErrors || [];
+    error.requestId = requestId;
     error.status = response.status;
     throw error;
   }
@@ -1420,7 +1439,7 @@ function HistoryList({ title, items, renderItem, emptyText, children }) {
   );
 }
 
-function CardDetailPanel({ detailState, onClose, onUndoUsage, onRevealCredentials }) {
+function CardDetailPanel({ detailState, onClose, onLogout, onUndoUsage, onRevealCredentials }) {
   const { card, data, error, loading } = detailState;
   const detailCard = data?.card || card;
   const [undoUsage, setUndoUsage] = useState(null);
@@ -1528,9 +1547,15 @@ function CardDetailPanel({ detailState, onClose, onUndoUsage, onRevealCredential
             <p className="eyebrow">{detailCard.brand}</p>
             <h2 id="card-detail-title">Card details</h2>
           </div>
-          <button type="button" className="icon-button" aria-label="Close card details" onClick={onClose}>
-            <X aria-hidden="true" size={18} />
-          </button>
+          <div className="panel-heading-actions">
+            <button type="button" className="secondary-action" onClick={onLogout}>
+              <LogOut aria-hidden="true" size={17} />
+              Logout
+            </button>
+            <button type="button" className="icon-button" aria-label="Close card details" onClick={onClose}>
+              <X aria-hidden="true" size={18} />
+            </button>
+          </div>
         </div>
         <div className="detail-panel-body">
           {loading ? <div className="loading-strip">Loading card detail...</div> : null}
@@ -2641,7 +2666,7 @@ function WorkSurface({
         </nav>
         <button type="button" className="nav-item logout-button" onClick={onLogout}>
           <LogOut aria-hidden="true" size={18} />
-          Lock
+          Logout
         </button>
       </aside>
 
@@ -2881,6 +2906,7 @@ function WorkSurface({
         <CardDetailPanel
           detailState={detailState}
           onClose={() => setDetailState(null)}
+          onLogout={onLogout}
           onUndoUsage={undoUsageFromDetail}
           onRevealCredentials={onRevealCardCredentials}
         />

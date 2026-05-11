@@ -341,6 +341,47 @@ describe('card routes', () => {
     expect(actions).toEqual(['card.create', 'card.sell', 'card.undo_sale']);
   }, 45_000);
 
+  it('replays a duplicate sell request with the same idempotency key without a second sale', async () => {
+    const csrfToken = await setupOwner();
+    const createResponse = await postWithCsrf('/api/cards', csrfToken).send({
+      cards: [sampleCard()],
+    });
+    const cardId = createResponse.body.data[0].id;
+    const payload = {
+      salePriceCents: 4_800,
+      buyerName: 'Dealer A',
+      buyerType: 'dealer',
+    };
+
+    const firstSell = await postWithCsrf(`/api/cards/${cardId}/sell`, csrfToken)
+      .set('Idempotency-Key', 'sell-card-1')
+      .send(payload);
+    expect(firstSell.status).toBe(200);
+
+    const replayedSell = await postWithCsrf(`/api/cards/${cardId}/sell`, csrfToken)
+      .set('Idempotency-Key', 'sell-card-1')
+      .send(payload);
+    expect(replayedSell.status).toBe(200);
+    expect(replayedSell.headers['idempotency-replayed']).toBe('true');
+    expect(replayedSell.body).toEqual(firstSell.body);
+
+    const saleRows = db.prepare("SELECT * FROM transactions WHERE cardId = ? AND type = 'sale'").all(cardId);
+    expect(saleRows).toHaveLength(1);
+    const card = db.prepare('SELECT status, rowVersion FROM cards WHERE id = ?').get(cardId);
+    expect(card).toMatchObject({
+      status: 'sold',
+      rowVersion: 2,
+    });
+
+    const reusedKey = await postWithCsrf(`/api/cards/${cardId}/sell`, csrfToken)
+      .set('Idempotency-Key', 'sell-card-1')
+      .send({
+        salePriceCents: 4_900,
+      });
+    expect(reusedKey.status).toBe(409);
+    expect(reusedKey.body.error.code).toBe('IDEMPOTENCY_KEY_REUSED');
+  }, 45_000);
+
   it('records partial and final usage while blocking overuse', async () => {
     const csrfToken = await setupOwner();
     const createResponse = await postWithCsrf('/api/cards', csrfToken).send({
@@ -393,6 +434,39 @@ describe('card routes', () => {
       .all(cardId)
       .map((row) => row.action);
     expect(actions).toEqual(['card.create', 'card.use', 'card.use']);
+  }, 45_000);
+
+  it('replays a duplicate usage request with the same idempotency key without double-spending balance', async () => {
+    const csrfToken = await setupOwner();
+    const createResponse = await postWithCsrf('/api/cards', csrfToken).send({
+      cards: [sampleCard()],
+    });
+    const cardId = createResponse.body.data[0].id;
+    const payload = {
+      amountCents: 2_000,
+      merchant: 'Target',
+    };
+
+    const firstUse = await postWithCsrf(`/api/cards/${cardId}/use`, csrfToken)
+      .set('Idempotency-Key', 'use-card-1')
+      .send(payload);
+    expect(firstUse.status).toBe(200);
+
+    const replayedUse = await postWithCsrf(`/api/cards/${cardId}/use`, csrfToken)
+      .set('Idempotency-Key', 'use-card-1')
+      .send(payload);
+    expect(replayedUse.status).toBe(200);
+    expect(replayedUse.headers['idempotency-replayed']).toBe('true');
+    expect(replayedUse.body).toEqual(firstUse.body);
+
+    const usageRows = db.prepare('SELECT * FROM usages WHERE cardId = ?').all(cardId);
+    expect(usageRows).toHaveLength(1);
+    const card = db.prepare('SELECT status, remainingBalanceCents, rowVersion FROM cards WHERE id = ?').get(cardId);
+    expect(card).toMatchObject({
+      status: 'in_use',
+      remainingBalanceCents: 3_000,
+      rowVersion: 2,
+    });
   }, 45_000);
 
   it('voids an active card by writing off the remaining balance', async () => {

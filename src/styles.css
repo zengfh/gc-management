@@ -576,6 +576,12 @@ td {
   padding: 18px 20px;
 }
 
+.panel-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .icon-button {
   width: 36px;
   height: 36px;

@@ -126,6 +126,26 @@ describe('App', () => {
     );
   });
 
+  it('shows server request IDs in API error states', async () => {
+    globalThis.fetch.mockResolvedValueOnce(
+      jsonResponse(
+        {
+          error: {
+            code: 'INTERNAL_ERROR',
+            message: 'Unexpected server error.',
+            requestId: 'req_visible123',
+          },
+        },
+        500,
+      ),
+    );
+
+    render(<App />);
+
+    expect(await screen.findByText(/unexpected server error/i)).toBeInTheDocument();
+    expect(screen.getByText(/req_visible123/i)).toBeInTheDocument();
+  });
+
   it('renders the authenticated work surface with cards and deals', async () => {
     globalThis.fetch
       .mockResolvedValueOnce(
@@ -1599,6 +1619,7 @@ describe('App', () => {
           buyerType: 'dealer',
         }),
         headers: expect.objectContaining({
+          'Idempotency-Key': expect.stringMatching(/^ui_/),
           'X-CSRF-Token': 'csrf_ready',
         }),
       }),

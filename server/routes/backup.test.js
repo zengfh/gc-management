@@ -307,6 +307,52 @@ describe('backup routes', () => {
     }
   }, 45_000);
 
+  it('replays duplicate JSON import requests with the same idempotency key without importing twice', async () => {
+    const csrfToken = await setupOwner();
+    await createSampleCard(csrfToken);
+    const exportResponse = await postWithCsrf('/api/backup/export', csrfToken).send({
+      unlockSecret,
+      confirmation: 'EXPORT',
+      acknowledgePlaintext: true,
+    });
+    expect(exportResponse.status).toBe(200);
+
+    const targetDb = openDatabase({ filename: ':memory:' });
+    const targetAgent = request.agent(createApp({ db: targetDb }));
+    try {
+      const setupResponse = await targetAgent.post('/api/auth/setup').send({ unlockSecret });
+      const targetCsrfToken = setupResponse.body.data.csrfToken;
+      const payload = {
+        unlockSecret,
+        mode: 'merge',
+        payload: exportResponse.body.data,
+      };
+
+      const firstImport = await targetAgent
+        .post('/api/backup/import')
+        .set('Origin', appOrigin)
+        .set('X-CSRF-Token', targetCsrfToken)
+        .set('Idempotency-Key', 'json-import-1')
+        .send(payload);
+      expect(firstImport.status).toBe(201);
+
+      const replayedImport = await targetAgent
+        .post('/api/backup/import')
+        .set('Origin', appOrigin)
+        .set('X-CSRF-Token', targetCsrfToken)
+        .set('Idempotency-Key', 'json-import-1')
+        .send(payload);
+      expect(replayedImport.status).toBe(201);
+      expect(replayedImport.headers['idempotency-replayed']).toBe('true');
+      expect(replayedImport.body).toEqual(firstImport.body);
+
+      expect(targetDb.prepare('SELECT COUNT(*) AS count FROM cards').get().count).toBe(1);
+      expect(targetDb.prepare('SELECT COUNT(*) AS count FROM import_jobs').get().count).toBe(1);
+    } finally {
+      targetDb.close();
+    }
+  }, 45_000);
+
   it('replaces current data from plaintext JSON only after creating an automatic database backup', async () => {
     const sourceCsrfToken = await setupOwner();
     await createSampleCard(sourceCsrfToken);

@@ -5,6 +5,7 @@ import { insertAuditEvent } from '../audit/index.js';
 import { requireUnlockedSession } from '../auth/requireAuth.js';
 import { transitionFor } from '../cards/stateMachine.js';
 import { asyncHandler, badRequest, conflict, notFound } from '../http/errors.js';
+import { runIdempotentJson, sendIdempotentJson } from '../http/idempotency.js';
 import { objectResponse } from '../http/response.js';
 import {
   cardNumberHash as hashCardNumber,
@@ -730,105 +731,110 @@ export function createCardsRouter({ db }) {
       assertNoDuplicateInputs(preparedCards);
 
       try {
-        const result = db.transaction(() => {
-          const jobInfo = db
-            .prepare(
-              `INSERT INTO import_jobs (
-                accountId, userId, type, status, rowCount, validCount, invalidCount,
-                summaryJson, createdAt, updatedAt
-              ) VALUES (?, ?, 'csv', 'confirmed', ?, ?, ?, ?, ?, ?)`,
-            )
-            .run(
-              req.auth.accountId,
-              req.auth.userId,
-              preview.summary.rowCount,
-              preview.summary.validCount,
-              preview.summary.invalidCount,
-              JSON.stringify(preview.summary),
-              timestamp,
-              timestamp,
-            );
-
-          const createdCards = preparedCards.map((card) => {
-            const info = db
+        const response = runIdempotentJson(db, req, () => {
+          const result = db.transaction(() => {
+            const jobInfo = db
               .prepare(
-                `INSERT INTO cards (
-                  accountId, dealId, brand, cardType, network, faceValueCents,
-                  remainingBalanceCents, purchaseCostCents, cardNumber,
-                  cardNumberHash, cardNumberLast4, pin, billingZip,
-                  expirationDate, status, format, source, notes, createdByUserId,
-                  updatedByUserId, createdAt, updatedAt
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                `INSERT INTO import_jobs (
+                  accountId, userId, type, status, rowCount, validCount, invalidCount,
+                  summaryJson, createdAt, updatedAt
+                ) VALUES (?, ?, 'csv', 'confirmed', ?, ?, ?, ?, ?, ?)`,
               )
               .run(
                 req.auth.accountId,
-                null,
-                card.brand,
-                card.cardType,
-                null,
-                card.faceValueCents,
-                card.faceValueCents,
-                card.purchaseCostCents,
-                card.encryptedCardNumber,
-                card.cardNumberHash,
-                card.cardNumberLast4,
-                card.pin,
-                card.billingZip,
-                card.expirationDate,
-                card.status,
-                card.format,
-                card.source,
-                card.notes,
                 req.auth.userId,
-                req.auth.userId,
+                preview.summary.rowCount,
+                preview.summary.validCount,
+                preview.summary.invalidCount,
+                JSON.stringify(preview.summary),
                 timestamp,
                 timestamp,
               );
 
-            const row = db.prepare('SELECT * FROM cards WHERE id = ?').get(info.lastInsertRowid);
+            const createdCards = preparedCards.map((card) => {
+              const info = db
+                .prepare(
+                  `INSERT INTO cards (
+                    accountId, dealId, brand, cardType, network, faceValueCents,
+                    remainingBalanceCents, purchaseCostCents, cardNumber,
+                    cardNumberHash, cardNumberLast4, pin, billingZip,
+                    expirationDate, status, format, source, notes, createdByUserId,
+                    updatedByUserId, createdAt, updatedAt
+                  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                )
+                .run(
+                  req.auth.accountId,
+                  null,
+                  card.brand,
+                  card.cardType,
+                  null,
+                  card.faceValueCents,
+                  card.faceValueCents,
+                  card.purchaseCostCents,
+                  card.encryptedCardNumber,
+                  card.cardNumberHash,
+                  card.cardNumberLast4,
+                  card.pin,
+                  card.billingZip,
+                  card.expirationDate,
+                  card.status,
+                  card.format,
+                  card.source,
+                  card.notes,
+                  req.auth.userId,
+                  req.auth.userId,
+                  timestamp,
+                  timestamp,
+                );
+
+              const row = db.prepare('SELECT * FROM cards WHERE id = ?').get(info.lastInsertRowid);
+              insertAuditEvent(db, {
+                accountId: req.auth.accountId,
+                userId: req.auth.userId,
+                requestId: req.requestId,
+                entityType: 'card',
+                entityId: row.id,
+                action: 'card.create',
+                newValue: createCardAuditValue(row),
+                timestamp,
+              });
+              return row;
+            });
+
+            const importJob = db.prepare('SELECT * FROM import_jobs WHERE id = ?').get(jobInfo.lastInsertRowid);
             insertAuditEvent(db, {
               accountId: req.auth.accountId,
               userId: req.auth.userId,
               requestId: req.requestId,
-              entityType: 'card',
-              entityId: row.id,
-              action: 'card.create',
-              newValue: createCardAuditValue(row),
+              entityType: 'import',
+              entityId: importJob.id,
+              action: 'import.csv_confirm',
+              metadata: {
+                rowCount: preview.summary.rowCount,
+                validCount: preview.summary.validCount,
+                invalidCount: preview.summary.invalidCount,
+                cardCount: createdCards.length,
+              },
               timestamp,
             });
-            return row;
-          });
 
-          const importJob = db.prepare('SELECT * FROM import_jobs WHERE id = ?').get(jobInfo.lastInsertRowid);
-          insertAuditEvent(db, {
-            accountId: req.auth.accountId,
-            userId: req.auth.userId,
-            requestId: req.requestId,
-            entityType: 'import',
-            entityId: importJob.id,
-            action: 'import.csv_confirm',
-            metadata: {
-              rowCount: preview.summary.rowCount,
-              validCount: preview.summary.validCount,
-              invalidCount: preview.summary.invalidCount,
-              cardCount: createdCards.length,
-            },
-            timestamp,
-          });
+            return {
+              importJob,
+              cards: createdCards,
+            };
+          })();
 
           return {
-            importJob,
-            cards: createdCards,
+            status: 201,
+            body: objectResponse({
+              summary: preview.summary,
+              importJob: toImportJobResponse(result.importJob),
+              cards: result.cards.map(toCardResponse),
+            }),
           };
-        })();
+        });
 
-        res.status(201).json(
-          objectResponse({
-            summary: preview.summary,
-            importJob: toImportJobResponse(result.importJob),
-            cards: result.cards.map(toCardResponse),
-          }),
-        );
+        sendIdempotentJson(res, response);
       } catch (error) {
         throw translateSqliteError(error);
       }
@@ -1069,14 +1075,20 @@ export function createCardsRouter({ db }) {
     asyncHandler(async (req, res) => {
       const cardId = parsePositiveInt(req.params.cardId, null, { min: 1 });
       const body = validateBody(reserveCardSchema, req.body || {});
-      const card = mutateCardStatus({
-        req,
-        cardId,
-        transitionAction: 'reserve',
-        body,
-      });
+      const response = runIdempotentJson(db, req, () => {
+        const card = mutateCardStatus({
+          req,
+          cardId,
+          transitionAction: 'reserve',
+          body,
+        });
 
-      res.json(objectResponse(toCardResponse(card)));
+        return {
+          status: 200,
+          body: objectResponse(toCardResponse(card)),
+        };
+      });
+      sendIdempotentJson(res, response);
     }),
   );
 
@@ -1084,13 +1096,19 @@ export function createCardsRouter({ db }) {
     '/:cardId/unreserve',
     asyncHandler(async (req, res) => {
       const cardId = parsePositiveInt(req.params.cardId, null, { min: 1 });
-      const card = mutateCardStatus({
-        req,
-        cardId,
-        transitionAction: 'unreserve',
-      });
+      const response = runIdempotentJson(db, req, () => {
+        const card = mutateCardStatus({
+          req,
+          cardId,
+          transitionAction: 'unreserve',
+        });
 
-      res.json(objectResponse(toCardResponse(card)));
+        return {
+          status: 200,
+          body: objectResponse(toCardResponse(card)),
+        };
+      });
+      sendIdempotentJson(res, response);
     }),
   );
 
@@ -1101,60 +1119,66 @@ export function createCardsRouter({ db }) {
       const body = validateBody(sellCardSchema, req.body);
       const timestamp = nowIso();
 
-      db.transaction(() => {
-        const before = loadCard(req.auth, cardId);
-        const transition = transitionFor('sell', before.status);
+      const response = runIdempotentJson(db, req, () => {
+        db.transaction(() => {
+          const before = loadCard(req.auth, cardId);
+          const transition = transitionFor('sell', before.status);
 
-        db.prepare(
-          `INSERT INTO transactions (
-            accountId, cardId, type, buyerName, buyerType, salePriceCents,
-            remainingBalanceAtSaleCents, statusAtSale, platform, transactionDate,
-            notes, idempotencyKey, createdByUserId, createdAt
-          ) VALUES (?, ?, 'sale', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        ).run(
-          req.auth.accountId,
-          cardId,
-          body.buyerName ?? null,
-          body.buyerType ?? null,
-          body.salePriceCents,
-          before.remainingBalanceCents,
-          before.status,
-          body.platform ?? null,
-          body.transactionDate ?? timestamp.slice(0, 10),
-          body.notes ?? null,
-          req.get('Idempotency-Key') ?? null,
-          req.auth.userId,
-          timestamp,
-        );
+          db.prepare(
+            `INSERT INTO transactions (
+              accountId, cardId, type, buyerName, buyerType, salePriceCents,
+              remainingBalanceAtSaleCents, statusAtSale, platform, transactionDate,
+              notes, idempotencyKey, createdByUserId, createdAt
+            ) VALUES (?, ?, 'sale', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          ).run(
+            req.auth.accountId,
+            cardId,
+            body.buyerName ?? null,
+            body.buyerType ?? null,
+            body.salePriceCents,
+            before.remainingBalanceCents,
+            before.status,
+            body.platform ?? null,
+            body.transactionDate ?? timestamp.slice(0, 10),
+            body.notes ?? null,
+            req.get('Idempotency-Key') ?? null,
+            req.auth.userId,
+            timestamp,
+          );
 
-        db.prepare(
-          `UPDATE cards
-           SET status = ?,
-               remainingBalanceCents = 0,
-               updatedByUserId = ?,
-               updatedAt = ?,
-               rowVersion = rowVersion + 1
-           WHERE id = ? AND accountId = ?`,
-        ).run(transition.status, req.auth.userId, timestamp, cardId, req.auth.accountId);
+          db.prepare(
+            `UPDATE cards
+             SET status = ?,
+                 remainingBalanceCents = 0,
+                 updatedByUserId = ?,
+                 updatedAt = ?,
+                 rowVersion = rowVersion + 1
+             WHERE id = ? AND accountId = ?`,
+          ).run(transition.status, req.auth.userId, timestamp, cardId, req.auth.accountId);
 
-        const after = loadCard(req.auth, cardId);
-        insertAuditEvent(db, {
-          accountId: req.auth.accountId,
-          userId: req.auth.userId,
-          requestId: req.requestId,
-          entityType: 'card',
-          entityId: cardId,
-          action: transition.action,
-          oldValue: mutationAuditValue(before),
-          newValue: mutationAuditValue(after),
-          metadata: {
-            salePriceCents: body.salePriceCents,
-          },
-          timestamp,
-        });
-      })();
+          const after = loadCard(req.auth, cardId);
+          insertAuditEvent(db, {
+            accountId: req.auth.accountId,
+            userId: req.auth.userId,
+            requestId: req.requestId,
+            entityType: 'card',
+            entityId: cardId,
+            action: transition.action,
+            oldValue: mutationAuditValue(before),
+            newValue: mutationAuditValue(after),
+            metadata: {
+              salePriceCents: body.salePriceCents,
+            },
+            timestamp,
+          });
+        })();
 
-      res.json(objectResponse(cardDetail(req.auth, cardId)));
+        return {
+          status: 200,
+          body: objectResponse(cardDetail(req.auth, cardId)),
+        };
+      });
+      sendIdempotentJson(res, response);
     }),
   );
 
@@ -1165,86 +1189,92 @@ export function createCardsRouter({ db }) {
       const body = validateBody(undoSaleSchema, req.body);
       const timestamp = nowIso();
 
-      db.transaction(() => {
-        const before = loadCard(req.auth, cardId);
-        const transition = transitionFor('undo-sale', before.status);
-        const sale = db
-          .prepare(
-            `SELECT *
-             FROM transactions
-             WHERE accountId = ? AND cardId = ? AND type = 'sale'
-             ORDER BY id DESC
-             LIMIT 1`,
-          )
-          .get(req.auth.accountId, cardId);
+      const response = runIdempotentJson(db, req, () => {
+        db.transaction(() => {
+          const before = loadCard(req.auth, cardId);
+          const transition = transitionFor('undo-sale', before.status);
+          const sale = db
+            .prepare(
+              `SELECT *
+               FROM transactions
+               WHERE accountId = ? AND cardId = ? AND type = 'sale'
+               ORDER BY id DESC
+               LIMIT 1`,
+            )
+            .get(req.auth.accountId, cardId);
 
-        if (!sale) {
-          throw conflict('SALE_NOT_FOUND', 'No sale transaction is available to undo.');
-        }
+          if (!sale) {
+            throw conflict('SALE_NOT_FOUND', 'No sale transaction is available to undo.');
+          }
 
-        const laterReversal = db
-          .prepare(
-            `SELECT id
-             FROM transactions
-             WHERE accountId = ? AND cardId = ? AND type = 'sale_reversal' AND id > ?
-             LIMIT 1`,
-          )
-          .get(req.auth.accountId, cardId, sale.id);
-        if (laterReversal) {
-          throw conflict('SALE_ALREADY_REVERSED', 'Sale has already been reversed.');
-        }
+          const laterReversal = db
+            .prepare(
+              `SELECT id
+               FROM transactions
+               WHERE accountId = ? AND cardId = ? AND type = 'sale_reversal' AND id > ?
+               LIMIT 1`,
+            )
+            .get(req.auth.accountId, cardId, sale.id);
+          if (laterReversal) {
+            throw conflict('SALE_ALREADY_REVERSED', 'Sale has already been reversed.');
+          }
 
-        db.prepare(
-          `INSERT INTO transactions (
-            accountId, cardId, type, remainingBalanceAtSaleCents, statusAtSale,
-            reason, idempotencyKey, createdByUserId, createdAt
-          ) VALUES (?, ?, 'sale_reversal', ?, ?, ?, ?, ?, ?)`,
-        ).run(
-          req.auth.accountId,
-          cardId,
-          sale.remainingBalanceAtSaleCents,
-          sale.statusAtSale,
-          body.reason,
-          req.get('Idempotency-Key') ?? null,
-          req.auth.userId,
-          timestamp,
-        );
+          db.prepare(
+            `INSERT INTO transactions (
+              accountId, cardId, type, remainingBalanceAtSaleCents, statusAtSale,
+              reason, idempotencyKey, createdByUserId, createdAt
+            ) VALUES (?, ?, 'sale_reversal', ?, ?, ?, ?, ?, ?)`,
+          ).run(
+            req.auth.accountId,
+            cardId,
+            sale.remainingBalanceAtSaleCents,
+            sale.statusAtSale,
+            body.reason,
+            req.get('Idempotency-Key') ?? null,
+            req.auth.userId,
+            timestamp,
+          );
 
-        db.prepare(
-          `UPDATE cards
-           SET status = ?,
-               remainingBalanceCents = ?,
-               updatedByUserId = ?,
-               updatedAt = ?,
-               rowVersion = rowVersion + 1
-           WHERE id = ? AND accountId = ?`,
-        ).run(
-          sale.statusAtSale,
-          sale.remainingBalanceAtSaleCents,
-          req.auth.userId,
-          timestamp,
-          cardId,
-          req.auth.accountId,
-        );
+          db.prepare(
+            `UPDATE cards
+             SET status = ?,
+                 remainingBalanceCents = ?,
+                 updatedByUserId = ?,
+                 updatedAt = ?,
+                 rowVersion = rowVersion + 1
+             WHERE id = ? AND accountId = ?`,
+          ).run(
+            sale.statusAtSale,
+            sale.remainingBalanceAtSaleCents,
+            req.auth.userId,
+            timestamp,
+            cardId,
+            req.auth.accountId,
+          );
 
-        const after = loadCard(req.auth, cardId);
-        insertAuditEvent(db, {
-          accountId: req.auth.accountId,
-          userId: req.auth.userId,
-          requestId: req.requestId,
-          entityType: 'card',
-          entityId: cardId,
-          action: transition.action,
-          oldValue: mutationAuditValue(before),
-          newValue: mutationAuditValue(after),
-          metadata: {
-            reason: body.reason,
-          },
-          timestamp,
-        });
-      })();
+          const after = loadCard(req.auth, cardId);
+          insertAuditEvent(db, {
+            accountId: req.auth.accountId,
+            userId: req.auth.userId,
+            requestId: req.requestId,
+            entityType: 'card',
+            entityId: cardId,
+            action: transition.action,
+            oldValue: mutationAuditValue(before),
+            newValue: mutationAuditValue(after),
+            metadata: {
+              reason: body.reason,
+            },
+            timestamp,
+          });
+        })();
 
-      res.json(objectResponse(cardDetail(req.auth, cardId)));
+        return {
+          status: 200,
+          body: objectResponse(cardDetail(req.auth, cardId)),
+        };
+      });
+      sendIdempotentJson(res, response);
     }),
   );
 
@@ -1255,62 +1285,68 @@ export function createCardsRouter({ db }) {
       const body = validateBody(useCardSchema, req.body);
       const timestamp = nowIso();
 
-      db.transaction(() => {
-        const before = loadCard(req.auth, cardId);
-        const transition = transitionFor('use', before.status);
+      const response = runIdempotentJson(db, req, () => {
+        db.transaction(() => {
+          const before = loadCard(req.auth, cardId);
+          const transition = transitionFor('use', before.status);
 
-        if (body.amountCents > before.remainingBalanceCents) {
-          throw conflict('INSUFFICIENT_BALANCE', 'Usage amount exceeds remaining card balance.');
-        }
+          if (body.amountCents > before.remainingBalanceCents) {
+            throw conflict('INSUFFICIENT_BALANCE', 'Usage amount exceeds remaining card balance.');
+          }
 
-        const remainingBalanceCents = before.remainingBalanceCents - body.amountCents;
-        const nextStatus = remainingBalanceCents === 0 ? 'used_up' : 'in_use';
+          const remainingBalanceCents = before.remainingBalanceCents - body.amountCents;
+          const nextStatus = remainingBalanceCents === 0 ? 'used_up' : 'in_use';
 
-        db.prepare(
-          `INSERT INTO usages (
-            accountId, cardId, amountCents, merchant, description, usageDate,
-            idempotencyKey, createdByUserId, createdAt
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        ).run(
-          req.auth.accountId,
-          cardId,
-          body.amountCents,
-          body.merchant ?? null,
-          body.description ?? null,
-          body.usageDate ?? timestamp.slice(0, 10),
-          req.get('Idempotency-Key') ?? null,
-          req.auth.userId,
-          timestamp,
-        );
+          db.prepare(
+            `INSERT INTO usages (
+              accountId, cardId, amountCents, merchant, description, usageDate,
+              idempotencyKey, createdByUserId, createdAt
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          ).run(
+            req.auth.accountId,
+            cardId,
+            body.amountCents,
+            body.merchant ?? null,
+            body.description ?? null,
+            body.usageDate ?? timestamp.slice(0, 10),
+            req.get('Idempotency-Key') ?? null,
+            req.auth.userId,
+            timestamp,
+          );
 
-        db.prepare(
-          `UPDATE cards
-           SET status = ?,
-               remainingBalanceCents = ?,
-               updatedByUserId = ?,
-               updatedAt = ?,
-               rowVersion = rowVersion + 1
-           WHERE id = ? AND accountId = ?`,
-        ).run(nextStatus, remainingBalanceCents, req.auth.userId, timestamp, cardId, req.auth.accountId);
+          db.prepare(
+            `UPDATE cards
+             SET status = ?,
+                 remainingBalanceCents = ?,
+                 updatedByUserId = ?,
+                 updatedAt = ?,
+                 rowVersion = rowVersion + 1
+             WHERE id = ? AND accountId = ?`,
+          ).run(nextStatus, remainingBalanceCents, req.auth.userId, timestamp, cardId, req.auth.accountId);
 
-        const after = loadCard(req.auth, cardId);
-        insertAuditEvent(db, {
-          accountId: req.auth.accountId,
-          userId: req.auth.userId,
-          requestId: req.requestId,
-          entityType: 'card',
-          entityId: cardId,
-          action: transition.action,
-          oldValue: mutationAuditValue(before),
-          newValue: mutationAuditValue(after),
-          metadata: {
-            amountCents: body.amountCents,
-          },
-          timestamp,
-        });
-      })();
+          const after = loadCard(req.auth, cardId);
+          insertAuditEvent(db, {
+            accountId: req.auth.accountId,
+            userId: req.auth.userId,
+            requestId: req.requestId,
+            entityType: 'card',
+            entityId: cardId,
+            action: transition.action,
+            oldValue: mutationAuditValue(before),
+            newValue: mutationAuditValue(after),
+            metadata: {
+              amountCents: body.amountCents,
+            },
+            timestamp,
+          });
+        })();
 
-      res.json(objectResponse(cardDetail(req.auth, cardId)));
+        return {
+          status: 200,
+          body: objectResponse(cardDetail(req.auth, cardId)),
+        };
+      });
+      sendIdempotentJson(res, response);
     }),
   );
 
@@ -1321,78 +1357,84 @@ export function createCardsRouter({ db }) {
       const body = validateBody(undoUsageSchema, req.body);
       const timestamp = nowIso();
 
-      db.transaction(() => {
-        const before = loadCard(req.auth, cardId);
-        const usage = db
-          .prepare('SELECT * FROM usages WHERE accountId = ? AND cardId = ? AND id = ?')
-          .get(req.auth.accountId, cardId, body.usageId);
+      const response = runIdempotentJson(db, req, () => {
+        db.transaction(() => {
+          const before = loadCard(req.auth, cardId);
+          const usage = db
+            .prepare('SELECT * FROM usages WHERE accountId = ? AND cardId = ? AND id = ?')
+            .get(req.auth.accountId, cardId, body.usageId);
 
-        if (!usage) {
-          throw notFound('USAGE_NOT_FOUND', 'Usage not found.');
-        }
+          if (!usage) {
+            throw notFound('USAGE_NOT_FOUND', 'Usage not found.');
+          }
 
-        if (usage.isWriteOff) {
-          throw conflict('WRITE_OFF_USAGE_NOT_REVERSIBLE', 'Write-off usages cannot be undone.');
-        }
+          if (usage.isWriteOff) {
+            throw conflict('WRITE_OFF_USAGE_NOT_REVERSIBLE', 'Write-off usages cannot be undone.');
+          }
 
-        if (usage.isReversed) {
-          throw conflict('USAGE_ALREADY_REVERSED', 'Usage has already been reversed.');
-        }
+          if (usage.isReversed) {
+            throw conflict('USAGE_ALREADY_REVERSED', 'Usage has already been reversed.');
+          }
 
-        const transition = transitionFor('undo-usage', before.status);
+          const transition = transitionFor('undo-usage', before.status);
 
-        db.prepare(
-          `UPDATE usages
-           SET isReversed = 1,
-               reversalReason = ?,
-               reversedAt = ?
-           WHERE id = ? AND accountId = ? AND cardId = ?`,
-        ).run(body.reason, timestamp, usage.id, req.auth.accountId, cardId);
+          db.prepare(
+            `UPDATE usages
+             SET isReversed = 1,
+                 reversalReason = ?,
+                 reversedAt = ?
+             WHERE id = ? AND accountId = ? AND cardId = ?`,
+          ).run(body.reason, timestamp, usage.id, req.auth.accountId, cardId);
 
-        const activeUsageTotal =
-          db
-            .prepare(
-              `SELECT COALESCE(SUM(amountCents), 0) AS amountCents
-               FROM usages
-               WHERE accountId = ?
-                 AND cardId = ?
-                 AND isReversed = 0
-                 AND isWriteOff = 0`,
-            )
-            .get(req.auth.accountId, cardId).amountCents || 0;
-        const remainingBalanceCents = before.faceValueCents - activeUsageTotal;
-        const nextStatus =
-          activeUsageTotal === 0 ? 'available' : remainingBalanceCents === 0 ? 'used_up' : 'in_use';
+          const activeUsageTotal =
+            db
+              .prepare(
+                `SELECT COALESCE(SUM(amountCents), 0) AS amountCents
+                 FROM usages
+                 WHERE accountId = ?
+                   AND cardId = ?
+                   AND isReversed = 0
+                   AND isWriteOff = 0`,
+              )
+              .get(req.auth.accountId, cardId).amountCents || 0;
+          const remainingBalanceCents = before.faceValueCents - activeUsageTotal;
+          const nextStatus =
+            activeUsageTotal === 0 ? 'available' : remainingBalanceCents === 0 ? 'used_up' : 'in_use';
 
-        db.prepare(
-          `UPDATE cards
-           SET status = ?,
-               remainingBalanceCents = ?,
-               updatedByUserId = ?,
-               updatedAt = ?,
-               rowVersion = rowVersion + 1
-           WHERE id = ? AND accountId = ?`,
-        ).run(nextStatus, remainingBalanceCents, req.auth.userId, timestamp, cardId, req.auth.accountId);
+          db.prepare(
+            `UPDATE cards
+             SET status = ?,
+                 remainingBalanceCents = ?,
+                 updatedByUserId = ?,
+                 updatedAt = ?,
+                 rowVersion = rowVersion + 1
+             WHERE id = ? AND accountId = ?`,
+          ).run(nextStatus, remainingBalanceCents, req.auth.userId, timestamp, cardId, req.auth.accountId);
 
-        const after = loadCard(req.auth, cardId);
-        insertAuditEvent(db, {
-          accountId: req.auth.accountId,
-          userId: req.auth.userId,
-          requestId: req.requestId,
-          entityType: 'card',
-          entityId: cardId,
-          action: transition.action,
-          oldValue: mutationAuditValue(before),
-          newValue: mutationAuditValue(after),
-          metadata: {
-            usageId: usage.id,
-            reason: body.reason,
-          },
-          timestamp,
-        });
-      })();
+          const after = loadCard(req.auth, cardId);
+          insertAuditEvent(db, {
+            accountId: req.auth.accountId,
+            userId: req.auth.userId,
+            requestId: req.requestId,
+            entityType: 'card',
+            entityId: cardId,
+            action: transition.action,
+            oldValue: mutationAuditValue(before),
+            newValue: mutationAuditValue(after),
+            metadata: {
+              usageId: usage.id,
+              reason: body.reason,
+            },
+            timestamp,
+          });
+        })();
 
-      res.json(objectResponse(cardDetail(req.auth, cardId)));
+        return {
+          status: 200,
+          body: objectResponse(cardDetail(req.auth, cardId)),
+        };
+      });
+      sendIdempotentJson(res, response);
     }),
   );
 
@@ -1403,54 +1445,60 @@ export function createCardsRouter({ db }) {
       const body = validateBody(voidCardSchema, req.body || {});
       const timestamp = nowIso();
 
-      db.transaction(() => {
-        const before = loadCard(req.auth, cardId);
-        const transition = transitionFor('void', before.status);
+      const response = runIdempotentJson(db, req, () => {
+        db.transaction(() => {
+          const before = loadCard(req.auth, cardId);
+          const transition = transitionFor('void', before.status);
 
-        db.prepare(
-          `INSERT INTO usages (
-            accountId, cardId, amountCents, merchant, description, isWriteOff,
-            usageDate, idempotencyKey, createdByUserId, createdAt
-          ) VALUES (?, ?, ?, 'Write-off (Voided)', ?, 1, ?, ?, ?, ?)`,
-        ).run(
-          req.auth.accountId,
-          cardId,
-          before.remainingBalanceCents,
-          body.reason ?? null,
-          timestamp.slice(0, 10),
-          req.get('Idempotency-Key') ?? null,
-          req.auth.userId,
-          timestamp,
-        );
+          db.prepare(
+            `INSERT INTO usages (
+              accountId, cardId, amountCents, merchant, description, isWriteOff,
+              usageDate, idempotencyKey, createdByUserId, createdAt
+            ) VALUES (?, ?, ?, 'Write-off (Voided)', ?, 1, ?, ?, ?, ?)`,
+          ).run(
+            req.auth.accountId,
+            cardId,
+            before.remainingBalanceCents,
+            body.reason ?? null,
+            timestamp.slice(0, 10),
+            req.get('Idempotency-Key') ?? null,
+            req.auth.userId,
+            timestamp,
+          );
 
-        db.prepare(
-          `UPDATE cards
-           SET status = ?,
-               remainingBalanceCents = 0,
-               updatedByUserId = ?,
-               updatedAt = ?,
-               rowVersion = rowVersion + 1
-           WHERE id = ? AND accountId = ?`,
-        ).run(transition.status, req.auth.userId, timestamp, cardId, req.auth.accountId);
+          db.prepare(
+            `UPDATE cards
+             SET status = ?,
+                 remainingBalanceCents = 0,
+                 updatedByUserId = ?,
+                 updatedAt = ?,
+                 rowVersion = rowVersion + 1
+             WHERE id = ? AND accountId = ?`,
+          ).run(transition.status, req.auth.userId, timestamp, cardId, req.auth.accountId);
 
-        const after = loadCard(req.auth, cardId);
-        insertAuditEvent(db, {
-          accountId: req.auth.accountId,
-          userId: req.auth.userId,
-          requestId: req.requestId,
-          entityType: 'card',
-          entityId: cardId,
-          action: transition.action,
-          oldValue: mutationAuditValue(before),
-          newValue: mutationAuditValue(after),
-          metadata: {
-            writeOffAmountCents: before.remainingBalanceCents,
-          },
-          timestamp,
-        });
-      })();
+          const after = loadCard(req.auth, cardId);
+          insertAuditEvent(db, {
+            accountId: req.auth.accountId,
+            userId: req.auth.userId,
+            requestId: req.requestId,
+            entityType: 'card',
+            entityId: cardId,
+            action: transition.action,
+            oldValue: mutationAuditValue(before),
+            newValue: mutationAuditValue(after),
+            metadata: {
+              writeOffAmountCents: before.remainingBalanceCents,
+            },
+            timestamp,
+          });
+        })();
 
-      res.json(objectResponse(cardDetail(req.auth, cardId)));
+        return {
+          status: 200,
+          body: objectResponse(cardDetail(req.auth, cardId)),
+        };
+      });
+      sendIdempotentJson(res, response);
     }),
   );
 

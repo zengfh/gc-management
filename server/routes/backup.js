@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { insertAuditEvent } from '../audit/index.js';
 import { requireUnlockedSession } from '../auth/requireAuth.js';
 import { asyncHandler, badRequest, unauthorized } from '../http/errors.js';
+import { runIdempotentJsonAsync, sendIdempotentJson } from '../http/idempotency.js';
 import { objectResponse } from '../http/response.js';
 import {
   cardNumberHash as hashCardNumber,
@@ -724,21 +725,27 @@ export function createBackupRouter({ db }) {
       const body = validateBody(backupImportSchema, req.body || {});
       await verifyFreshUnlockSecret(db, req.auth, body.unlockSecret);
 
-      const timestamp = new Date().toISOString();
-      const backupInfo = body.mode === 'replace' ? await createPreReplaceBackup(db, timestamp) : null;
-
       try {
-        const result = importPayloadIntoDatabase(
-          db,
-          req.auth,
-          body.payload,
-          body.mode,
-          timestamp,
-          req.requestId,
-          backupInfo,
-        );
+        const response = await runIdempotentJsonAsync(db, req, async () => {
+          const timestamp = new Date().toISOString();
+          const backupInfo = body.mode === 'replace' ? await createPreReplaceBackup(db, timestamp) : null;
+          const result = importPayloadIntoDatabase(
+            db,
+            req.auth,
+            body.payload,
+            body.mode,
+            timestamp,
+            req.requestId,
+            backupInfo,
+          );
 
-        res.status(201).json(objectResponse(result));
+          return {
+            status: 201,
+            body: objectResponse(result),
+          };
+        });
+
+        sendIdempotentJson(res, response);
       } catch (error) {
         throw translateImportError(error);
       }

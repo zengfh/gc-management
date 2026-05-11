@@ -1,0 +1,150 @@
+import { expect, test } from '@playwright/test';
+
+const unlockSecret = 'a strong unlock phrase';
+
+async function unlockExistingVault(page) {
+  await page.goto('/');
+  const unlockHeading = page.getByRole('heading', { name: /unlock card data/i });
+  const dashboardHeading = page.getByRole('heading', { name: /dashboard/i });
+  await expect(unlockHeading.or(dashboardHeading)).toBeVisible();
+  if (await unlockHeading.isVisible()) {
+    await page.getByLabel(/^unlock secret$/i).fill(unlockSecret);
+    await page.getByRole('button', { name: /^unlock$/i }).click();
+  }
+  await expect(dashboardHeading).toBeVisible();
+}
+
+test.describe.serial('MVP Release 1 critical flows', () => {
+  test('setup, add a deal, and search by exact card number', async ({ page }) => {
+    await page.goto('/');
+
+    await expect(page.getByRole('heading', { name: /create unlock secret/i })).toBeVisible();
+    await page.getByLabel(/^unlock secret$/i).fill(unlockSecret);
+    await page.getByLabel(/confirm unlock secret/i).fill(unlockSecret);
+    await page.getByRole('checkbox', { name: /required to unlock encrypted card data/i }).check();
+    await page.getByRole('button', { name: /create secure vault/i }).click();
+
+    await expect(page.getByRole('heading', { name: /dashboard/i })).toBeVisible();
+    await page.getByRole('button', { name: /add deal/i }).click();
+    await page.getByLabel(/^deal name$/i).fill('Staples May promo');
+    await page.getByLabel(/^source$/i).fill('Staples');
+    await page.getByLabel(/^total cost$/i).fill('45.00');
+    await page.getByLabel(/^card brand$/i).fill('Target');
+    await page.getByLabel(/^face value$/i).fill('50.00');
+    await page.getByLabel(/^card number$/i).fill('4111 1111 1111 1111');
+    await page.getByRole('button', { name: /^create deal$/i }).click();
+
+    await expect(page.getByText(/^staples may promo$/i)).toBeVisible();
+    await page.getByRole('button', { name: /^cards$/i }).click();
+    await page.getByLabel(/^exact card number$/i).fill('4111 1111 1111 1111');
+    await page.getByRole('button', { name: /^search cards$/i }).click();
+
+    await expect(page.getByRole('row', { name: /available.*target/i })).toBeVisible();
+    await expect(page.getByText('4111 1111 1111 1111')).toHaveCount(0);
+  });
+
+  test('reserve, sell, and undo sale from the card table', async ({ page }) => {
+    await unlockExistingVault(page);
+
+    await page.getByRole('button', { name: /^cards$/i }).click();
+    await page.getByRole('button', { name: /reserve target/i }).click();
+    await expect(page.getByRole('row', { name: /reserved.*target/i })).toBeVisible();
+
+    await page.getByRole('button', { name: /sell target/i }).click();
+    await page.getByLabel(/^sale price$/i).fill('48.00');
+    await page.getByLabel(/^buyer$/i).fill('Dealer A');
+    await page.getByRole('combobox', { name: /^buyer type$/i }).selectOption('dealer');
+    await page.getByRole('button', { name: /^record sale$/i }).click();
+    await expect(page.getByRole('row', { name: /sold.*target/i })).toBeVisible();
+
+    await page.getByRole('button', { name: /undo sale target/i }).click();
+    await page.getByLabel(/^reason$/i).fill('Buyer canceled');
+    await page.getByRole('button', { name: /^undo sale$/i }).click();
+    await expect(page.getByRole('row', { name: /reserved.*target/i })).toBeVisible();
+  });
+
+  test('record usage and undo the usage from card detail', async ({ page }) => {
+    await unlockExistingVault(page);
+
+    await page.getByRole('button', { name: /^cards$/i }).click();
+    await page.getByRole('button', { name: /unreserve target/i }).click();
+    await expect(page.getByRole('row', { name: /available.*target/i })).toBeVisible();
+
+    await page.getByRole('button', { name: /use target/i }).click();
+    await page.getByLabel(/^amount$/i).fill('12.50');
+    await page.getByLabel(/^merchant$/i).fill('Target');
+    await page.getByRole('button', { name: /^record usage$/i }).click();
+    await expect(page.getByRole('row', { name: /in use.*target/i })).toBeVisible();
+    await expect(page.getByText('$37.50')).toBeVisible();
+
+    await page.getByRole('button', { name: /open target details/i }).click();
+    const detail = page.getByRole('dialog', { name: /card details/i });
+    await expect(detail).toBeVisible();
+    await detail.getByRole('button', { name: /undo target usage/i }).click();
+    await detail.getByLabel(/^reason$/i).fill('Mistyped amount');
+    await detail.getByRole('button', { name: /^undo usage$/i }).click();
+    await expect(detail.getByText(/reversed/i)).toBeVisible();
+    await page.getByRole('button', { name: /close card details/i }).click();
+    await expect(page.getByRole('row', { name: /available.*target/i })).toBeVisible();
+  });
+
+  test('preview and confirm CSV import without rendering full credentials', async ({ page }) => {
+    await unlockExistingVault(page);
+
+    await page.getByRole('button', { name: /^backup$/i }).click();
+    const invalidCsv = [
+      'brand,cardType,faceValue,cardNumber,pin',
+      'Amazon,merchant,25,4222222222222222,9999',
+      ',merchant,0,4333333333333333,3333',
+    ].join('\n');
+    await page.getByLabel(/^csv file$/i).setInputFiles({
+      name: 'invalid-cards.csv',
+      mimeType: 'text/csv',
+      buffer: Buffer.from(invalidCsv),
+    });
+    await page.getByRole('button', { name: /^preview csv$/i }).click();
+    await expect(page.getByText(/1 valid/i)).toBeVisible();
+    await expect(page.getByText(/1 invalid/i)).toBeVisible();
+    await expect(page.getByText('4222222222222222')).toHaveCount(0);
+    await expect(page.getByText('9999')).toHaveCount(0);
+
+    const validCsv = 'brand,cardType,faceValue,cardNumber,pin\nAmazon,merchant,25,4222222222222222,9999';
+    await page.getByLabel(/^csv file$/i).setInputFiles({
+      name: 'valid-cards.csv',
+      mimeType: 'text/csv',
+      buffer: Buffer.from(validCsv),
+    });
+    await page.getByRole('button', { name: /^preview csv$/i }).click();
+    await page.getByRole('button', { name: /^confirm csv import$/i }).click();
+    await expect(page.getByText(/imported 1 card/i)).toBeVisible();
+    await expect(page.getByText(/2 cards tracked/i)).toBeVisible();
+  });
+
+  test('plaintext export requires confirmation controls', async ({ page }) => {
+    await unlockExistingVault(page);
+
+    await page.getByRole('button', { name: /^backup$/i }).click();
+    await page.getByLabel(/^fresh unlock secret$/i).fill(unlockSecret);
+    await page.getByLabel(/^type EXPORT to confirm$/i).fill('EXPORT');
+    await page.getByRole('checkbox', { name: /contains spendable credentials/i }).check();
+    await page.getByRole('button', { name: /^export plaintext json$/i }).click();
+
+    await expect(page.getByText(/plaintext export prepared/i)).toBeVisible();
+  });
+
+  test('revealed credentials disappear after logout', async ({ page }) => {
+    await unlockExistingVault(page);
+
+    await page.getByRole('button', { name: /^cards$/i }).click();
+    await page.getByRole('button', { name: /open amazon details/i }).click();
+    await page.getByRole('button', { name: /^reveal credentials$/i }).click();
+    await expect(page.getByText('4222222222222222')).toBeVisible();
+
+    await page
+      .getByRole('dialog', { name: /card details/i })
+      .getByRole('button', { name: /^logout$/i })
+      .click();
+    await expect(page.getByRole('heading', { name: /unlock card data/i })).toBeVisible();
+    await expect(page.getByText('4222222222222222')).toHaveCount(0);
+  });
+});
