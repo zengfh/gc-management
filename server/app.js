@@ -11,7 +11,15 @@ import { createCardsRouter } from './routes/cards.js';
 import { createDealsRouter } from './routes/deals.js';
 import { csrfProtection } from './security/csrf.js';
 
+function assertProductionConfig() {
+  if (process.env.NODE_ENV === 'production' && !process.env.SESSION_SECRET) {
+    throw new Error('SESSION_SECRET is required in production.');
+  }
+}
+
 export function createApp({ db } = {}) {
+  assertProductionConfig();
+
   const app = express();
 
   app.disable('x-powered-by');

@@ -48,7 +48,9 @@ describe('app', () => {
 
   it('adds HSTS in production configuration', async () => {
     const originalNodeEnv = process.env.NODE_ENV;
+    const originalSessionSecret = process.env.SESSION_SECRET;
     process.env.NODE_ENV = 'production';
+    process.env.SESSION_SECRET = 'test-production-session-secret';
     const db = openDatabase({ filename: ':memory:' });
     try {
       const app = createApp({ db });
@@ -59,6 +61,22 @@ describe('app', () => {
     } finally {
       db.close();
       process.env.NODE_ENV = originalNodeEnv;
+      process.env.SESSION_SECRET = originalSessionSecret;
+    }
+  });
+
+  it('rejects production startup without an explicit session secret', () => {
+    const originalNodeEnv = process.env.NODE_ENV;
+    const originalSessionSecret = process.env.SESSION_SECRET;
+    process.env.NODE_ENV = 'production';
+    delete process.env.SESSION_SECRET;
+    const db = openDatabase({ filename: ':memory:' });
+    try {
+      expect(() => createApp({ db })).toThrow('SESSION_SECRET is required in production.');
+    } finally {
+      db.close();
+      process.env.NODE_ENV = originalNodeEnv;
+      process.env.SESSION_SECRET = originalSessionSecret;
     }
   });
 });
