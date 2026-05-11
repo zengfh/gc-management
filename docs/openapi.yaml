@@ -288,6 +288,7 @@ paths:
       operationId: sellCard
       parameters:
         - $ref: "#/components/parameters/CardId"
+        - $ref: "#/components/parameters/CsrfToken"
         - $ref: "#/components/parameters/IdempotencyKey"
       requestBody:
         required: true
@@ -302,6 +303,42 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CardDetailResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/cards/{cardId}/undo-sale:
+    post:
+      tags: [Cards]
+      summary: Undo the latest sale and restore the sale snapshot
+      operationId: undoSaleCard
+      parameters:
+        - $ref: "#/components/parameters/CardId"
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UndoSaleRequest"
+      responses:
+        "200":
+          description: Sale reversed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CardDetailResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "409":
           $ref: "#/components/responses/Conflict"
   /api/cards/{cardId}/use:
@@ -663,6 +700,13 @@ components:
           type: string
         notes:
           type: string
+    UndoSaleRequest:
+      type: object
+      required: [reason]
+      properties:
+        reason:
+          type: string
+          minLength: 1
     UseCardRequest:
       type: object
       required: [amountCents]

@@ -187,4 +187,65 @@ describe('card routes', () => {
       .map((row) => row.action);
     expect(actions).toEqual(['card.create', 'card.reserve', 'card.unreserve']);
   }, 45_000);
+
+  it('sells a card and undo restores the sale snapshot with a reversal transaction', async () => {
+    const csrfToken = await setupOwner();
+    const createResponse = await postWithCsrf('/api/cards', csrfToken).send({
+      cards: [sampleCard()],
+    });
+    const cardId = createResponse.body.data[0].id;
+
+    const sellResponse = await postWithCsrf(`/api/cards/${cardId}/sell`, csrfToken).send({
+      salePriceCents: 4_800,
+      buyerName: 'Dealer A',
+      buyerType: 'dealer',
+      platform: 'chat',
+      transactionDate: '2026-05-11',
+      notes: 'Sold at discount',
+    });
+    expect(sellResponse.status).toBe(200);
+    expect(sellResponse.body.data.card).toMatchObject({
+      id: cardId,
+      status: 'sold',
+      remainingBalanceCents: 0,
+      rowVersion: 2,
+    });
+    expect(sellResponse.body.data.transactions).toHaveLength(1);
+    expect(sellResponse.body.data.transactions[0]).toMatchObject({
+      type: 'sale',
+      salePriceCents: 4_800,
+      remainingBalanceAtSaleCents: 5_000,
+      statusAtSale: 'available',
+    });
+
+    const duplicateSell = await postWithCsrf(`/api/cards/${cardId}/sell`, csrfToken).send({
+      salePriceCents: 4_800,
+    });
+    expect(duplicateSell.status).toBe(409);
+    expect(duplicateSell.body.error.code).toBe('INVALID_CARD_TRANSITION');
+
+    const missingReason = await postWithCsrf(`/api/cards/${cardId}/undo-sale`, csrfToken).send({});
+    expect(missingReason.status).toBe(400);
+
+    const undoResponse = await postWithCsrf(`/api/cards/${cardId}/undo-sale`, csrfToken).send({
+      reason: 'Buyer canceled',
+    });
+    expect(undoResponse.status).toBe(200);
+    expect(undoResponse.body.data.card).toMatchObject({
+      id: cardId,
+      status: 'available',
+      remainingBalanceCents: 5_000,
+      rowVersion: 3,
+    });
+    expect(undoResponse.body.data.transactions.map((transaction) => transaction.type)).toEqual([
+      'sale_reversal',
+      'sale',
+    ]);
+
+    const actions = db
+      .prepare("SELECT action FROM audit_log WHERE entityType = 'card' AND entityId = ? ORDER BY id")
+      .all(cardId)
+      .map((row) => row.action);
+    expect(actions).toEqual(['card.create', 'card.sell', 'card.undo_sale']);
+  }, 45_000);
 });

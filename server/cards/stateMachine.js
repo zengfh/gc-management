@@ -11,6 +11,16 @@ const transitions = {
     to: 'available',
     action: 'card.unreserve',
   },
+  sell: {
+    from: new Set(['available', 'reserved', 'in_use']),
+    to: 'sold',
+    action: 'card.sell',
+  },
+  'undo-sale': {
+    from: new Set(['sold']),
+    to: null,
+    action: 'card.undo_sale',
+  },
 };
 
 export function transitionFor(action, currentStatus) {
