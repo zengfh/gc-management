@@ -249,7 +249,7 @@ function Metric({ label, value, icon: Icon }) {
   );
 }
 
-function CardsTable({ cards, onUseCard }) {
+function CardsTable({ cards, onUseCard, onReserveCard, onUnreserveCard }) {
   if (cards.length === 0) {
     return (
       <div className="empty-state">
@@ -287,18 +287,41 @@ function CardsTable({ cards, onUseCard }) {
               <td className="numeric">{formatMoney(card.purchaseCostCents)}</td>
               <td>{card.updatedAt ? new Date(card.updatedAt).toLocaleDateString() : 'Not recorded'}</td>
               <td>
-                {['available', 'in_use'].includes(card.status) ? (
-                  <button
-                    type="button"
-                    className="table-action"
-                    aria-label={`Use ${card.brand}`}
-                    onClick={() => onUseCard(card)}
-                  >
-                    Use
-                  </button>
-                ) : (
-                  <span className="muted-text">No action</span>
-                )}
+                <div className="row-actions">
+                  {card.status === 'available' ? (
+                    <button
+                      type="button"
+                      className="table-action"
+                      aria-label={`Reserve ${card.brand}`}
+                      onClick={() => onReserveCard(card)}
+                    >
+                      Reserve
+                    </button>
+                  ) : null}
+                  {card.status === 'reserved' ? (
+                    <button
+                      type="button"
+                      className="table-action"
+                      aria-label={`Unreserve ${card.brand}`}
+                      onClick={() => onUnreserveCard(card)}
+                    >
+                      Unreserve
+                    </button>
+                  ) : null}
+                  {['available', 'in_use'].includes(card.status) ? (
+                    <button
+                      type="button"
+                      className="table-action"
+                      aria-label={`Use ${card.brand}`}
+                      onClick={() => onUseCard(card)}
+                    >
+                      Use
+                    </button>
+                  ) : null}
+                  {!['available', 'reserved', 'in_use'].includes(card.status) ? (
+                    <span className="muted-text">No action</span>
+                  ) : null}
+                </div>
               </td>
             </tr>
           ))}
@@ -545,7 +568,17 @@ function UseCardPanel({ card, onClose, onUseCard }) {
   );
 }
 
-function WorkSurface({ cards, deals, loading, onRefresh, onLogout, onCreateDeal, onUseCard }) {
+function WorkSurface({
+  cards,
+  deals,
+  loading,
+  onRefresh,
+  onLogout,
+  onCreateDeal,
+  onUseCard,
+  onReserveCard,
+  onUnreserveCard,
+}) {
   const [activeView, setActiveView] = useState('dashboard');
   const [showAddDeal, setShowAddDeal] = useState(false);
   const [usageCard, setUsageCard] = useState(null);
@@ -634,7 +667,12 @@ function WorkSurface({ cards, deals, loading, onRefresh, onLogout, onCreateDeal,
                   View all
                 </button>
               </div>
-              <CardsTable cards={cards.slice(0, 6)} onUseCard={setUsageCard} />
+              <CardsTable
+                cards={cards.slice(0, 6)}
+                onUseCard={setUsageCard}
+                onReserveCard={onReserveCard}
+                onUnreserveCard={onUnreserveCard}
+              />
             </section>
             <section className="content-section">
               <div className="section-heading">
@@ -654,7 +692,12 @@ function WorkSurface({ cards, deals, loading, onRefresh, onLogout, onCreateDeal,
               <h2>Card Inventory</h2>
               <span>{cards.length} records</span>
             </div>
-            <CardsTable cards={cards} onUseCard={setUsageCard} />
+            <CardsTable
+              cards={cards}
+              onUseCard={setUsageCard}
+              onReserveCard={onReserveCard}
+              onUnreserveCard={onUnreserveCard}
+            />
           </section>
         ) : null}
 
@@ -797,6 +840,17 @@ export default function App() {
     );
   }
 
+  async function handleCardTransition(cardId, action) {
+    const response = await apiFetch(`/api/cards/${cardId}/${action}`, {
+      method: 'POST',
+      body: {},
+      csrfToken: auth.csrfToken,
+    });
+    setCards((current) =>
+      current.map((card) => (card.id === response.data.id ? response.data : card)),
+    );
+  }
+
   if (loading) {
     return (
       <main className="auth-layout">
@@ -842,6 +896,8 @@ export default function App() {
       onLogout={handleLogout}
       onCreateDeal={handleCreateDeal}
       onUseCard={handleUseCard}
+      onReserveCard={(card) => handleCardTransition(card.id, 'reserve')}
+      onUnreserveCard={(card) => handleCardTransition(card.id, 'unreserve')}
     />
   );
 }

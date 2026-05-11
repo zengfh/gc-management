@@ -329,4 +329,97 @@ describe('App', () => {
       }),
     );
   });
+
+  it('reserves and unreserves a card from row actions', async () => {
+    globalThis.fetch
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            setupComplete: true,
+            sessionValid: true,
+            dekLoaded: true,
+            csrfToken: 'csrf_ready',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            {
+              id: 1,
+              brand: 'Target',
+              status: 'available',
+              faceValueCents: 5000,
+              remainingBalanceCents: 5000,
+              purchaseCostCents: 4500,
+              cardNumberLast4: '1111',
+            },
+          ],
+          page: { total: 1, limit: 50, offset: 0, hasMore: false },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            id: 1,
+            brand: 'Target',
+            status: 'reserved',
+            faceValueCents: 5000,
+            remainingBalanceCents: 5000,
+            purchaseCostCents: 4500,
+            cardNumberLast4: '1111',
+            rowVersion: 2,
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            id: 1,
+            brand: 'Target',
+            status: 'available',
+            faceValueCents: 5000,
+            remainingBalanceCents: 5000,
+            purchaseCostCents: 4500,
+            cardNumberLast4: '1111',
+            rowVersion: 3,
+          },
+        }),
+      );
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByRole('heading', { name: /dashboard/i });
+    await user.click(screen.getByRole('button', { name: /^cards$/i }));
+    await user.click(screen.getByRole('button', { name: /reserve target/i }));
+
+    expect(await screen.findByText(/reserved/i)).toBeInTheDocument();
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(
+      4,
+      '/api/cards/1/reserve',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({}),
+        headers: expect.objectContaining({
+          'X-CSRF-Token': 'csrf_ready',
+        }),
+      }),
+    );
+
+    await user.click(screen.getByRole('button', { name: /unreserve target/i }));
+
+    expect(await screen.findByText(/available/i)).toBeInTheDocument();
+    expect(globalThis.fetch).toHaveBeenLastCalledWith(
+      '/api/cards/1/unreserve',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({}),
+        headers: expect.objectContaining({
+          'X-CSRF-Token': 'csrf_ready',
+        }),
+      }),
+    );
+  });
 });
