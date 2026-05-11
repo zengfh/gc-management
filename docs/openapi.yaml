@@ -1,0 +1,789 @@
+openapi: 3.1.0
+info:
+  title: Secure Gift Card Manager API
+  version: 0.1.0
+  description: >
+    Initial API contract for the local MVP. The implementation must keep this
+    file in sync with backend routes and QA requirement IDs.
+servers:
+  - url: http://localhost:3001
+    description: Local API server
+tags:
+  - name: Health
+  - name: Auth
+  - name: Cards
+  - name: Deals
+  - name: ImportExport
+  - name: Audit
+paths:
+  /api/health:
+    get:
+      tags: [Health]
+      summary: Health check
+      operationId: getHealth
+      responses:
+        "200":
+          description: Service health
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+  /api/auth/status:
+    get:
+      tags: [Auth]
+      summary: Current setup/session/unlock state
+      operationId: getAuthStatus
+      responses:
+        "200":
+          description: Current auth state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthStatusResponse"
+  /api/auth/setup:
+    post:
+      tags: [Auth]
+      summary: Create the first account/user and wrapped DEK
+      operationId: setupAuth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetupRequest"
+      responses:
+        "201":
+          description: Setup complete
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthStatusResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      summary: Unlock encrypted data
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Login complete
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthStatusResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /api/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Clear session and in-memory unlock state
+      operationId: logout
+      responses:
+        "200":
+          description: Logout complete
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthStatusResponse"
+  /api/auth/change-unlock-secret:
+    post:
+      tags: [Auth]
+      summary: Rewrap the DEK with a new unlock secret
+      operationId: changeUnlockSecret
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangeUnlockSecretRequest"
+      responses:
+        "200":
+          description: Secret changed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ObjectResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/cards:
+    get:
+      tags: [Cards]
+      summary: List cards
+      operationId: listCards
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/CardStatus"
+        - name: brand
+          in: query
+          schema:
+            type: string
+        - name: cardNumber
+          in: query
+          description: Exact full card-number search. Backend normalizes and blind-indexes input.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Cards page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CardListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [Cards]
+      summary: Create one or more cards
+      operationId: createCards
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCardsRequest"
+      responses:
+        "201":
+          description: Cards created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CardListResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/cards/{cardId}:
+    parameters:
+      - $ref: "#/components/parameters/CardId"
+    get:
+      tags: [Cards]
+      summary: Card detail
+      operationId: getCard
+      responses:
+        "200":
+          description: Card detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CardDetailResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags: [Cards]
+      summary: Update allowed card fields
+      operationId: updateCard
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCardRequest"
+      responses:
+        "200":
+          description: Updated card
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CardResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    delete:
+      tags: [Cards]
+      summary: Delete never-touched available card
+      operationId: deleteCard
+      responses:
+        "204":
+          description: Deleted
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/cards/{cardId}/reserve:
+    post:
+      tags: [Cards]
+      summary: Reserve an available card
+      operationId: reserveCard
+      parameters:
+        - $ref: "#/components/parameters/CardId"
+      responses:
+        "200":
+          description: Reserved card
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CardResponse"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/cards/{cardId}/unreserve:
+    post:
+      tags: [Cards]
+      summary: Return a reserved card to available
+      operationId: unreserveCard
+      parameters:
+        - $ref: "#/components/parameters/CardId"
+      responses:
+        "200":
+          description: Unreserved card
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CardResponse"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/cards/{cardId}/sell:
+    post:
+      tags: [Cards]
+      summary: Sell an available, reserved, or in-use card
+      operationId: sellCard
+      parameters:
+        - $ref: "#/components/parameters/CardId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SellCardRequest"
+      responses:
+        "200":
+          description: Sold card
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CardDetailResponse"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/cards/{cardId}/use:
+    post:
+      tags: [Cards]
+      summary: Record card usage
+      operationId: useCard
+      parameters:
+        - $ref: "#/components/parameters/CardId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UseCardRequest"
+      responses:
+        "200":
+          description: Updated card
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CardDetailResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/deals:
+    get:
+      tags: [Deals]
+      summary: List deals
+      operationId: listDeals
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+      responses:
+        "200":
+          description: Deals page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DealListResponse"
+    post:
+      tags: [Deals]
+      summary: Create a deal, optionally with cards
+      operationId: createDeal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDealRequest"
+      responses:
+        "201":
+          description: Deal created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DealResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /api/cards/import-csv:
+    post:
+      tags: [ImportExport]
+      summary: Preview CSV import
+      operationId: previewCsvImport
+      responses:
+        "200":
+          description: Import preview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ObjectResponse"
+  /api/backup/export:
+    post:
+      tags: [ImportExport]
+      summary: Plaintext JSON export
+      operationId: exportPlaintextBackup
+      responses:
+        "200":
+          description: Plaintext export file
+          content:
+            application/json:
+              schema:
+                type: object
+  /api/audit:
+    get:
+      tags: [Audit]
+      summary: List audit events
+      operationId: listAudit
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+      responses:
+        "200":
+          description: Audit page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditListResponse"
+components:
+  parameters:
+    CardId:
+      name: cardId
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 128
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 50
+    Offset:
+      name: offset
+      in: query
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Unauthorized:
+      description: Not authenticated or locked
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFound:
+      description: Entity not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Conflict:
+      description: State conflict or duplicate
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    RateLimited:
+      description: Too many requests
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+  schemas:
+    HealthResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [status]
+          properties:
+            status:
+              type: string
+              enum: [ok]
+            database:
+              type: string
+              enum: [ok]
+    AuthStatusResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [setupComplete, sessionValid, dekLoaded]
+          properties:
+            setupComplete:
+              type: boolean
+            sessionValid:
+              type: boolean
+            dekLoaded:
+              type: boolean
+            csrfToken:
+              type: string
+    SetupRequest:
+      type: object
+      required: [unlockSecret]
+      properties:
+        unlockSecret:
+          type: string
+          minLength: 8
+        displayName:
+          type: string
+        email:
+          type: string
+          format: email
+    LoginRequest:
+      type: object
+      required: [unlockSecret]
+      properties:
+        unlockSecret:
+          type: string
+    ChangeUnlockSecretRequest:
+      type: object
+      required: [oldUnlockSecret, newUnlockSecret]
+      properties:
+        oldUnlockSecret:
+          type: string
+        newUnlockSecret:
+          type: string
+          minLength: 8
+    CardStatus:
+      type: string
+      enum: [available, reserved, in_use, sold, used_up, void]
+    CardType:
+      type: string
+      enum: [merchant, prepaid]
+    Network:
+      type: string
+      enum: [visa, mastercard, amex, discover, other]
+    Card:
+      type: object
+      required:
+        - id
+        - accountId
+        - brand
+        - cardType
+        - faceValueCents
+        - remainingBalanceCents
+        - purchaseCostCents
+        - status
+        - rowVersion
+      properties:
+        id:
+          type: integer
+        accountId:
+          type: integer
+        dealId:
+          type: integer
+          nullable: true
+        brand:
+          type: string
+        cardType:
+          $ref: "#/components/schemas/CardType"
+        network:
+          $ref: "#/components/schemas/Network"
+        faceValueCents:
+          type: integer
+          minimum: 1
+        remainingBalanceCents:
+          type: integer
+          minimum: 0
+        purchaseCostCents:
+          type: integer
+          minimum: 0
+        cardNumberLast4:
+          type: string
+          nullable: true
+        expirationDate:
+          type: string
+          nullable: true
+        status:
+          $ref: "#/components/schemas/CardStatus"
+        rowVersion:
+          type: integer
+    CardInput:
+      type: object
+      required: [brand, cardType, faceValueCents]
+      properties:
+        brand:
+          type: string
+        cardType:
+          $ref: "#/components/schemas/CardType"
+        network:
+          $ref: "#/components/schemas/Network"
+        faceValueCents:
+          type: integer
+          minimum: 1
+        purchaseCostCents:
+          type: integer
+          minimum: 0
+        cardNumber:
+          type: string
+        pin:
+          type: string
+        billingZip:
+          type: string
+        expirationDate:
+          type: string
+        notes:
+          type: string
+    CreateCardsRequest:
+      type: object
+      required: [cards]
+      properties:
+        cards:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/CardInput"
+    UpdateCardRequest:
+      type: object
+      properties:
+        rowVersion:
+          type: integer
+        brand:
+          type: string
+        notes:
+          type: string
+        expirationDate:
+          type: string
+    SellCardRequest:
+      type: object
+      required: [salePriceCents]
+      properties:
+        salePriceCents:
+          type: integer
+          minimum: 0
+        buyerName:
+          type: string
+        buyerType:
+          type: string
+          enum: [dealer, group_chat, friend, self, other]
+        platform:
+          type: string
+        transactionDate:
+          type: string
+        notes:
+          type: string
+    UseCardRequest:
+      type: object
+      required: [amountCents]
+      properties:
+        amountCents:
+          type: integer
+          minimum: 1
+        merchant:
+          type: string
+        description:
+          type: string
+        usageDate:
+          type: string
+    Deal:
+      type: object
+      required: [id, accountId, name, rowVersion]
+      properties:
+        id:
+          type: integer
+        accountId:
+          type: integer
+        name:
+          type: string
+        source:
+          type: string
+          nullable: true
+        purchaseDate:
+          type: string
+          nullable: true
+        rowVersion:
+          type: integer
+    CreateDealRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        source:
+          type: string
+        purchaseDate:
+          type: string
+        totalCostCents:
+          type: integer
+          minimum: 0
+        notes:
+          type: string
+        cards:
+          type: array
+          items:
+            $ref: "#/components/schemas/CardInput"
+    AuditEvent:
+      type: object
+      required: [id, accountId, entityType, action, timestamp]
+      properties:
+        id:
+          type: integer
+        accountId:
+          type: integer
+        entityType:
+          type: string
+        entityId:
+          type: integer
+          nullable: true
+        action:
+          type: string
+        timestamp:
+          type: string
+    CardResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/Card"
+    CardDetailResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [card]
+          properties:
+            card:
+              $ref: "#/components/schemas/Card"
+            transactions:
+              type: array
+              items:
+                type: object
+            usages:
+              type: array
+              items:
+                type: object
+            audit:
+              type: array
+              items:
+                $ref: "#/components/schemas/AuditEvent"
+    CardListResponse:
+      allOf:
+        - $ref: "#/components/schemas/ListEnvelope"
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: "#/components/schemas/Card"
+    DealResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/Deal"
+    DealListResponse:
+      allOf:
+        - $ref: "#/components/schemas/ListEnvelope"
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: "#/components/schemas/Deal"
+    AuditListResponse:
+      allOf:
+        - $ref: "#/components/schemas/ListEnvelope"
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: "#/components/schemas/AuditEvent"
+    ListEnvelope:
+      type: object
+      required: [data, page]
+      properties:
+        data:
+          type: array
+        page:
+          type: object
+          required: [limit, offset, total, hasMore]
+          properties:
+            limit:
+              type: integer
+            offset:
+              type: integer
+            total:
+              type: integer
+            hasMore:
+              type: boolean
+    ObjectResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, requestId]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            requestId:
+              type: string
+            fieldErrors:
+              type: array
+              items:
+                type: object
+                required: [field, code, message]
+                properties:
+                  field:
+                    type: string
+                  code:
+                    type: string
+                  message:
+                    type: string
