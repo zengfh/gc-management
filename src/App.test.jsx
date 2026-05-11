@@ -411,6 +411,85 @@ describe('App', () => {
     );
   });
 
+  it('undoes a sold card sale from the card table action', async () => {
+    globalThis.fetch
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            setupComplete: true,
+            sessionValid: true,
+            dekLoaded: true,
+            csrfToken: 'csrf_ready',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            {
+              id: 1,
+              brand: 'Target',
+              status: 'sold',
+              faceValueCents: 5000,
+              remainingBalanceCents: 0,
+              purchaseCostCents: 4500,
+              cardNumberLast4: '1111',
+            },
+          ],
+          page: { total: 1, limit: 50, offset: 0, hasMore: false },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            card: {
+              id: 1,
+              brand: 'Target',
+              status: 'in_use',
+              faceValueCents: 5000,
+              remainingBalanceCents: 3750,
+              purchaseCostCents: 4500,
+              cardNumberLast4: '1111',
+              rowVersion: 4,
+            },
+            transactions: [
+              { id: 9, type: 'sale_reversal', reason: 'Buyer canceled' },
+              { id: 8, type: 'sale', salePriceCents: 3800 },
+            ],
+            usages: [],
+            audit: [],
+          },
+        }),
+      );
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByRole('heading', { name: /dashboard/i });
+    await user.click(screen.getByRole('button', { name: /^cards$/i }));
+    await user.click(screen.getByRole('button', { name: /undo sale target/i }));
+
+    const dialog = screen.getByRole('dialog', { name: /undo sale/i });
+    await user.type(within(dialog).getByLabelText(/^reason$/i), 'Buyer canceled');
+    await user.click(within(dialog).getByRole('button', { name: /^undo sale$/i }));
+
+    expect(await screen.findByText(/in use/i)).toBeInTheDocument();
+    expect(screen.getByText(/\$37\.50/)).toBeInTheDocument();
+    expect(globalThis.fetch).toHaveBeenLastCalledWith(
+      '/api/cards/1/undo-sale',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          reason: 'Buyer canceled',
+        }),
+        headers: expect.objectContaining({
+          'X-CSRF-Token': 'csrf_ready',
+        }),
+      }),
+    );
+  });
+
   it('reserves and unreserves a card from row actions', async () => {
     globalThis.fetch
       .mockResolvedValueOnce(
