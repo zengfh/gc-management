@@ -91,6 +91,8 @@ paths:
       tags: [Auth]
       summary: Clear session and in-memory unlock state
       operationId: logout
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
       responses:
         "200":
           description: Logout complete
@@ -98,11 +100,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AuthStatusResponse"
+        "403":
+          $ref: "#/components/responses/Forbidden"
   /api/auth/change-unlock-secret:
     post:
       tags: [Auth]
       summary: Rewrap the DEK with a new unlock secret
       operationId: changeUnlockSecret
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
       requestBody:
         required: true
         content:
@@ -120,6 +126,8 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
   /api/cards:
     get:
       tags: [Cards]
@@ -387,6 +395,13 @@ components:
         type: string
         minLength: 8
         maxLength: 128
+    CsrfToken:
+      name: X-CSRF-Token
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 16
     Limit:
       name: limit
       in: query
@@ -411,6 +426,12 @@ components:
             $ref: "#/components/schemas/ErrorResponse"
     Unauthorized:
       description: Not authenticated or locked
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Forbidden:
+      description: Authenticated request failed CSRF, origin, or authorization checks
       content:
         application/json:
           schema:
