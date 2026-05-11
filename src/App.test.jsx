@@ -1071,6 +1071,92 @@ describe('App', () => {
     );
   });
 
+  it('edits deal metadata from the deals view', async () => {
+    globalThis.fetch
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            setupComplete: true,
+            sessionValid: true,
+            dekLoaded: true,
+            csrfToken: 'csrf_ready',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            {
+              id: 10,
+              name: 'Staples promo',
+              source: 'Staples',
+              purchaseDate: '2026-05-01',
+              inputTotalCostCents: 4500,
+              notes: 'Original notes',
+              archivedAt: null,
+              rowVersion: 1,
+            },
+          ],
+          page: { total: 1, limit: 50, offset: 0, hasMore: false },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            deal: {
+              id: 10,
+              name: 'Costco promo',
+              source: 'Costco',
+              purchaseDate: '2026-05-11',
+              inputTotalCostCents: 4500,
+              notes: 'Updated notes',
+              archivedAt: null,
+              rowVersion: 2,
+            },
+            cards: [],
+          },
+        }),
+      );
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByRole('heading', { name: /dashboard/i });
+    await user.click(screen.getByRole('button', { name: /^deals$/i }));
+    await user.click(screen.getByRole('button', { name: /edit staples promo/i }));
+
+    const dialog = await screen.findByRole('dialog', { name: /edit deal/i });
+    await user.clear(within(dialog).getByLabelText(/^deal name$/i));
+    await user.type(within(dialog).getByLabelText(/^deal name$/i), 'Costco promo');
+    await user.clear(within(dialog).getByLabelText(/^source$/i));
+    await user.type(within(dialog).getByLabelText(/^source$/i), 'Costco');
+    await user.clear(within(dialog).getByLabelText(/^purchase date$/i));
+    await user.type(within(dialog).getByLabelText(/^purchase date$/i), '2026-05-11');
+    await user.clear(within(dialog).getByLabelText(/^notes$/i));
+    await user.type(within(dialog).getByLabelText(/^notes$/i), 'Updated notes');
+    await user.click(within(dialog).getByRole('button', { name: /^save changes$/i }));
+
+    expect(await screen.findByText(/^costco promo$/i)).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: /edit deal/i })).not.toBeInTheDocument();
+    expect(globalThis.fetch).toHaveBeenLastCalledWith(
+      '/api/deals/10',
+      expect.objectContaining({
+        method: 'PUT',
+        body: JSON.stringify({
+          rowVersion: 1,
+          name: 'Costco promo',
+          source: 'Costco',
+          purchaseDate: '2026-05-11',
+          notes: 'Updated notes',
+        }),
+        headers: expect.objectContaining({
+          'X-CSRF-Token': 'csrf_ready',
+        }),
+      }),
+    );
+  });
+
   it('opens deal detail with cards and totals from the deals view', async () => {
     globalThis.fetch
       .mockResolvedValueOnce(

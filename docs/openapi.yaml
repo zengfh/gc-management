@@ -977,6 +977,9 @@ components:
           type: integer
           nullable: true
           minimum: 0
+        notes:
+          type: string
+          nullable: true
         archivedAt:
           type: string
           nullable: true

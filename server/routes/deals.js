@@ -94,6 +94,7 @@ function toDealResponse(row) {
     source: row.source,
     purchaseDate: row.purchaseDate,
     inputTotalCostCents: row.inputTotalCostCents,
+    notes: row.notes,
     archivedAt: row.archivedAt,
     rowVersion: row.rowVersion,
     createdAt: row.createdAt,

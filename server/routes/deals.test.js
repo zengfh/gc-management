@@ -225,6 +225,7 @@ describe('deal routes', () => {
       name: 'Updated promo',
       source: 'Costco',
       purchaseDate: '2026-05-11',
+      notes: 'Updated notes',
       rowVersion: rowVersion + 1,
     });
     expect(updateResponse.body.data.cards.map((dealCard) => dealCard.id)).toEqual([cardId]);

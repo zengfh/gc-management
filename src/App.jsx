@@ -546,7 +546,7 @@ function CardsTable({
   );
 }
 
-function DealsTable({ deals, onViewDeal, onArchiveDeal, onUnarchiveDeal }) {
+function DealsTable({ deals, onViewDeal, onEditDeal, onArchiveDeal, onUnarchiveDeal }) {
   if (deals.length === 0) {
     return (
       <div className="empty-state">
@@ -592,6 +592,14 @@ function DealsTable({ deals, onViewDeal, onArchiveDeal, onUnarchiveDeal }) {
               <td className="numeric">{formatMoney(deal.inputTotalCostCents || 0)}</td>
               <td>
                 <div className="row-actions">
+                  <button
+                    type="button"
+                    className="table-action"
+                    aria-label={`Edit ${deal.name}`}
+                    onClick={() => onEditDeal(deal)}
+                  >
+                    Edit
+                  </button>
                   {deal.archivedAt ? (
                     <button
                       type="button"
@@ -2074,6 +2082,98 @@ function AddDealPanel({ onClose, onCreateDeal }) {
   );
 }
 
+function EditDealPanel({ deal, onClose, onEditDeal }) {
+  const [form, setForm] = useState({
+    name: deal.name || '',
+    source: deal.source || '',
+    purchaseDate: deal.purchaseDate || '',
+    notes: deal.notes || '',
+  });
+  const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  function updateField(field, value) {
+    setForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  }
+
+  async function submitEdit(event) {
+    event.preventDefault();
+    setError('');
+
+    const name = form.name.trim();
+    if (!name) {
+      setError('Deal name is required.');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await onEditDeal(deal.id, {
+        rowVersion: deal.rowVersion,
+        name,
+        source: form.source.trim() || null,
+        purchaseDate: form.purchaseDate.trim() || null,
+        notes: form.notes.trim() || null,
+      });
+      onClose();
+    } catch (caught) {
+      setError(caught.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <section className="slide-panel" role="dialog" aria-modal="true" aria-labelledby="edit-deal-title">
+        <div className="panel-heading">
+          <div>
+            <p className="eyebrow">{deal.name}</p>
+            <h2 id="edit-deal-title">Edit deal</h2>
+          </div>
+          <button type="button" className="icon-button" aria-label="Close edit deal" onClick={onClose}>
+            <X aria-hidden="true" size={18} />
+          </button>
+        </div>
+        <form className="panel-form" onSubmit={submitEdit}>
+          <label>
+            <span>Deal name</span>
+            <input value={form.name} onChange={(event) => updateField('name', event.target.value)} required />
+          </label>
+          <label>
+            <span>Source</span>
+            <input value={form.source} onChange={(event) => updateField('source', event.target.value)} />
+          </label>
+          <label>
+            <span>Purchase date</span>
+            <input
+              type="date"
+              value={form.purchaseDate}
+              onChange={(event) => updateField('purchaseDate', event.target.value)}
+            />
+          </label>
+          <label>
+            <span>Notes</span>
+            <textarea value={form.notes} onChange={(event) => updateField('notes', event.target.value)} rows={4} />
+          </label>
+          <FieldError message={error} />
+          <div className="panel-actions">
+            <button type="button" className="secondary-action" onClick={onClose}>
+              Cancel
+            </button>
+            <button type="submit" className="primary-action" disabled={submitting}>
+              {submitting ? 'Saving...' : 'Save changes'}
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
+  );
+}
+
 function VoidCardPanel({ card, onClose, onVoidCard }) {
   const [reason, setReason] = useState('');
   const [error, setError] = useState('');
@@ -2395,6 +2495,7 @@ function WorkSurface({
   onChangeUnlockSecret,
   onCreateDeal,
   onLoadDeals,
+  onEditDeal,
   onArchiveDeal,
   onUnarchiveDeal,
   onSearchCards,
@@ -2413,6 +2514,7 @@ function WorkSurface({
 }) {
   const [activeView, setActiveView] = useState('dashboard');
   const [showAddDeal, setShowAddDeal] = useState(false);
+  const [editDeal, setEditDeal] = useState(null);
   const [usageCard, setUsageCard] = useState(null);
   const [editCard, setEditCard] = useState(null);
   const [deleteCard, setDeleteCard] = useState(null);
@@ -2604,6 +2706,7 @@ function WorkSurface({
               <DealsTable
                 deals={deals.slice(0, 6)}
                 onViewDeal={openDealDetail}
+                onEditDeal={setEditDeal}
                 onArchiveDeal={archiveDeal}
                 onUnarchiveDeal={unarchiveDeal}
               />
@@ -2654,6 +2757,7 @@ function WorkSurface({
             <DealsTable
               deals={deals}
               onViewDeal={openDealDetail}
+              onEditDeal={setEditDeal}
               onArchiveDeal={archiveDeal}
               onUnarchiveDeal={unarchiveDeal}
             />
@@ -2722,6 +2826,13 @@ function WorkSurface({
             await onCreateDeal(payload);
             setActiveView('dashboard');
           }}
+        />
+      ) : null}
+      {editDeal ? (
+        <EditDealPanel
+          deal={editDeal}
+          onClose={() => setEditDeal(null)}
+          onEditDeal={onEditDeal}
         />
       ) : null}
       {usageCard ? (
@@ -3095,6 +3206,17 @@ export default function App() {
     });
   }
 
+  async function handleEditDeal(dealId, payload) {
+    const response = await apiFetch(`/api/deals/${dealId}`, {
+      method: 'PUT',
+      body: payload,
+      csrfToken: auth.csrfToken,
+    });
+    const updatedDeal = response.data.deal;
+    setDeals((current) => current.map((deal) => (deal.id === updatedDeal.id ? updatedDeal : deal)));
+    return response;
+  }
+
   async function handleUseCard(cardId, payload) {
     const response = await apiFetch(`/api/cards/${cardId}/use`, {
       method: 'POST',
@@ -3238,6 +3360,7 @@ export default function App() {
       onChangeUnlockSecret={handleChangeUnlockSecret}
       onCreateDeal={handleCreateDeal}
       onLoadDeals={(includeArchived) => loadDeals({ includeArchived })}
+      onEditDeal={handleEditDeal}
       onArchiveDeal={(deal, includeArchived) =>
         handleDealArchiveTransition(deal.id, 'archive', includeArchived)}
       onUnarchiveDeal={(deal, includeArchived) =>
