@@ -21,6 +21,13 @@ const navItems = [
   { id: 'deals', label: 'Deals', icon: Tag },
 ];
 
+const defaultPage = {
+  limit: 50,
+  offset: 0,
+  total: 0,
+  hasMore: false,
+};
+
 const statusLabels = {
   available: 'Available',
   reserved: 'Reserved',
@@ -106,6 +113,10 @@ function dollarsToCents(value) {
   }
 
   return Math.round(Number(normalized) * 100);
+}
+
+function criteriaValue(value) {
+  return value == null ? '' : String(value).trim();
 }
 
 function FieldError({ message }) {
@@ -549,7 +560,19 @@ function CardSearchForm({ deals, onSearchCards }) {
     setSortValue('');
     setSubmitting(true);
     try {
-      await onSearchCards({});
+      await onSearchCards({
+        cardNumber: '',
+        status: '',
+        brand: '',
+        source: '',
+        dealId: '',
+        expiresBefore: '',
+        text: '',
+        sortBy: '',
+        sortDir: '',
+        limit: '',
+        offset: 0,
+      });
     } catch (caught) {
       setError(caught.message);
     } finally {
@@ -632,6 +655,45 @@ function CardSearchForm({ deals, onSearchCards }) {
       </div>
       <FieldError message={error} />
     </form>
+  );
+}
+
+function CardsPagination({ page, currentCount, onPageCards }) {
+  if (!page?.total) {
+    return null;
+  }
+
+  const start = page.offset + 1;
+  const end = page.offset + currentCount;
+  const previousOffset = Math.max(page.offset - page.limit, 0);
+  const nextOffset = page.offset + page.limit;
+
+  return (
+    <div className="pagination-bar" aria-label="Card pagination">
+      <span>
+        {start}-{end} of {page.total}
+      </span>
+      <div className="pagination-actions">
+        <button
+          type="button"
+          className="secondary-action"
+          aria-label="Previous page"
+          disabled={page.offset === 0}
+          onClick={() => onPageCards(previousOffset)}
+        >
+          Previous
+        </button>
+        <button
+          type="button"
+          className="secondary-action"
+          aria-label="Next page"
+          disabled={!page.hasMore}
+          onClick={() => onPageCards(nextOffset)}
+        >
+          Next
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -1519,6 +1581,7 @@ function UseCardPanel({ card, onClose, onUseCard }) {
 
 function WorkSurface({
   cards,
+  cardsPage,
   deals,
   loading,
   onRefresh,
@@ -1625,6 +1688,13 @@ function WorkSurface({
     const response = await onUndoUsage(cardId, { usageId, reason });
     setDetailState({ card: response.data.card, data: response.data, error: '', loading: false });
     return response;
+  }
+
+  async function pageCards(offset) {
+    await onSearchCards({
+      limit: cardsPage?.limit || defaultPage.limit,
+      offset,
+    });
   }
 
   return (
@@ -1743,6 +1813,7 @@ function WorkSurface({
               onReserveCard={onReserveCard}
               onUnreserveCard={onUnreserveCard}
             />
+            <CardsPagination page={cardsPage} currentCount={cards.length} onPageCards={pageCards} />
           </section>
         ) : null}
 
@@ -1840,6 +1911,8 @@ function WorkSurface({
 export default function App() {
   const [auth, setAuth] = useState(null);
   const [cards, setCards] = useState([]);
+  const [cardsPage, setCardsPage] = useState(defaultPage);
+  const [cardCriteria, setCardCriteria] = useState({});
   const [deals, setDeals] = useState([]);
   const [loading, setLoading] = useState(true);
   const [inventoryLoading, setInventoryLoading] = useState(false);
@@ -1853,6 +1926,8 @@ export default function App() {
         apiFetch('/api/deals'),
       ]);
       setCards(cardsResponse.data || []);
+      setCardsPage(cardsResponse.page || defaultPage);
+      setCardCriteria({});
       setDeals(dealsResponse.data || []);
     } finally {
       setInventoryLoading(false);
@@ -1860,16 +1935,33 @@ export default function App() {
   }
 
   async function handleSearchCards(criteria = {}) {
+    const nextCriteria = {
+      ...cardCriteria,
+      ...criteria,
+    };
+
+    if (!Object.prototype.hasOwnProperty.call(criteria, 'offset')) {
+      nextCriteria.offset = 0;
+    }
+
     const params = new URLSearchParams();
-    const status = criteria.status?.trim();
-    const brand = criteria.brand?.trim();
-    const source = criteria.source?.trim();
-    const dealId = criteria.dealId?.trim();
-    const expiresBefore = criteria.expiresBefore?.trim();
-    const text = criteria.text?.trim();
-    const sortBy = criteria.sortBy?.trim();
-    const sortDir = criteria.sortDir?.trim();
-    const cardNumber = criteria.cardNumber?.trim();
+    const limit = criteriaValue(nextCriteria.limit);
+    const offset = criteriaValue(nextCriteria.offset);
+    const status = criteriaValue(nextCriteria.status);
+    const brand = criteriaValue(nextCriteria.brand);
+    const source = criteriaValue(nextCriteria.source);
+    const dealId = criteriaValue(nextCriteria.dealId);
+    const expiresBefore = criteriaValue(nextCriteria.expiresBefore);
+    const text = criteriaValue(nextCriteria.text);
+    const sortBy = criteriaValue(nextCriteria.sortBy);
+    const sortDir = criteriaValue(nextCriteria.sortDir);
+    const cardNumber = criteriaValue(nextCriteria.cardNumber);
+    if (limit) {
+      params.set('limit', limit);
+    }
+    if (offset && offset !== '0') {
+      params.set('offset', offset);
+    }
     if (status) {
       params.set('status', status);
     }
@@ -1902,6 +1994,8 @@ export default function App() {
     try {
       const response = await apiFetch(`/api/cards${query}`);
       setCards(response.data || []);
+      setCardsPage(response.page || defaultPage);
+      setCardCriteria(nextCriteria);
     } finally {
       setInventoryLoading(false);
     }
@@ -1986,6 +2080,8 @@ export default function App() {
     }
     setAuth({ setupComplete: true, sessionValid: false, dekLoaded: false });
     setCards([]);
+    setCardsPage(defaultPage);
+    setCardCriteria({});
     setDeals([]);
   }
 
@@ -2148,6 +2244,7 @@ export default function App() {
   return (
     <WorkSurface
       cards={cards}
+      cardsPage={cardsPage}
       deals={deals}
       loading={inventoryLoading}
       onRefresh={loadInventory}

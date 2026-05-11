@@ -1226,6 +1226,73 @@ describe('App', () => {
     );
   });
 
+  it('paginates cards from the cards view', async () => {
+    globalThis.fetch
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            setupComplete: true,
+            sessionValid: true,
+            dekLoaded: true,
+            csrfToken: 'csrf_ready',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            {
+              id: 1,
+              brand: 'Target',
+              status: 'available',
+              faceValueCents: 5000,
+              remainingBalanceCents: 5000,
+              purchaseCostCents: 4500,
+              cardNumberLast4: '1111',
+            },
+          ],
+          page: { total: 2, limit: 1, offset: 0, hasMore: true },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            {
+              id: 2,
+              brand: 'Amazon',
+              status: 'available',
+              faceValueCents: 2500,
+              remainingBalanceCents: 2500,
+              purchaseCostCents: 2200,
+              cardNumberLast4: '2222',
+            },
+          ],
+          page: { total: 2, limit: 1, offset: 1, hasMore: false },
+        }),
+      );
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByRole('heading', { name: /dashboard/i });
+    await user.click(screen.getByRole('button', { name: /^cards$/i }));
+
+    expect(screen.getByText(/target/i)).toBeInTheDocument();
+    expect(screen.getByText(/1-1 of 2/i)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /next page/i }));
+
+    expect(await screen.findByText(/amazon/i)).toBeInTheDocument();
+    expect(screen.queryByText(/target/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/2-2 of 2/i)).toBeInTheDocument();
+    expect(globalThis.fetch).toHaveBeenLastCalledWith(
+      '/api/cards?limit=1&offset=1',
+      expect.objectContaining({
+        method: 'GET',
+      }),
+    );
+  });
+
   it('edits allowed card fields from the cards view', async () => {
     globalThis.fetch
       .mockResolvedValueOnce(
