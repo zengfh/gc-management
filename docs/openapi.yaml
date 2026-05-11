@@ -207,6 +207,8 @@ paths:
       tags: [Cards]
       summary: Update allowed card fields
       operationId: updateCard
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
       requestBody:
         required: true
         content:
@@ -222,15 +224,29 @@ paths:
                 $ref: "#/components/schemas/CardResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
     delete:
       tags: [Cards]
       summary: Delete never-touched available card
       operationId: deleteCard
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
       responses:
         "204":
           description: Deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
   /api/cards/{cardId}/reserve:
@@ -734,6 +750,7 @@ components:
       properties:
         rowVersion:
           type: integer
+          minimum: 1
         brand:
           type: string
         notes:

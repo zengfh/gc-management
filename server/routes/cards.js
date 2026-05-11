@@ -45,6 +45,15 @@ const reserveCardSchema = z
   })
   .strict();
 
+const updateCardSchema = z
+  .object({
+    rowVersion: z.number().int().positive().optional(),
+    brand: z.string().trim().min(1).max(120).optional(),
+    expirationDate: z.string().trim().nullable().optional(),
+    notes: z.string().trim().nullable().optional(),
+  })
+  .strict();
+
 const sellCardSchema = z
   .object({
     salePriceCents: z.number().int().nonnegative(),
@@ -55,6 +64,8 @@ const sellCardSchema = z
     notes: z.string().trim().nullable().optional(),
   })
   .strict();
+
+const terminalStatuses = new Set(['sold', 'used_up', 'void']);
 
 const undoSaleSchema = z
   .object({
@@ -443,6 +454,116 @@ export function createCardsRouter({ db }) {
       return after;
     })();
   }
+
+  router.put(
+    '/:cardId',
+    asyncHandler(async (req, res) => {
+      const cardId = parsePositiveInt(req.params.cardId, null, { min: 1 });
+      const body = validateBody(updateCardSchema, req.body || {});
+      const timestamp = nowIso();
+      const updateFields = Object.keys(body).filter((field) => field !== 'rowVersion');
+
+      if (updateFields.length === 0) {
+        throw badRequest('NO_CHANGES', 'At least one card field must be changed.');
+      }
+
+      try {
+        const updated = db.transaction(() => {
+          const before = loadCard(req.auth, cardId);
+
+          if (body.rowVersion && body.rowVersion !== before.rowVersion) {
+            throw conflict('STALE_CARD_VERSION', 'Card has changed since it was loaded.');
+          }
+
+          if (terminalStatuses.has(before.status) && updateFields.some((field) => field !== 'notes')) {
+            throw conflict('TERMINAL_CARD_EDIT_RESTRICTED', 'Terminal cards only allow notes edits.');
+          }
+
+          const next = {
+            brand: body.brand ?? before.brand,
+            expirationDate: body.expirationDate === undefined ? before.expirationDate : body.expirationDate,
+            notes: body.notes === undefined ? before.notes : body.notes,
+          };
+
+          db.prepare(
+            `UPDATE cards
+             SET brand = ?,
+                 expirationDate = ?,
+                 notes = ?,
+                 updatedByUserId = ?,
+                 updatedAt = ?,
+                 rowVersion = rowVersion + 1
+             WHERE id = ? AND accountId = ?`,
+          ).run(
+            next.brand,
+            next.expirationDate,
+            next.notes,
+            req.auth.userId,
+            timestamp,
+            cardId,
+            req.auth.accountId,
+          );
+
+          const after = loadCard(req.auth, cardId);
+          insertAuditEvent(db, {
+            accountId: req.auth.accountId,
+            userId: req.auth.userId,
+            requestId: req.requestId,
+            entityType: 'card',
+            entityId: cardId,
+            action: 'card.update',
+            oldValue: mutationAuditValue(before),
+            newValue: mutationAuditValue(after),
+            timestamp,
+          });
+
+          return after;
+        })();
+
+        res.json(objectResponse(toCardResponse(updated)));
+      } catch (error) {
+        throw translateSqliteError(error);
+      }
+    }),
+  );
+
+  router.delete(
+    '/:cardId',
+    asyncHandler(async (req, res) => {
+      const cardId = parsePositiveInt(req.params.cardId, null, { min: 1 });
+      const timestamp = nowIso();
+
+      db.transaction(() => {
+        const card = loadCard(req.auth, cardId);
+        const activity = db
+          .prepare(
+            `SELECT
+              (SELECT COUNT(*) FROM transactions WHERE accountId = ? AND cardId = ?) AS transactionCount,
+              (SELECT COUNT(*) FROM usages WHERE accountId = ? AND cardId = ?) AS usageCount`,
+          )
+          .get(req.auth.accountId, cardId, req.auth.accountId, cardId);
+
+        if (card.status !== 'available' || activity.transactionCount > 0 || activity.usageCount > 0) {
+          throw conflict('CARD_DELETE_RESTRICTED', 'Only never-touched available cards can be deleted.');
+        }
+
+        insertAuditEvent(db, {
+          accountId: req.auth.accountId,
+          userId: req.auth.userId,
+          requestId: req.requestId,
+          entityType: 'card',
+          entityId: cardId,
+          action: 'card.delete',
+          oldValue: createCardAuditValue(card),
+          timestamp,
+        });
+
+        db.prepare('DELETE FROM cards WHERE id = ? AND accountId = ?').run(cardId, req.auth.accountId);
+      })();
+
+      res.status(204).send();
+    }),
+  );
 
   router.post(
     '/:cardId/reserve',

@@ -419,4 +419,119 @@ describe('card routes', () => {
     expect(undoWriteOff.status).toBe(409);
     expect(undoWriteOff.body.error.code).toBe('WRITE_OFF_USAGE_NOT_REVERSIBLE');
   }, 45_000);
+
+  it('updates allowed fields with row-version protection and audit', async () => {
+    const csrfToken = await setupOwner();
+    const createResponse = await postWithCsrf('/api/cards', csrfToken).send({
+      cards: [sampleCard()],
+    });
+    const card = createResponse.body.data[0];
+
+    const updateResponse = await agent
+      .put(`/api/cards/${card.id}`)
+      .set('Origin', appOrigin)
+      .set('X-CSRF-Token', csrfToken)
+      .send({
+        rowVersion: card.rowVersion,
+        brand: 'Amazon',
+        expirationDate: '2028-01-31',
+        notes: 'Updated notes',
+      });
+    expect(updateResponse.status).toBe(200);
+    expect(updateResponse.body.data).toMatchObject({
+      id: card.id,
+      brand: 'Amazon',
+      expirationDate: '2028-01-31',
+      notes: 'Updated notes',
+      rowVersion: 2,
+    });
+
+    const staleUpdate = await agent
+      .put(`/api/cards/${card.id}`)
+      .set('Origin', appOrigin)
+      .set('X-CSRF-Token', csrfToken)
+      .send({
+        rowVersion: card.rowVersion,
+        notes: 'Stale update',
+      });
+    expect(staleUpdate.status).toBe(409);
+    expect(staleUpdate.body.error.code).toBe('STALE_CARD_VERSION');
+
+    const actions = db
+      .prepare("SELECT action FROM audit_log WHERE entityType = 'card' AND entityId = ? ORDER BY id")
+      .all(card.id)
+      .map((row) => row.action);
+    expect(actions).toEqual(['card.create', 'card.update']);
+  }, 45_000);
+
+  it('limits terminal card edits to notes', async () => {
+    const csrfToken = await setupOwner();
+    const createResponse = await postWithCsrf('/api/cards', csrfToken).send({
+      cards: [sampleCard()],
+    });
+    const cardId = createResponse.body.data[0].id;
+    const sold = await postWithCsrf(`/api/cards/${cardId}/sell`, csrfToken).send({
+      salePriceCents: 4_800,
+    });
+
+    const brandUpdate = await agent
+      .put(`/api/cards/${cardId}`)
+      .set('Origin', appOrigin)
+      .set('X-CSRF-Token', csrfToken)
+      .send({
+        rowVersion: sold.body.data.card.rowVersion,
+        brand: 'Amazon',
+      });
+    expect(brandUpdate.status).toBe(409);
+    expect(brandUpdate.body.error.code).toBe('TERMINAL_CARD_EDIT_RESTRICTED');
+
+    const notesUpdate = await agent
+      .put(`/api/cards/${cardId}`)
+      .set('Origin', appOrigin)
+      .set('X-CSRF-Token', csrfToken)
+      .send({
+        rowVersion: sold.body.data.card.rowVersion,
+        notes: 'Closeout notes',
+      });
+    expect(notesUpdate.status).toBe(200);
+    expect(notesUpdate.body.data).toMatchObject({
+      id: cardId,
+      status: 'sold',
+      notes: 'Closeout notes',
+      rowVersion: 3,
+    });
+  }, 45_000);
+
+  it('deletes only never-touched available cards', async () => {
+    const csrfToken = await setupOwner();
+    const untouched = await postWithCsrf('/api/cards', csrfToken).send({
+      cards: [sampleCard()],
+    });
+    const touched = await postWithCsrf('/api/cards', csrfToken).send({
+      cards: [sampleCard({ brand: 'Best Buy', cardNumber: '5555 5555 5555 5555' })],
+    });
+    const untouchedId = untouched.body.data[0].id;
+    const touchedId = touched.body.data[0].id;
+
+    await postWithCsrf(`/api/cards/${touchedId}/use`, csrfToken).send({
+      amountCents: 100,
+      merchant: 'Best Buy',
+    });
+
+    const deleteTouched = await agent
+      .delete(`/api/cards/${touchedId}`)
+      .set('Origin', appOrigin)
+      .set('X-CSRF-Token', csrfToken);
+    expect(deleteTouched.status).toBe(409);
+    expect(deleteTouched.body.error.code).toBe('CARD_DELETE_RESTRICTED');
+
+    const deleteUntouched = await agent
+      .delete(`/api/cards/${untouchedId}`)
+      .set('Origin', appOrigin)
+      .set('X-CSRF-Token', csrfToken);
+    expect(deleteUntouched.status).toBe(204);
+
+    const detail = await agent.get(`/api/cards/${untouchedId}`);
+    expect(detail.status).toBe(404);
+  }, 45_000);
 });
