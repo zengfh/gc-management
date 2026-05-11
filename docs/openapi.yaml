@@ -162,6 +162,8 @@ paths:
       tags: [Cards]
       summary: Create one or more cards
       operationId: createCards
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
       requestBody:
         required: true
         content:
@@ -177,6 +179,10 @@ paths:
                 $ref: "#/components/schemas/CardListResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "409":
           $ref: "#/components/responses/Conflict"
   /api/cards/{cardId}:
@@ -193,6 +199,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CardDetailResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
     put:

@@ -20,6 +20,10 @@ export function forbidden(code = 'FORBIDDEN', message = 'Forbidden.') {
   return new HttpError(403, code, message);
 }
 
+export function notFound(code = 'NOT_FOUND', message = 'Not found.') {
+  return new HttpError(404, code, message);
+}
+
 export function conflict(code, message) {
   return new HttpError(409, code, message);
 }
