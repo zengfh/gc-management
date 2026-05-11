@@ -9,6 +9,7 @@ import {
   PackageCheck,
   Plus,
   RefreshCw,
+  ScrollText,
   Search,
   ShieldCheck,
   Tag,
@@ -19,6 +20,7 @@ const navItems = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'cards', label: 'Cards', icon: CreditCard },
   { id: 'deals', label: 'Deals', icon: Tag },
+  { id: 'audit', label: 'Audit Log', icon: ScrollText },
 ];
 
 const defaultPage = {
@@ -96,6 +98,19 @@ function formatDisplayValue(value) {
 
 function statusText(status) {
   return statusLabels[status] || status;
+}
+
+function viewTitle(view) {
+  if (view === 'dashboard') {
+    return 'Dashboard';
+  }
+  if (view === 'cards') {
+    return 'Cards';
+  }
+  if (view === 'audit') {
+    return 'Audit Log';
+  }
+  return 'Deals';
 }
 
 function isTerminalCard(card) {
@@ -504,6 +519,44 @@ function DealsTable({ deals, onViewDeal, onArchiveDeal, onUnarchiveDeal }) {
                   )}
                 </div>
               </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function AuditTable({ events }) {
+  if (events.length === 0) {
+    return (
+      <div className="empty-state">
+        <ScrollText aria-hidden="true" size={24} />
+        <p>No audit events match the current view.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Entity</th>
+            <th>Entity ID</th>
+            <th>Action</th>
+            <th>Request</th>
+          </tr>
+        </thead>
+        <tbody>
+          {events.map((event) => (
+            <tr key={event.id}>
+              <td>{formatDateTime(event.timestamp)}</td>
+              <td>{event.entityType}</td>
+              <td>{event.entityId || 'Not recorded'}</td>
+              <td>{event.action}</td>
+              <td className="mono">{event.requestId || 'Not recorded'}</td>
             </tr>
           ))}
         </tbody>
@@ -1583,9 +1636,13 @@ function WorkSurface({
   cards,
   cardsPage,
   deals,
+  auditEvents,
+  auditLoading,
+  auditError,
   loading,
   onRefresh,
   onLogout,
+  onLoadAudit,
   onCreateDeal,
   onLoadDeals,
   onArchiveDeal,
@@ -1632,6 +1689,13 @@ function WorkSurface({
     ],
     [activeRemaining, availableFace, cards.length, costBasis],
   );
+
+  async function activateView(view) {
+    setActiveView(view);
+    if (view === 'audit') {
+      await onLoadAudit({});
+    }
+  }
 
   async function toggleArchivedDeals(event) {
     const nextValue = event.target.checked;
@@ -1712,7 +1776,9 @@ function WorkSurface({
                 key={item.id}
                 type="button"
                 className={activeView === item.id ? 'nav-item active' : 'nav-item'}
-                onClick={() => setActiveView(item.id)}
+                onClick={() => {
+                  void activateView(item.id);
+                }}
               >
                 <Icon aria-hidden="true" size={18} />
                 {item.label}
@@ -1730,7 +1796,7 @@ function WorkSurface({
         <header className="topbar">
           <div>
             <p className="eyebrow">Local secure inventory</p>
-            <h1>{activeView === 'dashboard' ? 'Dashboard' : activeView === 'cards' ? 'Cards' : 'Deals'}</h1>
+            <h1>{viewTitle(activeView)}</h1>
           </div>
           <div className="topbar-actions">
             <button type="button" className="secondary-action" onClick={onRefresh}>
@@ -1842,6 +1908,18 @@ function WorkSurface({
             />
           </section>
         ) : null}
+
+        {activeView === 'audit' ? (
+          <section className="content-section">
+            <div className="section-heading">
+              <h2>Audit Log</h2>
+              <span>{auditEvents.length} records</span>
+            </div>
+            {auditLoading ? <div className="loading-strip inline-loading">Loading audit log...</div> : null}
+            <FieldError message={auditError} />
+            <AuditTable events={auditEvents} />
+          </section>
+        ) : null}
       </main>
       {showAddDeal ? (
         <AddDealPanel
@@ -1914,6 +1992,9 @@ export default function App() {
   const [cardsPage, setCardsPage] = useState(defaultPage);
   const [cardCriteria, setCardCriteria] = useState({});
   const [deals, setDeals] = useState([]);
+  const [auditEvents, setAuditEvents] = useState([]);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditError, setAuditError] = useState('');
   const [loading, setLoading] = useState(true);
   const [inventoryLoading, setInventoryLoading] = useState(false);
   const [error, setError] = useState('');
@@ -2009,6 +2090,38 @@ export default function App() {
     return apiFetch(`/api/deals/${dealId}`);
   }
 
+  async function handleLoadAudit(criteria = {}) {
+    const params = new URLSearchParams();
+    const entityType = criteriaValue(criteria.entityType);
+    const action = criteriaValue(criteria.action);
+    const from = criteriaValue(criteria.from);
+    const to = criteriaValue(criteria.to);
+    if (entityType) {
+      params.set('entityType', entityType);
+    }
+    if (action) {
+      params.set('action', action);
+    }
+    if (from) {
+      params.set('from', from);
+    }
+    if (to) {
+      params.set('to', to);
+    }
+
+    const query = params.toString() ? `?${params.toString()}` : '';
+    setAuditLoading(true);
+    setAuditError('');
+    try {
+      const response = await apiFetch(`/api/audit${query}`);
+      setAuditEvents(response.data || []);
+    } catch (caught) {
+      setAuditError(caught.message);
+    } finally {
+      setAuditLoading(false);
+    }
+  }
+
   async function loadDeals({ includeArchived = false } = {}) {
     const query = includeArchived ? '?includeArchived=true' : '';
     setInventoryLoading(true);
@@ -2083,6 +2196,8 @@ export default function App() {
     setCardsPage(defaultPage);
     setCardCriteria({});
     setDeals([]);
+    setAuditEvents([]);
+    setAuditError('');
   }
 
   async function handleCreateDeal(payload) {
@@ -2246,9 +2361,13 @@ export default function App() {
       cards={cards}
       cardsPage={cardsPage}
       deals={deals}
+      auditEvents={auditEvents}
+      auditLoading={auditLoading}
+      auditError={auditError}
       loading={inventoryLoading}
       onRefresh={loadInventory}
       onLogout={handleLogout}
+      onLoadAudit={handleLoadAudit}
       onCreateDeal={handleCreateDeal}
       onLoadDeals={(includeArchived) => loadDeals({ includeArchived })}
       onArchiveDeal={(deal, includeArchived) =>

@@ -168,6 +168,53 @@ describe('App', () => {
     });
   });
 
+  it('loads the audit log from primary navigation', async () => {
+    globalThis.fetch
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            setupComplete: true,
+            sessionValid: true,
+            dekLoaded: true,
+            csrfToken: 'csrf_ready',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            {
+              id: 15,
+              entityType: 'card',
+              entityId: 1,
+              action: 'card.reserve',
+              timestamp: '2026-05-11T16:00:00.000Z',
+            },
+          ],
+          page: { total: 1, limit: 50, offset: 0, hasMore: false },
+        }),
+      );
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByRole('heading', { name: /dashboard/i });
+    await user.click(screen.getByRole('button', { name: /^audit log$/i }));
+
+    expect(await screen.findByRole('heading', { name: /audit log/i, level: 1 })).toBeInTheDocument();
+    expect(screen.getByText(/card.reserve/i)).toBeInTheDocument();
+    expect(screen.getByText(/^card$/i)).toBeInTheDocument();
+    expect(screen.getByText(/2026/i)).toBeInTheDocument();
+    expect(globalThis.fetch).toHaveBeenLastCalledWith(
+      '/api/audit',
+      expect.objectContaining({
+        method: 'GET',
+      }),
+    );
+  });
+
   it('creates a deal with a starter card from the dashboard', async () => {
     globalThis.fetch
       .mockResolvedValueOnce(

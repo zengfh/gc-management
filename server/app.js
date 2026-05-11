@@ -3,6 +3,7 @@ import session from 'express-session';
 import { nanoid } from 'nanoid';
 import { verifyDatabase } from './db/index.js';
 import { errorResponse } from './http/response.js';
+import { createAuditRouter } from './routes/audit.js';
 import { createAuthRouter } from './routes/auth.js';
 import { createCardsRouter } from './routes/cards.js';
 import { createDealsRouter } from './routes/deals.js';
@@ -51,6 +52,7 @@ export function createApp({ db } = {}) {
 
   if (db) {
     app.use('/api/auth', createAuthRouter({ db }));
+    app.use('/api/audit', createAuditRouter({ db }));
     app.use('/api/cards', createCardsRouter({ db }));
     app.use('/api/deals', createDealsRouter({ db }));
   }

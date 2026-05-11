@@ -287,6 +287,10 @@ textarea {
   font-weight: 650;
 }
 
+.inline-loading {
+  margin: 12px 16px;
+}
+
 .metrics-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
