@@ -356,6 +356,33 @@ select {
   overflow-x: auto;
 }
 
+.card-search {
+  display: grid;
+  grid-template-columns: minmax(220px, 360px) auto;
+  align-items: end;
+  gap: 10px;
+  border-top: 1px solid #e4e8ee;
+  padding-top: 14px;
+}
+
+.card-search label {
+  display: grid;
+  gap: 6px;
+  color: #1f2937;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.card-search-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.card-search .field-error {
+  grid-column: 1 / -1;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
@@ -589,6 +616,10 @@ td {
   .topbar {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .card-search {
+    grid-template-columns: 1fr;
   }
 }
 

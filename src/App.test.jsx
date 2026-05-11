@@ -567,6 +567,82 @@ describe('App', () => {
     );
   });
 
+  it('searches cards by exact card number from the cards view', async () => {
+    globalThis.fetch
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            setupComplete: true,
+            sessionValid: true,
+            dekLoaded: true,
+            csrfToken: 'csrf_ready',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            {
+              id: 1,
+              brand: 'Target',
+              status: 'available',
+              faceValueCents: 5000,
+              remainingBalanceCents: 5000,
+              purchaseCostCents: 4500,
+              cardNumberLast4: '1111',
+            },
+            {
+              id: 2,
+              brand: 'Amazon',
+              status: 'available',
+              faceValueCents: 2500,
+              remainingBalanceCents: 2500,
+              purchaseCostCents: 2200,
+              cardNumberLast4: '2222',
+            },
+          ],
+          page: { total: 2, limit: 50, offset: 0, hasMore: false },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            {
+              id: 1,
+              brand: 'Target',
+              status: 'available',
+              faceValueCents: 5000,
+              remainingBalanceCents: 5000,
+              purchaseCostCents: 4500,
+              cardNumberLast4: '1111',
+            },
+          ],
+          page: { total: 1, limit: 50, offset: 0, hasMore: false },
+        }),
+      );
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByRole('heading', { name: /dashboard/i });
+    await user.click(screen.getByRole('button', { name: /^cards$/i }));
+    expect(screen.getByText(/amazon/i)).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText(/^exact card number$/i), '4111 1111 1111 1111');
+    await user.click(screen.getByRole('button', { name: /^search cards$/i }));
+
+    expect(await screen.findByText(/target/i)).toBeInTheDocument();
+    expect(screen.queryByText(/amazon/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/4111 1111 1111 1111/i)).not.toBeInTheDocument();
+    expect(globalThis.fetch).toHaveBeenLastCalledWith(
+      '/api/cards?cardNumber=4111+1111+1111+1111',
+      expect.objectContaining({
+        method: 'GET',
+      }),
+    );
+  });
+
   it('reserves and unreserves a card from row actions', async () => {
     globalThis.fetch
       .mockResolvedValueOnce(

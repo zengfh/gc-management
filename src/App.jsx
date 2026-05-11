@@ -9,6 +9,7 @@ import {
   PackageCheck,
   Plus,
   RefreshCw,
+  Search,
   ShieldCheck,
   Tag,
   X,
@@ -402,6 +403,63 @@ function DealsTable({ deals }) {
         </tbody>
       </table>
     </div>
+  );
+}
+
+function CardSearchForm({ onSearchCards }) {
+  const [cardNumber, setCardNumber] = useState('');
+  const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  async function submitSearch(event) {
+    event.preventDefault();
+    setError('');
+    setSubmitting(true);
+    try {
+      await onSearchCards(cardNumber);
+    } catch (caught) {
+      setError(caught.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function clearSearch() {
+    setError('');
+    setCardNumber('');
+    setSubmitting(true);
+    try {
+      await onSearchCards('');
+    } catch (caught) {
+      setError(caught.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <form className="card-search" onSubmit={submitSearch}>
+      <label>
+        <span>Exact card number</span>
+        <input
+          type="password"
+          inputMode="numeric"
+          autoComplete="off"
+          value={cardNumber}
+          onChange={(event) => setCardNumber(event.target.value)}
+        />
+      </label>
+      <div className="card-search-actions">
+        <button type="submit" className="primary-action compact" disabled={submitting}>
+          <Search aria-hidden="true" size={17} />
+          {submitting ? 'Searching...' : 'Search cards'}
+        </button>
+        <button type="button" className="secondary-action" onClick={clearSearch} disabled={submitting}>
+          Clear search
+        </button>
+      </div>
+      <FieldError message={error} />
+    </form>
   );
 }
 
@@ -838,6 +896,7 @@ function WorkSurface({
   onRefresh,
   onLogout,
   onCreateDeal,
+  onSearchCards,
   onUseCard,
   onSellCard,
   onUndoSale,
@@ -964,6 +1023,7 @@ function WorkSurface({
               <h2>Card Inventory</h2>
               <span>{cards.length} records</span>
             </div>
+            <CardSearchForm onSearchCards={onSearchCards} />
             <CardsTable
               cards={cards}
               onUseCard={setUsageCard}
@@ -1044,6 +1104,18 @@ export default function App() {
       ]);
       setCards(cardsResponse.data || []);
       setDeals(dealsResponse.data || []);
+    } finally {
+      setInventoryLoading(false);
+    }
+  }
+
+  async function handleSearchCards(cardNumber) {
+    const trimmed = cardNumber.trim();
+    const query = trimmed ? `?${new URLSearchParams({ cardNumber: trimmed }).toString()}` : '';
+    setInventoryLoading(true);
+    try {
+      const response = await apiFetch(`/api/cards${query}`);
+      setCards(response.data || []);
     } finally {
       setInventoryLoading(false);
     }
@@ -1224,6 +1296,7 @@ export default function App() {
       onRefresh={loadInventory}
       onLogout={handleLogout}
       onCreateDeal={handleCreateDeal}
+      onSearchCards={handleSearchCards}
       onUseCard={handleUseCard}
       onSellCard={handleSellCard}
       onUndoSale={handleUndoSale}
