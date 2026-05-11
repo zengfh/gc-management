@@ -28,6 +28,10 @@ describe('deal routes', () => {
     return agent.post(path).set('Origin', appOrigin).set('X-CSRF-Token', csrfToken);
   }
 
+  function putWithCsrf(path, csrfToken) {
+    return agent.put(path).set('Origin', appOrigin).set('X-CSRF-Token', csrfToken);
+  }
+
   function card(number, overrides = {}) {
     return {
       brand: 'Staples',
@@ -191,5 +195,67 @@ describe('deal routes', () => {
       .all(dealId)
       .map((row) => row.action);
     expect(actions).toEqual(['deal.create', 'deal.archive', 'deal.unarchive']);
+  }, 45_000);
+
+  it('updates deal metadata with optimistic concurrency and audit history', async () => {
+    const csrfToken = await setupOwner();
+    const createResponse = await postWithCsrf('/api/deals', csrfToken).send({
+      name: 'Original promo',
+      source: 'Staples',
+      purchaseDate: '2026-05-01',
+      totalCostCents: 5_000,
+      notes: 'Original notes',
+      cards: [card('4111 1111 1111 1111')],
+    });
+    const dealId = createResponse.body.data.deal.id;
+    const rowVersion = createResponse.body.data.deal.rowVersion;
+    const cardId = createResponse.body.data.cards[0].id;
+
+    const updateResponse = await putWithCsrf(`/api/deals/${dealId}`, csrfToken).send({
+      rowVersion,
+      name: 'Updated promo',
+      source: 'Costco',
+      purchaseDate: '2026-05-11',
+      notes: 'Updated notes',
+    });
+
+    expect(updateResponse.status).toBe(200);
+    expect(updateResponse.body.data.deal).toMatchObject({
+      id: dealId,
+      name: 'Updated promo',
+      source: 'Costco',
+      purchaseDate: '2026-05-11',
+      rowVersion: rowVersion + 1,
+    });
+    expect(updateResponse.body.data.cards.map((dealCard) => dealCard.id)).toEqual([cardId]);
+
+    const staleResponse = await putWithCsrf(`/api/deals/${dealId}`, csrfToken).send({
+      rowVersion,
+      name: 'Stale update',
+    });
+    expect(staleResponse.status).toBe(409);
+    expect(staleResponse.body.error.code).toBe('STALE_DEAL_VERSION');
+
+    const stored = db.prepare('SELECT name, source, purchaseDate, notes, rowVersion FROM deals WHERE id = ?').get(dealId);
+    expect(stored).toMatchObject({
+      name: 'Updated promo',
+      source: 'Costco',
+      purchaseDate: '2026-05-11',
+      notes: 'Updated notes',
+      rowVersion: rowVersion + 1,
+    });
+
+    const actions = db
+      .prepare("SELECT action, oldValue, newValue FROM audit_log WHERE entityType = 'deal' AND entityId = ? ORDER BY id")
+      .all(dealId);
+    expect(actions.map((row) => row.action)).toEqual(['deal.create', 'deal.update']);
+    expect(JSON.parse(actions[1].oldValue)).toMatchObject({
+      name: 'Original promo',
+      source: 'Staples',
+    });
+    expect(JSON.parse(actions[1].newValue)).toMatchObject({
+      name: 'Updated promo',
+      source: 'Costco',
+    });
   }, 45_000);
 });

@@ -517,6 +517,35 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+    put:
+      tags: [Deals]
+      summary: Update deal metadata with optimistic concurrency
+      operationId: updateDeal
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateDealRequest"
+      responses:
+        "200":
+          description: Deal updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DealDetailResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
   /api/deals/{dealId}/archive:
     post:
       tags: [Deals]
@@ -972,6 +1001,23 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/CardInput"
+    UpdateDealRequest:
+      type: object
+      properties:
+        rowVersion:
+          type: integer
+          minimum: 1
+        name:
+          type: string
+        source:
+          type: string
+          nullable: true
+        purchaseDate:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
     AuditEvent:
       type: object
       required: [id, accountId, entityType, action, timestamp]

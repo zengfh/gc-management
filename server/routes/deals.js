@@ -38,6 +38,16 @@ const createDealSchema = z
   })
   .strict();
 
+const updateDealSchema = z
+  .object({
+    rowVersion: z.number().int().positive().optional(),
+    name: z.string().trim().min(1).max(160).optional(),
+    source: z.string().trim().nullable().optional(),
+    purchaseDate: z.string().trim().nullable().optional(),
+    notes: z.string().trim().nullable().optional(),
+  })
+  .strict();
+
 function nowIso() {
   return new Date().toISOString();
 }
@@ -246,6 +256,10 @@ function dealAuditValue(deal) {
   };
 }
 
+function hasOwnValue(object, key) {
+  return Object.hasOwn(object, key);
+}
+
 function translateSqliteError(error) {
   if (error.code === 'SQLITE_CONSTRAINT_UNIQUE' || error.message?.includes('idx_cards_active_dedupe')) {
     return conflict('DUPLICATE_ACTIVE_CARD', 'Active duplicate card number for this brand already exists.');
@@ -423,6 +437,65 @@ export function createDealsRouter({ db }) {
       } catch (error) {
         throw translateSqliteError(error);
       }
+    }),
+  );
+
+  router.put(
+    '/:dealId',
+    asyncHandler(async (req, res) => {
+      const dealId = parsePositiveInt(req.params.dealId, null, { min: 1 });
+      const body = validateBody(updateDealSchema, req.body || {});
+      const timestamp = nowIso();
+
+      const updated = db.transaction(() => {
+        const before = loadDeal(req.auth, dealId);
+        if (body.rowVersion && body.rowVersion !== before.rowVersion) {
+          throw conflict('STALE_DEAL_VERSION', 'Deal has changed since it was loaded.');
+        }
+
+        db.prepare(
+          `UPDATE deals
+           SET name = ?,
+               source = ?,
+               purchaseDate = ?,
+               notes = ?,
+               updatedByUserId = ?,
+               updatedAt = ?,
+               rowVersion = rowVersion + 1
+           WHERE id = ? AND accountId = ?`,
+        ).run(
+          hasOwnValue(body, 'name') ? body.name : before.name,
+          hasOwnValue(body, 'source') ? body.source ?? null : before.source,
+          hasOwnValue(body, 'purchaseDate') ? body.purchaseDate ?? null : before.purchaseDate,
+          hasOwnValue(body, 'notes') ? body.notes ?? null : before.notes,
+          req.auth.userId,
+          timestamp,
+          dealId,
+          req.auth.accountId,
+        );
+
+        const after = loadDeal(req.auth, dealId);
+        insertAuditEvent(db, {
+          accountId: req.auth.accountId,
+          userId: req.auth.userId,
+          requestId: req.requestId,
+          entityType: 'deal',
+          entityId: dealId,
+          action: 'deal.update',
+          oldValue: dealAuditValue(before),
+          newValue: dealAuditValue(after),
+          timestamp,
+        });
+
+        return after;
+      })();
+
+      res.json(
+        objectResponse({
+          deal: toDealResponse(updated),
+          cards: dealDetail(req.auth, dealId).cards,
+        }),
+      );
     }),
   );
 
