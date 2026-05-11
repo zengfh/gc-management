@@ -248,4 +248,58 @@ describe('card routes', () => {
       .map((row) => row.action);
     expect(actions).toEqual(['card.create', 'card.sell', 'card.undo_sale']);
   }, 45_000);
+
+  it('records partial and final usage while blocking overuse', async () => {
+    const csrfToken = await setupOwner();
+    const createResponse = await postWithCsrf('/api/cards', csrfToken).send({
+      cards: [sampleCard()],
+    });
+    const cardId = createResponse.body.data[0].id;
+
+    const partialUse = await postWithCsrf(`/api/cards/${cardId}/use`, csrfToken).send({
+      amountCents: 2_000,
+      merchant: 'Target',
+      description: 'Groceries',
+      usageDate: '2026-05-11',
+    });
+    expect(partialUse.status).toBe(200);
+    expect(partialUse.body.data.card).toMatchObject({
+      id: cardId,
+      status: 'in_use',
+      remainingBalanceCents: 3_000,
+      rowVersion: 2,
+    });
+    expect(partialUse.body.data.usages).toHaveLength(1);
+    expect(partialUse.body.data.usages[0]).toMatchObject({
+      amountCents: 2_000,
+      merchant: 'Target',
+      isReversed: 0,
+      isWriteOff: 0,
+    });
+
+    const overuse = await postWithCsrf(`/api/cards/${cardId}/use`, csrfToken).send({
+      amountCents: 4_000,
+    });
+    expect(overuse.status).toBe(409);
+    expect(overuse.body.error.code).toBe('INSUFFICIENT_BALANCE');
+
+    const finalUse = await postWithCsrf(`/api/cards/${cardId}/use`, csrfToken).send({
+      amountCents: 3_000,
+      merchant: 'Target',
+    });
+    expect(finalUse.status).toBe(200);
+    expect(finalUse.body.data.card).toMatchObject({
+      id: cardId,
+      status: 'used_up',
+      remainingBalanceCents: 0,
+      rowVersion: 3,
+    });
+    expect(finalUse.body.data.usages.map((usage) => usage.amountCents)).toEqual([3_000, 2_000]);
+
+    const actions = db
+      .prepare("SELECT action FROM audit_log WHERE entityType = 'card' AND entityId = ? ORDER BY id")
+      .all(cardId)
+      .map((row) => row.action);
+    expect(actions).toEqual(['card.create', 'card.use', 'card.use']);
+  }, 45_000);
 });

@@ -62,6 +62,15 @@ const undoSaleSchema = z
   })
   .strict();
 
+const useCardSchema = z
+  .object({
+    amountCents: z.number().int().positive(),
+    merchant: z.string().trim().nullable().optional(),
+    description: z.string().trim().nullable().optional(),
+    usageDate: z.string().trim().nullable().optional(),
+  })
+  .strict();
+
 function nowIso() {
   return new Date().toISOString();
 }
@@ -597,6 +606,72 @@ export function createCardsRouter({ db }) {
           newValue: mutationAuditValue(after),
           metadata: {
             reason: body.reason,
+          },
+          timestamp,
+        });
+      })();
+
+      res.json(objectResponse(cardDetail(req.auth, cardId)));
+    }),
+  );
+
+  router.post(
+    '/:cardId/use',
+    asyncHandler(async (req, res) => {
+      const cardId = parsePositiveInt(req.params.cardId, null, { min: 1 });
+      const body = validateBody(useCardSchema, req.body);
+      const timestamp = nowIso();
+
+      db.transaction(() => {
+        const before = loadCard(req.auth, cardId);
+        const transition = transitionFor('use', before.status);
+
+        if (body.amountCents > before.remainingBalanceCents) {
+          throw conflict('INSUFFICIENT_BALANCE', 'Usage amount exceeds remaining card balance.');
+        }
+
+        const remainingBalanceCents = before.remainingBalanceCents - body.amountCents;
+        const nextStatus = remainingBalanceCents === 0 ? 'used_up' : 'in_use';
+
+        db.prepare(
+          `INSERT INTO usages (
+            accountId, cardId, amountCents, merchant, description, usageDate,
+            idempotencyKey, createdByUserId, createdAt
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ).run(
+          req.auth.accountId,
+          cardId,
+          body.amountCents,
+          body.merchant ?? null,
+          body.description ?? null,
+          body.usageDate ?? timestamp.slice(0, 10),
+          req.get('Idempotency-Key') ?? null,
+          req.auth.userId,
+          timestamp,
+        );
+
+        db.prepare(
+          `UPDATE cards
+           SET status = ?,
+               remainingBalanceCents = ?,
+               updatedByUserId = ?,
+               updatedAt = ?,
+               rowVersion = rowVersion + 1
+           WHERE id = ? AND accountId = ?`,
+        ).run(nextStatus, remainingBalanceCents, req.auth.userId, timestamp, cardId, req.auth.accountId);
+
+        const after = loadCard(req.auth, cardId);
+        insertAuditEvent(db, {
+          accountId: req.auth.accountId,
+          userId: req.auth.userId,
+          requestId: req.requestId,
+          entityType: 'card',
+          entityId: cardId,
+          action: transition.action,
+          oldValue: mutationAuditValue(before),
+          newValue: mutationAuditValue(after),
+          metadata: {
+            amountCents: body.amountCents,
           },
           timestamp,
         });

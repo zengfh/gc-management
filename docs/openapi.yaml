@@ -348,6 +348,7 @@ paths:
       operationId: useCard
       parameters:
         - $ref: "#/components/parameters/CardId"
+        - $ref: "#/components/parameters/CsrfToken"
         - $ref: "#/components/parameters/IdempotencyKey"
       requestBody:
         required: true
@@ -364,6 +365,10 @@ paths:
                 $ref: "#/components/schemas/CardDetailResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "409":
           $ref: "#/components/responses/Conflict"
   /api/deals:
