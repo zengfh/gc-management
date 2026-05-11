@@ -565,6 +565,85 @@ function AuditTable({ events }) {
   );
 }
 
+function AuditFilterForm({ onLoadAudit }) {
+  const [entityType, setEntityType] = useState('');
+  const [action, setAction] = useState('');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  async function submitFilter(event) {
+    event.preventDefault();
+    setError('');
+    setSubmitting(true);
+    try {
+      await onLoadAudit({ entityType, action, from, to });
+    } catch (caught) {
+      setError(caught.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function clearFilter() {
+    setEntityType('');
+    setAction('');
+    setFrom('');
+    setTo('');
+    setError('');
+    setSubmitting(true);
+    try {
+      await onLoadAudit({});
+    } catch (caught) {
+      setError(caught.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <form className="card-search audit-filter" onSubmit={submitFilter}>
+      <label>
+        <span>Entity type</span>
+        <select value={entityType} onChange={(event) => setEntityType(event.target.value)}>
+          <option value="">All entities</option>
+          <option value="card">Card</option>
+          <option value="deal">Deal</option>
+          <option value="transaction">Transaction</option>
+          <option value="usage">Usage</option>
+          <option value="auth">Auth</option>
+          <option value="backup">Backup</option>
+          <option value="import">Import</option>
+          <option value="system">System</option>
+        </select>
+      </label>
+      <label>
+        <span>Action</span>
+        <input value={action} onChange={(event) => setAction(event.target.value)} />
+      </label>
+      <label>
+        <span>From</span>
+        <input type="date" value={from} onChange={(event) => setFrom(event.target.value)} />
+      </label>
+      <label>
+        <span>To</span>
+        <input type="date" value={to} onChange={(event) => setTo(event.target.value)} />
+      </label>
+      <div className="card-search-actions">
+        <button type="submit" className="primary-action compact" disabled={submitting}>
+          <Search aria-hidden="true" size={17} />
+          {submitting ? 'Filtering...' : 'Filter audit'}
+        </button>
+        <button type="button" className="secondary-action" onClick={clearFilter} disabled={submitting}>
+          Clear filter
+        </button>
+      </div>
+      <FieldError message={error} />
+    </form>
+  );
+}
+
 function CardSearchForm({ deals, onSearchCards }) {
   const [cardNumber, setCardNumber] = useState('');
   const [status, setStatus] = useState('');
@@ -1915,6 +1994,7 @@ function WorkSurface({
               <h2>Audit Log</h2>
               <span>{auditEvents.length} records</span>
             </div>
+            <AuditFilterForm onLoadAudit={onLoadAudit} />
             {auditLoading ? <div className="loading-strip inline-loading">Loading audit log...</div> : null}
             <FieldError message={auditError} />
             <AuditTable events={auditEvents} />

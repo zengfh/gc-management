@@ -205,10 +205,76 @@ describe('App', () => {
 
     expect(await screen.findByRole('heading', { name: /audit log/i, level: 1 })).toBeInTheDocument();
     expect(screen.getByText(/card.reserve/i)).toBeInTheDocument();
-    expect(screen.getByText(/^card$/i)).toBeInTheDocument();
+    expect(screen.getByRole('row', { name: /card 1 card.reserve/i })).toBeInTheDocument();
     expect(screen.getByText(/2026/i)).toBeInTheDocument();
     expect(globalThis.fetch).toHaveBeenLastCalledWith(
       '/api/audit',
+      expect.objectContaining({
+        method: 'GET',
+      }),
+    );
+  });
+
+  it('filters the audit log from the audit view', async () => {
+    globalThis.fetch
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            setupComplete: true,
+            sessionValid: true,
+            dekLoaded: true,
+            csrfToken: 'csrf_ready',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            {
+              id: 15,
+              entityType: 'card',
+              entityId: 1,
+              action: 'card.reserve',
+              timestamp: '2026-05-11T16:00:00.000Z',
+            },
+          ],
+          page: { total: 1, limit: 50, offset: 0, hasMore: false },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            {
+              id: 16,
+              entityType: 'deal',
+              entityId: 2,
+              action: 'deal.create',
+              timestamp: '2026-05-10T15:00:00.000Z',
+            },
+          ],
+          page: { total: 1, limit: 50, offset: 0, hasMore: false },
+        }),
+      );
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByRole('heading', { name: /dashboard/i });
+    await user.click(screen.getByRole('button', { name: /^audit log$/i }));
+    await screen.findByText(/card.reserve/i);
+
+    await user.selectOptions(screen.getByLabelText(/^entity type$/i), 'deal');
+    await user.type(screen.getByLabelText(/^action$/i), 'deal.create');
+    await user.type(screen.getByLabelText(/^from$/i), '2026-05-01');
+    await user.type(screen.getByLabelText(/^to$/i), '2026-05-12');
+    await user.click(screen.getByRole('button', { name: /^filter audit$/i }));
+
+    expect(await screen.findByText(/deal.create/i)).toBeInTheDocument();
+    expect(screen.queryByText(/card.reserve/i)).not.toBeInTheDocument();
+    expect(globalThis.fetch).toHaveBeenLastCalledWith(
+      '/api/audit?entityType=deal&action=deal.create&from=2026-05-01&to=2026-05-12',
       expect.objectContaining({
         method: 'GET',
       }),
