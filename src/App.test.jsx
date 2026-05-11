@@ -1118,6 +1118,114 @@ describe('App', () => {
     );
   });
 
+  it('filters cards by source deal expiration text and sort from the cards view', async () => {
+    globalThis.fetch
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            setupComplete: true,
+            sessionValid: true,
+            dekLoaded: true,
+            csrfToken: 'csrf_ready',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            {
+              id: 1,
+              dealId: 10,
+              brand: 'Target',
+              status: 'available',
+              source: 'Staples',
+              expirationDate: '2026-05-30',
+              faceValueCents: 5000,
+              remainingBalanceCents: 5000,
+              purchaseCostCents: 4500,
+              cardNumberLast4: '1111',
+            },
+            {
+              id: 2,
+              dealId: 11,
+              brand: 'Amazon',
+              status: 'available',
+              source: 'Costco',
+              expirationDate: '2028-01-31',
+              faceValueCents: 2500,
+              remainingBalanceCents: 2500,
+              purchaseCostCents: 2200,
+              cardNumberLast4: '2222',
+            },
+          ],
+          page: { total: 2, limit: 50, offset: 0, hasMore: false },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            {
+              id: 10,
+              name: 'Staples May promo',
+              source: 'Staples',
+              inputTotalCostCents: 4500,
+              rowVersion: 1,
+            },
+            {
+              id: 11,
+              name: 'Costco promo',
+              source: 'Costco',
+              inputTotalCostCents: 2200,
+              rowVersion: 1,
+            },
+          ],
+          page: { total: 2, limit: 50, offset: 0, hasMore: false },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            {
+              id: 1,
+              dealId: 10,
+              brand: 'Target',
+              status: 'available',
+              source: 'Staples',
+              expirationDate: '2026-05-30',
+              faceValueCents: 5000,
+              remainingBalanceCents: 5000,
+              purchaseCostCents: 4500,
+              cardNumberLast4: '1111',
+            },
+          ],
+          page: { total: 1, limit: 50, offset: 0, hasMore: false },
+        }),
+      );
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByRole('heading', { name: /dashboard/i });
+    await user.click(screen.getByRole('button', { name: /^cards$/i }));
+    expect(screen.getByText(/amazon/i)).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText(/^source$/i), 'Staples');
+    await user.selectOptions(screen.getByLabelText(/^deal$/i), '10');
+    await user.type(screen.getByLabelText(/^expiring by$/i), '2026-06-01');
+    await user.type(screen.getByLabelText(/^text$/i), 'holiday');
+    await user.selectOptions(screen.getByLabelText(/^sort$/i), 'expirationDate:asc');
+    await user.click(screen.getByRole('button', { name: /^search cards$/i }));
+
+    expect(await screen.findByText(/target/i)).toBeInTheDocument();
+    expect(screen.queryByText(/amazon/i)).not.toBeInTheDocument();
+    expect(globalThis.fetch).toHaveBeenLastCalledWith(
+      '/api/cards?source=Staples&dealId=10&expiresBefore=2026-06-01&text=holiday&sortBy=expirationDate&sortDir=asc',
+      expect.objectContaining({
+        method: 'GET',
+      }),
+    );
+  });
+
   it('edits allowed card fields from the cards view', async () => {
     globalThis.fetch
       .mockResolvedValueOnce(

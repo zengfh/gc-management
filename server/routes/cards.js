@@ -66,6 +66,15 @@ const sellCardSchema = z
   .strict();
 
 const terminalStatuses = new Set(['sold', 'used_up', 'void']);
+const cardSortColumns = {
+  brand: 'brand',
+  expirationDate: 'expirationDate',
+  faceValueCents: 'faceValueCents',
+  purchaseCostCents: 'purchaseCostCents',
+  remainingBalanceCents: 'remainingBalanceCents',
+  status: 'status',
+  updatedAt: 'updatedAt',
+};
 
 const undoSaleSchema = z
   .object({
@@ -131,6 +140,48 @@ function parsePositiveInt(value, fallback, { min = 0, max = Number.MAX_SAFE_INTE
     ]);
   }
   return parsed;
+}
+
+function queryValidationError(field, code, message) {
+  return badRequest('VALIDATION_FAILED', 'Request validation failed.', [
+    {
+      field,
+      code,
+      message,
+    },
+  ]);
+}
+
+function parseDateFilter(value, field) {
+  if (value == null || value === '') {
+    return null;
+  }
+
+  const normalized = String(value).trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+    throw queryValidationError(field, 'invalid_date', 'Expected date in YYYY-MM-DD format.');
+  }
+  return normalized;
+}
+
+function parseCardSort(query) {
+  const rawSortBy = query.sortBy == null || query.sortBy === '' ? null : String(query.sortBy);
+  const sortBy = rawSortBy || 'updatedAt';
+  const sortColumn = cardSortColumns[sortBy];
+  if (!sortColumn) {
+    throw queryValidationError('sortBy', 'invalid_enum', 'Unsupported card sort field.');
+  }
+
+  const rawSortDir = query.sortDir == null || query.sortDir === '' ? null : String(query.sortDir).toLowerCase();
+  const sortDir = rawSortDir || (rawSortBy ? 'asc' : 'desc');
+  if (!['asc', 'desc'].includes(sortDir)) {
+    throw queryValidationError('sortDir', 'invalid_enum', 'Sort direction must be asc or desc.');
+  }
+
+  return {
+    column: sortColumn,
+    direction: sortDir.toUpperCase(),
+  };
 }
 
 function encryptedOrNull(value, key) {
@@ -251,6 +302,7 @@ export function createCardsRouter({ db }) {
     asyncHandler(async (req, res) => {
       const limit = parsePositiveInt(req.query.limit, 50, { min: 1, max: 100 });
       const offset = parsePositiveInt(req.query.offset, 0, { min: 0 });
+      const sort = parseCardSort(req.query);
       const where = ['accountId = ?'];
       const params = [req.auth.accountId];
 
@@ -273,6 +325,40 @@ export function createCardsRouter({ db }) {
         params.push(String(req.query.brand).trim());
       }
 
+      if (req.query.source) {
+        where.push('source = ?');
+        params.push(String(req.query.source).trim());
+      }
+
+      const dealId = parsePositiveInt(req.query.dealId, null, { min: 1 });
+      if (dealId) {
+        where.push('dealId = ?');
+        params.push(dealId);
+      }
+
+      const expiresBefore = parseDateFilter(req.query.expiresBefore, 'expiresBefore');
+      if (expiresBefore) {
+        where.push('expirationDate IS NOT NULL AND expirationDate <= ?');
+        params.push(expiresBefore);
+      }
+
+      const expiresAfter = parseDateFilter(req.query.expiresAfter, 'expiresAfter');
+      if (expiresAfter) {
+        where.push('expirationDate IS NOT NULL AND expirationDate >= ?');
+        params.push(expiresAfter);
+      }
+
+      if (req.query.text) {
+        const text = String(req.query.text).trim().toLowerCase();
+        if (text) {
+          const pattern = `%${text}%`;
+          where.push(
+            `(LOWER(brand) LIKE ? OR LOWER(COALESCE(source, '')) LIKE ? OR LOWER(COALESCE(notes, '')) LIKE ?)`,
+          );
+          params.push(pattern, pattern, pattern);
+        }
+      }
+
       if (req.query.cardNumber) {
         const normalizedCardNumber = normalizeCardNumber(req.query.cardNumber);
         if (!normalizedCardNumber) {
@@ -291,7 +377,13 @@ export function createCardsRouter({ db }) {
       const whereClause = where.join(' AND ');
       const total = db.prepare(`SELECT COUNT(*) AS count FROM cards WHERE ${whereClause}`).get(...params).count;
       const rows = db
-        .prepare(`SELECT * FROM cards WHERE ${whereClause} ORDER BY updatedAt DESC, id DESC LIMIT ? OFFSET ?`)
+        .prepare(
+          `SELECT *
+           FROM cards
+           WHERE ${whereClause}
+           ORDER BY ${sort.column} ${sort.direction}, id ${sort.direction}
+           LIMIT ? OFFSET ?`,
+        )
         .all(...params, limit, offset);
 
       res.json(pageResponse(rows.map(toCardResponse), { limit, offset, total }));

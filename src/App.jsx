@@ -301,6 +301,8 @@ function CardsTable({
             <th>Status</th>
             <th>Brand</th>
             <th>Last 4</th>
+            <th>Source</th>
+            <th>Expiration</th>
             <th className="numeric">Face</th>
             <th className="numeric">Remaining</th>
             <th className="numeric">Cost</th>
@@ -325,6 +327,8 @@ function CardsTable({
                 </button>
               </td>
               <td className="mono">{card.cardNumberLast4 ? `**** ${card.cardNumberLast4}` : 'Hidden'}</td>
+              <td>{card.source || 'Not recorded'}</td>
+              <td>{card.expirationDate || 'Not recorded'}</td>
               <td className="numeric">{formatMoney(card.faceValueCents)}</td>
               <td className="numeric">{formatMoney(card.remainingBalanceCents)}</td>
               <td className="numeric">{formatMoney(card.purchaseCostCents)}</td>
@@ -497,10 +501,15 @@ function DealsTable({ deals, onViewDeal, onArchiveDeal, onUnarchiveDeal }) {
   );
 }
 
-function CardSearchForm({ onSearchCards }) {
+function CardSearchForm({ deals, onSearchCards }) {
   const [cardNumber, setCardNumber] = useState('');
   const [status, setStatus] = useState('');
   const [brand, setBrand] = useState('');
+  const [source, setSource] = useState('');
+  const [dealId, setDealId] = useState('');
+  const [expiresBefore, setExpiresBefore] = useState('');
+  const [text, setText] = useState('');
+  const [sortValue, setSortValue] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -508,8 +517,19 @@ function CardSearchForm({ onSearchCards }) {
     event.preventDefault();
     setError('');
     setSubmitting(true);
+    const [sortBy, sortDir] = sortValue ? sortValue.split(':') : [];
     try {
-      await onSearchCards({ cardNumber, status, brand });
+      await onSearchCards({
+        cardNumber,
+        status,
+        brand,
+        source,
+        dealId,
+        expiresBefore,
+        text,
+        sortBy,
+        sortDir,
+      });
     } catch (caught) {
       setError(caught.message);
     } finally {
@@ -522,6 +542,11 @@ function CardSearchForm({ onSearchCards }) {
     setCardNumber('');
     setStatus('');
     setBrand('');
+    setSource('');
+    setDealId('');
+    setExpiresBefore('');
+    setText('');
+    setSortValue('');
     setSubmitting(true);
     try {
       await onSearchCards({});
@@ -558,6 +583,43 @@ function CardSearchForm({ onSearchCards }) {
       <label>
         <span>Brand</span>
         <input value={brand} onChange={(event) => setBrand(event.target.value)} />
+      </label>
+      <label>
+        <span>Source</span>
+        <input value={source} onChange={(event) => setSource(event.target.value)} />
+      </label>
+      <label>
+        <span>Deal</span>
+        <select value={dealId} onChange={(event) => setDealId(event.target.value)}>
+          <option value="">All deals</option>
+          {deals.map((deal) => (
+            <option key={deal.id} value={deal.id}>
+              {deal.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        <span>Expiring by</span>
+        <input
+          type="date"
+          value={expiresBefore}
+          onChange={(event) => setExpiresBefore(event.target.value)}
+        />
+      </label>
+      <label>
+        <span>Text</span>
+        <input value={text} onChange={(event) => setText(event.target.value)} />
+      </label>
+      <label>
+        <span>Sort</span>
+        <select value={sortValue} onChange={(event) => setSortValue(event.target.value)}>
+          <option value="">Updated newest</option>
+          <option value="expirationDate:asc">Expiration soonest</option>
+          <option value="brand:asc">Brand A-Z</option>
+          <option value="remainingBalanceCents:desc">Remaining high-low</option>
+          <option value="faceValueCents:desc">Face value high-low</option>
+        </select>
       </label>
       <div className="card-search-actions">
         <button type="submit" className="primary-action compact" disabled={submitting}>
@@ -1668,7 +1730,7 @@ function WorkSurface({
               <h2>Card Inventory</h2>
               <span>{cards.length} records</span>
             </div>
-            <CardSearchForm onSearchCards={onSearchCards} />
+            <CardSearchForm deals={deals} onSearchCards={onSearchCards} />
             <CardsTable
               cards={cards}
               onUseCard={setUsageCard}
@@ -1801,12 +1863,36 @@ export default function App() {
     const params = new URLSearchParams();
     const status = criteria.status?.trim();
     const brand = criteria.brand?.trim();
+    const source = criteria.source?.trim();
+    const dealId = criteria.dealId?.trim();
+    const expiresBefore = criteria.expiresBefore?.trim();
+    const text = criteria.text?.trim();
+    const sortBy = criteria.sortBy?.trim();
+    const sortDir = criteria.sortDir?.trim();
     const cardNumber = criteria.cardNumber?.trim();
     if (status) {
       params.set('status', status);
     }
     if (brand) {
       params.set('brand', brand);
+    }
+    if (source) {
+      params.set('source', source);
+    }
+    if (dealId) {
+      params.set('dealId', dealId);
+    }
+    if (expiresBefore) {
+      params.set('expiresBefore', expiresBefore);
+    }
+    if (text) {
+      params.set('text', text);
+    }
+    if (sortBy) {
+      params.set('sortBy', sortBy);
+    }
+    if (sortDir) {
+      params.set('sortDir', sortDir);
     }
     if (cardNumber) {
       params.set('cardNumber', cardNumber);

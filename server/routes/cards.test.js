@@ -113,6 +113,67 @@ describe('card routes', () => {
     expect(count).toBe(1);
   }, 45_000);
 
+  it('filters card inventory by source deal expiration text and whitelisted sort fields', async () => {
+    const csrfToken = await setupOwner();
+
+    const staplesDeal = await postWithCsrf('/api/deals', csrfToken).send({
+      name: 'Staples May promo',
+      source: 'Staples',
+      totalCostCents: 4_500,
+      cards: [
+        sampleCard({
+          brand: 'Target',
+          cardNumber: '4111 1111 1111 1111',
+          expirationDate: '2026-05-30',
+          notes: 'Holiday balance',
+        }),
+      ],
+    });
+    expect(staplesDeal.status).toBe(201);
+
+    const costcoDeal = await postWithCsrf('/api/deals', csrfToken).send({
+      name: 'Costco promo',
+      source: 'Costco',
+      totalCostCents: 4_500,
+      cards: [
+        sampleCard({
+          brand: 'Amazon',
+          cardNumber: '4222 2222 2222 2222',
+          expirationDate: '2028-01-31',
+          notes: 'Bulk reward',
+        }),
+      ],
+    });
+    expect(costcoDeal.status).toBe(201);
+
+    const filtered = await agent.get('/api/cards').query({
+      source: 'Staples',
+      dealId: staplesDeal.body.data.deal.id,
+      expiresBefore: '2026-06-01',
+      text: 'holiday',
+      sortBy: 'expirationDate',
+      sortDir: 'asc',
+    });
+
+    expect(filtered.status).toBe(200);
+    expect(filtered.body.data.map((card) => card.id)).toEqual([staplesDeal.body.data.cards[0].id]);
+    expect(filtered.body.page).toMatchObject({
+      total: 1,
+      hasMore: false,
+    });
+
+    const unsupportedSort = await agent.get('/api/cards').query({
+      sortBy: 'cardNumber',
+    });
+    expect(unsupportedSort.status).toBe(400);
+    expect(unsupportedSort.body.error.fieldErrors).toEqual([
+      expect.objectContaining({
+        field: 'sortBy',
+        code: 'invalid_enum',
+      }),
+    ]);
+  }, 45_000);
+
   it('returns card detail with redacted audit history', async () => {
     const csrfToken = await setupOwner();
     const createResponse = await postWithCsrf('/api/cards', csrfToken).send({
