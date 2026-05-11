@@ -935,6 +935,88 @@ describe('App', () => {
     );
   });
 
+  it('edits allowed card fields from the cards view', async () => {
+    globalThis.fetch
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            setupComplete: true,
+            sessionValid: true,
+            dekLoaded: true,
+            csrfToken: 'csrf_ready',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            {
+              id: 1,
+              brand: 'Target',
+              status: 'available',
+              faceValueCents: 5000,
+              remainingBalanceCents: 5000,
+              purchaseCostCents: 4500,
+              cardNumberLast4: '1111',
+              expirationDate: '2027-01-31',
+              notes: '',
+              rowVersion: 3,
+            },
+          ],
+          page: { total: 1, limit: 50, offset: 0, hasMore: false },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            id: 1,
+            brand: 'Amazon',
+            status: 'available',
+            faceValueCents: 5000,
+            remainingBalanceCents: 5000,
+            purchaseCostCents: 4500,
+            cardNumberLast4: '1111',
+            expirationDate: '2028-01-31',
+            notes: 'Updated notes',
+            rowVersion: 4,
+          },
+        }),
+      );
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByRole('heading', { name: /dashboard/i });
+    await user.click(screen.getByRole('button', { name: /^cards$/i }));
+    await user.click(screen.getByRole('button', { name: /edit target/i }));
+
+    const dialog = await screen.findByRole('dialog', { name: /edit card/i });
+    await user.clear(within(dialog).getByLabelText(/^brand$/i));
+    await user.type(within(dialog).getByLabelText(/^brand$/i), 'Amazon');
+    await user.clear(within(dialog).getByLabelText(/^expiration date$/i));
+    await user.type(within(dialog).getByLabelText(/^expiration date$/i), '2028-01-31');
+    await user.type(within(dialog).getByLabelText(/^notes$/i), 'Updated notes');
+    await user.click(within(dialog).getByRole('button', { name: /^save changes$/i }));
+
+    expect(await screen.findByText(/amazon/i)).toBeInTheDocument();
+    expect(globalThis.fetch).toHaveBeenLastCalledWith(
+      '/api/cards/1',
+      expect.objectContaining({
+        method: 'PUT',
+        body: JSON.stringify({
+          rowVersion: 3,
+          brand: 'Amazon',
+          expirationDate: '2028-01-31',
+          notes: 'Updated notes',
+        }),
+        headers: expect.objectContaining({
+          'X-CSRF-Token': 'csrf_ready',
+        }),
+      }),
+    );
+  });
+
   it('reserves and unreserves a card from row actions', async () => {
     globalThis.fetch
       .mockResolvedValueOnce(

@@ -30,6 +30,8 @@ const statusLabels = {
   void: 'Void',
 };
 
+const terminalCardStatuses = new Set(['sold', 'used_up', 'void']);
+
 async function apiFetch(path, { method = 'GET', body, csrfToken } = {}) {
   const options = {
     method,
@@ -78,6 +80,10 @@ function formatDateTime(value) {
 
 function statusText(status) {
   return statusLabels[status] || status;
+}
+
+function isTerminalCard(card) {
+  return terminalCardStatuses.has(card.status);
 }
 
 function dollarsToCents(value) {
@@ -261,6 +267,7 @@ function CardsTable({
   cards,
   onUseCard,
   onViewCard,
+  onEditCard,
   onSellCard,
   onUndoSale,
   onVoidCard,
@@ -314,6 +321,14 @@ function CardsTable({
               <td>{card.updatedAt ? new Date(card.updatedAt).toLocaleDateString() : 'Not recorded'}</td>
               <td>
                 <div className="row-actions">
+                  <button
+                    type="button"
+                    className="table-action"
+                    aria-label={`Edit ${card.brand}`}
+                    onClick={() => onEditCard(card)}
+                  >
+                    Edit
+                  </button>
                   {card.status === 'available' ? (
                     <button
                       type="button"
@@ -679,6 +694,106 @@ function CardDetailPanel({ detailState, onClose, onUndoUsage }) {
             )}
           />
         </div>
+      </section>
+    </div>
+  );
+}
+
+function EditCardPanel({ card, onClose, onEditCard }) {
+  const terminal = isTerminalCard(card);
+  const [form, setForm] = useState({
+    brand: card.brand || '',
+    expirationDate: card.expirationDate || '',
+    notes: card.notes || '',
+  });
+  const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  function updateField(field, value) {
+    setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  async function submitEdit(event) {
+    event.preventDefault();
+    setError('');
+
+    const notes = form.notes.trim();
+    const payload = {
+      rowVersion: card.rowVersion,
+    };
+
+    if (!terminal) {
+      const brand = form.brand.trim();
+      if (!brand) {
+        setError('Brand is required.');
+        return;
+      }
+      payload.brand = brand;
+      payload.expirationDate = form.expirationDate.trim() || null;
+    }
+    payload.notes = notes || null;
+
+    setSubmitting(true);
+    try {
+      await onEditCard(card.id, payload);
+      onClose();
+    } catch (caught) {
+      setError(caught.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <section className="slide-panel" role="dialog" aria-modal="true" aria-labelledby="edit-card-title">
+        <div className="panel-heading">
+          <div>
+            <p className="eyebrow">{card.brand}</p>
+            <h2 id="edit-card-title">Edit card</h2>
+          </div>
+          <button type="button" className="icon-button" aria-label="Close edit card" onClick={onClose}>
+            <X aria-hidden="true" size={18} />
+          </button>
+        </div>
+        <form className="panel-form" onSubmit={submitEdit}>
+          {terminal ? (
+            <p className="warning-copy">
+              This card is {statusText(card.status).toLowerCase()}. Only notes can be edited.
+            </p>
+          ) : null}
+          <label>
+            <span>Brand</span>
+            <input
+              value={form.brand}
+              disabled={terminal}
+              onChange={(event) => updateField('brand', event.target.value)}
+              required={!terminal}
+            />
+          </label>
+          <label>
+            <span>Expiration date</span>
+            <input
+              type="date"
+              value={form.expirationDate}
+              disabled={terminal}
+              onChange={(event) => updateField('expirationDate', event.target.value)}
+            />
+          </label>
+          <label>
+            <span>Notes</span>
+            <textarea value={form.notes} onChange={(event) => updateField('notes', event.target.value)} rows={4} />
+          </label>
+          <FieldError message={error} />
+          <div className="panel-actions">
+            <button type="button" className="secondary-action" onClick={onClose}>
+              Cancel
+            </button>
+            <button type="submit" className="primary-action" disabled={submitting}>
+              {submitting ? 'Saving...' : 'Save changes'}
+            </button>
+          </div>
+        </form>
       </section>
     </div>
   );
@@ -1124,6 +1239,7 @@ function WorkSurface({
   onLoadCardDetail,
   onUseCard,
   onUndoUsage,
+  onEditCard,
   onSellCard,
   onUndoSale,
   onVoidCard,
@@ -1133,6 +1249,7 @@ function WorkSurface({
   const [activeView, setActiveView] = useState('dashboard');
   const [showAddDeal, setShowAddDeal] = useState(false);
   const [usageCard, setUsageCard] = useState(null);
+  const [editCard, setEditCard] = useState(null);
   const [saleCard, setSaleCard] = useState(null);
   const [undoSaleCard, setUndoSaleCard] = useState(null);
   const [voidCard, setVoidCard] = useState(null);
@@ -1275,6 +1392,7 @@ function WorkSurface({
                 cards={cards.slice(0, 6)}
                 onUseCard={setUsageCard}
                 onViewCard={openCardDetail}
+                onEditCard={setEditCard}
                 onSellCard={setSaleCard}
                 onUndoSale={setUndoSaleCard}
                 onVoidCard={setVoidCard}
@@ -1309,6 +1427,7 @@ function WorkSurface({
               cards={cards}
               onUseCard={setUsageCard}
               onViewCard={openCardDetail}
+              onEditCard={setEditCard}
               onSellCard={setSaleCard}
               onUndoSale={setUndoSaleCard}
               onVoidCard={setVoidCard}
@@ -1353,6 +1472,13 @@ function WorkSurface({
           card={usageCard}
           onClose={() => setUsageCard(null)}
           onUseCard={onUseCard}
+        />
+      ) : null}
+      {editCard ? (
+        <EditCardPanel
+          card={editCard}
+          onClose={() => setEditCard(null)}
+          onEditCard={onEditCard}
         />
       ) : null}
       {saleCard ? (
@@ -1555,6 +1681,18 @@ export default function App() {
     return response;
   }
 
+  async function handleEditCard(cardId, payload) {
+    const response = await apiFetch(`/api/cards/${cardId}`, {
+      method: 'PUT',
+      body: payload,
+      csrfToken: auth.csrfToken,
+    });
+    setCards((current) =>
+      current.map((card) => (card.id === response.data.id ? response.data : card)),
+    );
+    return response;
+  }
+
   async function handleSellCard(cardId, payload) {
     const response = await apiFetch(`/api/cards/${cardId}/sell`, {
       method: 'POST',
@@ -1652,6 +1790,7 @@ export default function App() {
       onLoadCardDetail={handleLoadCardDetail}
       onUseCard={handleUseCard}
       onUndoUsage={handleUndoUsage}
+      onEditCard={handleEditCard}
       onSellCard={handleSellCard}
       onUndoSale={handleUndoSale}
       onVoidCard={handleVoidCard}
