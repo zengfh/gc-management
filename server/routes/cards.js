@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { parse as parseCsv } from 'csv-parse/sync';
 import { z } from 'zod';
 import { insertAuditEvent } from '../audit/index.js';
 import { requireUnlockedSession } from '../auth/requireAuth.js';
@@ -34,6 +35,12 @@ const cardInputSchema = z
 const createCardsSchema = z
   .object({
     cards: z.array(cardInputSchema).min(1).max(100),
+  })
+  .strict();
+
+const importCsvPreviewSchema = z
+  .object({
+    csv: z.string().min(1).max(1_000_000),
   })
   .strict();
 
@@ -186,6 +193,190 @@ function parseCardSort(query) {
 
 function encryptedOrNull(value, key) {
   return value ? encryptString(value, key) : null;
+}
+
+function normalizeHeader(value) {
+  return String(value).toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function csvValue(record, aliases) {
+  const normalizedAliases = aliases.map(normalizeHeader);
+  const entry = Object.entries(record).find(([key]) => normalizedAliases.includes(normalizeHeader(key)));
+  if (!entry) {
+    return '';
+  }
+  return String(entry[1] ?? '').trim();
+}
+
+function rowError(field, code, message) {
+  return { field, code, message };
+}
+
+function parseMoneyInput(raw, field, { required = false, positive = false } = {}) {
+  const value = String(raw || '').trim();
+  if (!value) {
+    return {
+      cents: required ? null : 0,
+      error: required ? rowError(field, 'required', `${field} is required.`) : null,
+    };
+  }
+
+  const normalized = value.replace(/[$,]/g, '');
+  if (!/^\d+(\.\d{1,2})?$/.test(normalized)) {
+    return {
+      cents: null,
+      error: rowError(field, 'invalid_money', `${field} must be a non-negative money amount.`),
+    };
+  }
+
+  const cents = Math.round(Number(normalized) * 100);
+  if ((positive && cents <= 0) || cents < 0) {
+    return {
+      cents: null,
+      error: rowError(field, 'invalid_money', `${field} must be greater than zero.`),
+    };
+  }
+  return { cents, error: null };
+}
+
+function parseCsvRecords(csv) {
+  try {
+    return parseCsv(csv, {
+      bom: true,
+      columns: true,
+      relaxColumnCount: true,
+      skipEmptyLines: true,
+      trim: true,
+    });
+  } catch (error) {
+    throw badRequest('CSV_PARSE_FAILED', 'CSV could not be parsed.', [
+      rowError('csv', 'invalid_csv', error.message),
+    ]);
+  }
+}
+
+function previewCsvRow(record, rowNumber, auth, importHashes) {
+  const errors = [];
+  const brand = csvValue(record, ['brand']);
+  const cardType = csvValue(record, ['cardType', 'card type', 'type']) || 'merchant';
+  const faceValue = parseMoneyInput(
+    csvValue(record, ['faceValue', 'face value', 'faceValueCents', 'face value cents']),
+    'faceValue',
+    { required: true, positive: true },
+  );
+  const purchaseCost = parseMoneyInput(
+    csvValue(record, ['purchaseCost', 'purchase cost', 'purchaseCostCents', 'purchase cost cents']),
+    'purchaseCost',
+  );
+  const normalizedCardNumber = normalizeCardNumber(csvValue(record, ['cardNumber', 'card number']));
+  const pin = csvValue(record, ['pin']);
+  const billingZip = csvValue(record, ['billingZip', 'billing zip', 'zip']);
+  const expirationDate = csvValue(record, ['expirationDate', 'expiration date', 'expires']);
+  const format = csvValue(record, ['format']);
+
+  if (!brand) {
+    errors.push(rowError('brand', 'required', 'Brand is required.'));
+  }
+  if (!['merchant', 'prepaid'].includes(cardType)) {
+    errors.push(rowError('cardType', 'invalid_enum', 'Card type must be merchant or prepaid.'));
+  }
+  if (faceValue.error) {
+    errors.push(faceValue.error);
+  }
+  if (purchaseCost.error) {
+    errors.push(purchaseCost.error);
+  }
+  if (format && !['digital', 'physical'].includes(format)) {
+    errors.push(rowError('format', 'invalid_enum', 'Format must be digital or physical.'));
+  }
+
+  let cardNumberHash = null;
+  if (normalizedCardNumber) {
+    cardNumberHash = hashCardNumber(normalizedCardNumber, auth.blindIndexKey);
+    if (brand) {
+      const duplicateKey = `${brand}\0${cardNumberHash}`;
+      if (importHashes.has(duplicateKey)) {
+        errors.push(rowError('cardNumber', 'duplicate_import_row', 'Duplicate card number in this import.'));
+      } else {
+        importHashes.add(duplicateKey);
+      }
+    }
+  }
+
+  return {
+    rowNumber,
+    valid: errors.length === 0,
+    parsed: {
+      brand: brand || null,
+      cardType: ['merchant', 'prepaid'].includes(cardType) ? cardType : null,
+      faceValueCents: faceValue.cents,
+      purchaseCostCents: purchaseCost.cents,
+      cardNumberLast4: normalizedCardNumber ? cardNumberLast4(normalizedCardNumber) : null,
+      hasPin: Boolean(pin),
+      hasBillingZip: Boolean(billingZip),
+      expirationDate: expirationDate || null,
+      format: ['digital', 'physical'].includes(format) ? format : null,
+      source: csvValue(record, ['source']) || null,
+      notes: csvValue(record, ['notes']) || null,
+    },
+    cardNumberHash,
+    errors,
+  };
+}
+
+function applyCsvConflicts(db, auth, rows) {
+  const lookup = db.prepare(
+    `SELECT id
+     FROM cards
+     WHERE accountId = ?
+       AND brand = ?
+       AND cardNumberHash = ?
+       AND status IN ('available', 'reserved', 'in_use')
+     LIMIT 1`,
+  );
+
+  return rows.map((row) => {
+    if (!row.cardNumberHash || !row.parsed.brand) {
+      const responseRow = { ...row };
+      delete responseRow.cardNumberHash;
+      return responseRow;
+    }
+
+    const conflictRow = lookup.get(auth.accountId, row.parsed.brand, row.cardNumberHash);
+    const errors = conflictRow
+      ? [
+          ...row.errors,
+          rowError('cardNumber', 'duplicate_active_card', 'Active duplicate card number already exists.'),
+        ]
+      : row.errors;
+    const responseRow = {
+      ...row,
+      valid: errors.length === 0,
+      errors,
+    };
+    delete responseRow.cardNumberHash;
+    return responseRow;
+  });
+}
+
+function buildCsvPreview(db, auth, csv) {
+  const records = parseCsvRecords(csv);
+  const importHashes = new Set();
+  const previewRows = records.map((record, index) =>
+    previewCsvRow(record, index + 2, auth, importHashes),
+  );
+  const rows = applyCsvConflicts(db, auth, previewRows);
+  const validCount = rows.filter((row) => row.valid).length;
+
+  return {
+    importType: 'csv',
+    summary: {
+      rowCount: rows.length,
+      validCount,
+      invalidCount: rows.length - validCount,
+    },
+    rows,
+  };
 }
 
 function buildCardCredentialFields(input, auth) {
@@ -462,6 +653,14 @@ export function createCardsRouter({ db }) {
       } catch (error) {
         throw translateSqliteError(error);
       }
+    }),
+  );
+
+  router.post(
+    '/import-csv',
+    asyncHandler(async (req, res) => {
+      const body = validateBody(importCsvPreviewSchema, req.body || {});
+      res.json(objectResponse(buildCsvPreview(db, req.auth, body.csv)));
     }),
   );
 
