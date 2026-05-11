@@ -26,6 +26,11 @@ const transitions = {
     to: null,
     action: 'card.use',
   },
+  void: {
+    from: new Set(['available', 'reserved', 'in_use']),
+    to: 'void',
+    action: 'card.void',
+  },
 };
 
 export function transitionFor(action, currentStatus) {

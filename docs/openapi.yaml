@@ -371,6 +371,36 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "409":
           $ref: "#/components/responses/Conflict"
+  /api/cards/{cardId}/void:
+    post:
+      tags: [Cards]
+      summary: Void an active card and write off remaining balance
+      operationId: voidCard
+      parameters:
+        - $ref: "#/components/parameters/CardId"
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VoidCardRequest"
+      responses:
+        "200":
+          description: Voided card
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CardDetailResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
   /api/deals:
     get:
       tags: [Deals]
@@ -724,6 +754,11 @@ components:
         description:
           type: string
         usageDate:
+          type: string
+    VoidCardRequest:
+      type: object
+      properties:
+        reason:
           type: string
     Deal:
       type: object

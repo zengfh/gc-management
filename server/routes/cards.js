@@ -71,6 +71,12 @@ const useCardSchema = z
   })
   .strict();
 
+const voidCardSchema = z
+  .object({
+    reason: z.string().trim().nullable().optional(),
+  })
+  .strict();
+
 function nowIso() {
   return new Date().toISOString();
 }
@@ -672,6 +678,64 @@ export function createCardsRouter({ db }) {
           newValue: mutationAuditValue(after),
           metadata: {
             amountCents: body.amountCents,
+          },
+          timestamp,
+        });
+      })();
+
+      res.json(objectResponse(cardDetail(req.auth, cardId)));
+    }),
+  );
+
+  router.post(
+    '/:cardId/void',
+    asyncHandler(async (req, res) => {
+      const cardId = parsePositiveInt(req.params.cardId, null, { min: 1 });
+      const body = validateBody(voidCardSchema, req.body || {});
+      const timestamp = nowIso();
+
+      db.transaction(() => {
+        const before = loadCard(req.auth, cardId);
+        const transition = transitionFor('void', before.status);
+
+        db.prepare(
+          `INSERT INTO usages (
+            accountId, cardId, amountCents, merchant, description, isWriteOff,
+            usageDate, idempotencyKey, createdByUserId, createdAt
+          ) VALUES (?, ?, ?, 'Write-off (Voided)', ?, 1, ?, ?, ?, ?)`,
+        ).run(
+          req.auth.accountId,
+          cardId,
+          before.remainingBalanceCents,
+          body.reason ?? null,
+          timestamp.slice(0, 10),
+          req.get('Idempotency-Key') ?? null,
+          req.auth.userId,
+          timestamp,
+        );
+
+        db.prepare(
+          `UPDATE cards
+           SET status = ?,
+               remainingBalanceCents = 0,
+               updatedByUserId = ?,
+               updatedAt = ?,
+               rowVersion = rowVersion + 1
+           WHERE id = ? AND accountId = ?`,
+        ).run(transition.status, req.auth.userId, timestamp, cardId, req.auth.accountId);
+
+        const after = loadCard(req.auth, cardId);
+        insertAuditEvent(db, {
+          accountId: req.auth.accountId,
+          userId: req.auth.userId,
+          requestId: req.requestId,
+          entityType: 'card',
+          entityId: cardId,
+          action: transition.action,
+          oldValue: mutationAuditValue(before),
+          newValue: mutationAuditValue(after),
+          metadata: {
+            writeOffAmountCents: before.remainingBalanceCents,
           },
           timestamp,
         });

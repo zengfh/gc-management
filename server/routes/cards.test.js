@@ -302,4 +302,46 @@ describe('card routes', () => {
       .map((row) => row.action);
     expect(actions).toEqual(['card.create', 'card.use', 'card.use']);
   }, 45_000);
+
+  it('voids an active card by writing off the remaining balance', async () => {
+    const csrfToken = await setupOwner();
+    const createResponse = await postWithCsrf('/api/cards', csrfToken).send({
+      cards: [sampleCard()],
+    });
+    const cardId = createResponse.body.data[0].id;
+
+    await postWithCsrf(`/api/cards/${cardId}/use`, csrfToken).send({
+      amountCents: 1_500,
+      merchant: 'Target',
+    });
+
+    const voidResponse = await postWithCsrf(`/api/cards/${cardId}/void`, csrfToken).send({
+      reason: 'Card lost',
+    });
+    expect(voidResponse.status).toBe(200);
+    expect(voidResponse.body.data.card).toMatchObject({
+      id: cardId,
+      status: 'void',
+      remainingBalanceCents: 0,
+      rowVersion: 3,
+    });
+    expect(voidResponse.body.data.usages[0]).toMatchObject({
+      amountCents: 3_500,
+      merchant: 'Write-off (Voided)',
+      description: 'Card lost',
+      isWriteOff: 1,
+    });
+
+    const useVoided = await postWithCsrf(`/api/cards/${cardId}/use`, csrfToken).send({
+      amountCents: 100,
+    });
+    expect(useVoided.status).toBe(409);
+    expect(useVoided.body.error.code).toBe('INVALID_CARD_TRANSITION');
+
+    const actions = db
+      .prepare("SELECT action FROM audit_log WHERE entityType = 'card' AND entityId = ? ORDER BY id")
+      .all(cardId)
+      .map((row) => row.action);
+    expect(actions).toEqual(['card.create', 'card.use', 'card.void']);
+  }, 45_000);
 });
