@@ -249,7 +249,7 @@ function Metric({ label, value, icon: Icon }) {
   );
 }
 
-function CardsTable({ cards }) {
+function CardsTable({ cards, onUseCard }) {
   if (cards.length === 0) {
     return (
       <div className="empty-state">
@@ -271,6 +271,7 @@ function CardsTable({ cards }) {
             <th className="numeric">Remaining</th>
             <th className="numeric">Cost</th>
             <th>Updated</th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -285,6 +286,20 @@ function CardsTable({ cards }) {
               <td className="numeric">{formatMoney(card.remainingBalanceCents)}</td>
               <td className="numeric">{formatMoney(card.purchaseCostCents)}</td>
               <td>{card.updatedAt ? new Date(card.updatedAt).toLocaleDateString() : 'Not recorded'}</td>
+              <td>
+                {['available', 'in_use'].includes(card.status) ? (
+                  <button
+                    type="button"
+                    className="table-action"
+                    aria-label={`Use ${card.brand}`}
+                    onClick={() => onUseCard(card)}
+                  >
+                    Use
+                  </button>
+                ) : (
+                  <span className="muted-text">No action</span>
+                )}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -453,9 +468,87 @@ function AddDealPanel({ onClose, onCreateDeal }) {
   );
 }
 
-function WorkSurface({ cards, deals, loading, onRefresh, onLogout, onCreateDeal }) {
+function UseCardPanel({ card, onClose, onUseCard }) {
+  const [amount, setAmount] = useState('');
+  const [merchant, setMerchant] = useState('');
+  const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  async function submitUsage(event) {
+    event.preventDefault();
+    setError('');
+    const amountCents = dollarsToCents(amount);
+
+    if (!amountCents) {
+      setError('Usage amount is required.');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await onUseCard(card.id, {
+        amountCents,
+        ...(merchant.trim() ? { merchant: merchant.trim() } : {}),
+      });
+      onClose();
+    } catch (caught) {
+      setError(caught.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <section className="slide-panel" role="dialog" aria-modal="true" aria-labelledby="use-card-title">
+        <div className="panel-heading">
+          <div>
+            <p className="eyebrow">{card.brand}</p>
+            <h2 id="use-card-title">Record usage</h2>
+          </div>
+          <button type="button" className="icon-button" aria-label="Close record usage" onClick={onClose}>
+            <X aria-hidden="true" size={18} />
+          </button>
+        </div>
+        <form className="panel-form" onSubmit={submitUsage}>
+          <div className="preview-box">
+            <span>Current remaining</span>
+            <strong>{formatMoney(card.remainingBalanceCents)}</strong>
+          </div>
+          <label>
+            <span>Amount</span>
+            <input
+              inputMode="decimal"
+              placeholder="12.50"
+              value={amount}
+              onChange={(event) => setAmount(event.target.value)}
+              required
+            />
+          </label>
+          <label>
+            <span>Merchant</span>
+            <input value={merchant} onChange={(event) => setMerchant(event.target.value)} />
+          </label>
+          <FieldError message={error} />
+          <div className="panel-actions">
+            <button type="button" className="secondary-action" onClick={onClose}>
+              Cancel
+            </button>
+            <button type="submit" className="primary-action" disabled={submitting}>
+              <CreditCard aria-hidden="true" size={17} />
+              {submitting ? 'Recording...' : 'Record usage'}
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
+  );
+}
+
+function WorkSurface({ cards, deals, loading, onRefresh, onLogout, onCreateDeal, onUseCard }) {
   const [activeView, setActiveView] = useState('dashboard');
   const [showAddDeal, setShowAddDeal] = useState(false);
+  const [usageCard, setUsageCard] = useState(null);
   const activeRemaining = cards
     .filter((card) => ['available', 'reserved', 'in_use'].includes(card.status))
     .reduce((sum, card) => sum + card.remainingBalanceCents, 0);
@@ -541,7 +634,7 @@ function WorkSurface({ cards, deals, loading, onRefresh, onLogout, onCreateDeal 
                   View all
                 </button>
               </div>
-              <CardsTable cards={cards.slice(0, 6)} />
+              <CardsTable cards={cards.slice(0, 6)} onUseCard={setUsageCard} />
             </section>
             <section className="content-section">
               <div className="section-heading">
@@ -561,7 +654,7 @@ function WorkSurface({ cards, deals, loading, onRefresh, onLogout, onCreateDeal 
               <h2>Card Inventory</h2>
               <span>{cards.length} records</span>
             </div>
-            <CardsTable cards={cards} />
+            <CardsTable cards={cards} onUseCard={setUsageCard} />
           </section>
         ) : null}
 
@@ -582,6 +675,13 @@ function WorkSurface({ cards, deals, loading, onRefresh, onLogout, onCreateDeal 
             await onCreateDeal(payload);
             setActiveView('dashboard');
           }}
+        />
+      ) : null}
+      {usageCard ? (
+        <UseCardPanel
+          card={usageCard}
+          onClose={() => setUsageCard(null)}
+          onUseCard={onUseCard}
         />
       ) : null}
     </div>
@@ -686,6 +786,17 @@ export default function App() {
     ]);
   }
 
+  async function handleUseCard(cardId, payload) {
+    const response = await apiFetch(`/api/cards/${cardId}/use`, {
+      method: 'POST',
+      body: payload,
+      csrfToken: auth.csrfToken,
+    });
+    setCards((current) =>
+      current.map((card) => (card.id === response.data.card.id ? response.data.card : card)),
+    );
+  }
+
   if (loading) {
     return (
       <main className="auth-layout">
@@ -730,6 +841,7 @@ export default function App() {
       onRefresh={loadInventory}
       onLogout={handleLogout}
       onCreateDeal={handleCreateDeal}
+      onUseCard={handleUseCard}
     />
   );
 }

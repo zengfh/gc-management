@@ -251,4 +251,82 @@ describe('App', () => {
       }),
     );
   });
+
+  it('records card usage from the card table action', async () => {
+    globalThis.fetch
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            setupComplete: true,
+            sessionValid: true,
+            dekLoaded: true,
+            csrfToken: 'csrf_ready',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            {
+              id: 1,
+              brand: 'Target',
+              status: 'available',
+              faceValueCents: 5000,
+              remainingBalanceCents: 5000,
+              purchaseCostCents: 4500,
+              cardNumberLast4: '1111',
+            },
+          ],
+          page: { total: 1, limit: 50, offset: 0, hasMore: false },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            card: {
+              id: 1,
+              brand: 'Target',
+              status: 'in_use',
+              faceValueCents: 5000,
+              remainingBalanceCents: 3750,
+              purchaseCostCents: 4500,
+              cardNumberLast4: '1111',
+              rowVersion: 2,
+            },
+            transactions: [],
+            usages: [{ id: 7, amountCents: 1250, merchant: 'Target' }],
+            audit: [],
+          },
+        }),
+      );
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByRole('heading', { name: /dashboard/i });
+    await user.click(screen.getByRole('button', { name: /^cards$/i }));
+    await user.click(screen.getByRole('button', { name: /use target/i }));
+
+    expect(screen.getByRole('heading', { name: /record usage/i })).toBeInTheDocument();
+    await user.type(screen.getByLabelText(/^amount$/i), '12.50');
+    await user.type(screen.getByLabelText(/^merchant$/i), 'Target');
+    await user.click(screen.getByRole('button', { name: /^record usage$/i }));
+
+    expect(await screen.findByText(/\$37\.50/)).toBeInTheDocument();
+    expect(screen.getByText(/in use/i)).toBeInTheDocument();
+    expect(globalThis.fetch).toHaveBeenLastCalledWith(
+      '/api/cards/1/use',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          amountCents: 1250,
+          merchant: 'Target',
+        }),
+        headers: expect.objectContaining({
+          'X-CSRF-Token': 'csrf_ready',
+        }),
+      }),
+    );
+  });
 });
