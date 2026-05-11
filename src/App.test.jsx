@@ -7,7 +7,22 @@ function jsonResponse(body, status = 200) {
   return Promise.resolve({
     ok: status >= 200 && status < 300,
     status,
+    headers: {
+      get: () => null,
+    },
     json: () => Promise.resolve(body),
+  });
+}
+
+function blobResponse(body, status = 200, headers = {}) {
+  return Promise.resolve({
+    ok: status >= 200 && status < 300,
+    status,
+    headers: {
+      get: (name) => headers[name.toLowerCase()] || null,
+    },
+    json: () => Promise.resolve({}),
+    blob: () => Promise.resolve(new Blob([body])),
   });
 }
 
@@ -334,6 +349,58 @@ describe('App', () => {
             unlockSecret: 'a strong unlock phrase',
             confirmation: 'EXPORT',
             acknowledgePlaintext: true,
+          }),
+          headers: expect.objectContaining({
+            'X-CSRF-Token': 'csrf_ready',
+          }),
+        }),
+      );
+    } finally {
+      globalThis.URL.createObjectURL = originalCreateObjectURL;
+      globalThis.URL.revokeObjectURL = originalRevokeObjectURL;
+    }
+  });
+
+  it('exports the raw database file from the backup view', async () => {
+    const originalCreateObjectURL = globalThis.URL.createObjectURL;
+    const originalRevokeObjectURL = globalThis.URL.revokeObjectURL;
+    globalThis.URL.createObjectURL = undefined;
+    globalThis.URL.revokeObjectURL = undefined;
+    globalThis.fetch
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            setupComplete: true,
+            sessionValid: true,
+            dekLoaded: true,
+            csrfToken: 'csrf_ready',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(
+        blobResponse('SQLite format 3', 200, {
+          'content-disposition': 'attachment; filename="gift-card-raw-db-export-2026-05-11.sqlite"',
+        }),
+      );
+
+    try {
+      const user = userEvent.setup();
+      render(<App />);
+
+      await screen.findByRole('heading', { name: /dashboard/i });
+      await user.click(screen.getByRole('button', { name: /^backup$/i }));
+      await user.type(screen.getByLabelText(/^raw database unlock secret$/i), 'a strong unlock phrase');
+      await user.click(screen.getByRole('button', { name: /^export raw db$/i }));
+
+      expect(await screen.findByText(/raw database export prepared/i)).toBeInTheDocument();
+      expect(globalThis.fetch).toHaveBeenLastCalledWith(
+        '/api/backup/db-file',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({
+            unlockSecret: 'a strong unlock phrase',
           }),
           headers: expect.objectContaining({
             'X-CSRF-Token': 'csrf_ready',

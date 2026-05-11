@@ -77,6 +77,49 @@ async function apiFetch(path, { method = 'GET', body, csrfToken } = {}) {
   return payload;
 }
 
+async function apiDownload(path, { method = 'GET', body, csrfToken } = {}) {
+  const options = {
+    method,
+    credentials: 'same-origin',
+    headers: {
+      Accept: 'application/octet-stream',
+    },
+  };
+
+  if (body !== undefined) {
+    options.headers['Content-Type'] = 'application/json';
+    options.body = JSON.stringify(body);
+  }
+
+  if (csrfToken) {
+    options.headers['X-CSRF-Token'] = csrfToken;
+  }
+
+  const response = await fetch(path, options);
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    const error = new Error(payload.error?.message || 'Request failed.');
+    error.code = payload.error?.code;
+    error.fieldErrors = payload.error?.fieldErrors || [];
+    error.status = response.status;
+    throw error;
+  }
+
+  return {
+    blob: await response.blob(),
+    filename: filenameFromContentDisposition(response.headers.get('content-disposition')),
+  };
+}
+
+function filenameFromContentDisposition(header) {
+  if (!header) {
+    return null;
+  }
+
+  const match = /filename="([^"]+)"/.exec(header);
+  return match?.[1] || null;
+}
+
 function formatMoney(cents = 0) {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
@@ -141,14 +184,11 @@ function criteriaValue(value) {
   return value == null ? '' : String(value).trim();
 }
 
-function downloadJsonFile(filename, payload) {
+function downloadBlobFile(filename, blob) {
   if (typeof document === 'undefined' || !globalThis.URL?.createObjectURL) {
     return;
   }
 
-  const blob = new Blob([JSON.stringify(payload, null, 2)], {
-    type: 'application/json',
-  });
   const url = globalThis.URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
@@ -157,6 +197,15 @@ function downloadJsonFile(filename, payload) {
   link.click();
   link.remove();
   globalThis.URL.revokeObjectURL?.(url);
+}
+
+function downloadJsonFile(filename, payload) {
+  downloadBlobFile(
+    filename,
+    new Blob([JSON.stringify(payload, null, 2)], {
+      type: 'application/json',
+    }),
+  );
 }
 
 function FieldError({ message }) {
@@ -737,6 +786,55 @@ function BackupExportForm({ onExportPlaintext }) {
         <button type="submit" className="primary-action danger" disabled={submitting}>
           <Download aria-hidden="true" size={17} />
           {submitting ? 'Exporting...' : 'Export plaintext JSON'}
+        </button>
+      </div>
+      <FieldError message={error} />
+      {success ? <p className="success-copy">{success}</p> : null}
+    </form>
+  );
+}
+
+function RawDatabaseExportForm({ onExportRawDatabase }) {
+  const [unlockSecret, setUnlockSecret] = useState('');
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  async function submitExport(event) {
+    event.preventDefault();
+    setError('');
+    setSuccess('');
+    setSubmitting(true);
+    try {
+      const response = await onExportRawDatabase({ unlockSecret });
+      downloadBlobFile(response.filename || 'gift-card-raw-db-export.sqlite', response.blob);
+      setUnlockSecret('');
+      setSuccess('Raw database export prepared.');
+    } catch (caught) {
+      setError(caught.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <form className="backup-export-form" onSubmit={submitExport}>
+      <div className="warning-copy">
+        Raw database exports keep credentials encrypted but still contain sensitive inventory metadata.
+      </div>
+      <label>
+        <span>Raw database unlock secret</span>
+        <input
+          type="password"
+          value={unlockSecret}
+          autoComplete="current-password"
+          onChange={(event) => setUnlockSecret(event.target.value)}
+        />
+      </label>
+      <div className="backup-actions">
+        <button type="submit" className="secondary-action" disabled={submitting}>
+          <DatabaseBackup aria-hidden="true" size={17} />
+          {submitting ? 'Exporting...' : 'Export raw DB'}
         </button>
       </div>
       <FieldError message={error} />
@@ -1824,6 +1922,7 @@ function WorkSurface({
   onLogout,
   onLoadAudit,
   onExportPlaintext,
+  onExportRawDatabase,
   onCreateDeal,
   onLoadDeals,
   onArchiveDeal,
@@ -2106,10 +2205,19 @@ function WorkSurface({
         {activeView === 'backup' ? (
           <section className="content-section">
             <div className="section-heading">
-              <h2>Plaintext JSON Export</h2>
+              <h2>Backup and Export</h2>
               <span>{cards.length} cards tracked</span>
             </div>
-            <BackupExportForm onExportPlaintext={onExportPlaintext} />
+            <div className="backup-stack">
+              <section className="backup-block">
+                <h3>Plaintext JSON Export</h3>
+                <BackupExportForm onExportPlaintext={onExportPlaintext} />
+              </section>
+              <section className="backup-block">
+                <h3>Raw Encrypted Database Export</h3>
+                <RawDatabaseExportForm onExportRawDatabase={onExportRawDatabase} />
+              </section>
+            </div>
           </section>
         ) : null}
       </main>
@@ -2316,6 +2424,14 @@ export default function App() {
 
   async function handleExportPlaintext(payload) {
     return apiFetch('/api/backup/export', {
+      method: 'POST',
+      body: payload,
+      csrfToken: auth.csrfToken,
+    });
+  }
+
+  async function handleExportRawDatabase(payload) {
+    return apiDownload('/api/backup/db-file', {
       method: 'POST',
       body: payload,
       csrfToken: auth.csrfToken,
@@ -2569,6 +2685,7 @@ export default function App() {
       onLogout={handleLogout}
       onLoadAudit={handleLoadAudit}
       onExportPlaintext={handleExportPlaintext}
+      onExportRawDatabase={handleExportRawDatabase}
       onCreateDeal={handleCreateDeal}
       onLoadDeals={(includeArchived) => loadDeals({ includeArchived })}
       onArchiveDeal={(deal, includeArchived) =>
