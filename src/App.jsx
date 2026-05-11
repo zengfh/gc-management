@@ -249,7 +249,15 @@ function Metric({ label, value, icon: Icon }) {
   );
 }
 
-function CardsTable({ cards, onUseCard, onSellCard, onUndoSale, onReserveCard, onUnreserveCard }) {
+function CardsTable({
+  cards,
+  onUseCard,
+  onSellCard,
+  onUndoSale,
+  onVoidCard,
+  onReserveCard,
+  onUnreserveCard,
+}) {
   if (cards.length === 0) {
     return (
       <div className="empty-state">
@@ -326,6 +334,16 @@ function CardsTable({ cards, onUseCard, onSellCard, onUndoSale, onReserveCard, o
                       onClick={() => onUseCard(card)}
                     >
                       Use
+                    </button>
+                  ) : null}
+                  {['available', 'reserved', 'in_use'].includes(card.status) ? (
+                    <button
+                      type="button"
+                      className="table-action danger"
+                      aria-label={`Void ${card.brand}`}
+                      onClick={() => onVoidCard(card)}
+                    >
+                      Void
                     </button>
                   ) : null}
                   {card.status === 'sold' ? (
@@ -503,6 +521,71 @@ function AddDealPanel({ onClose, onCreateDeal }) {
             <button type="submit" className="primary-action" disabled={submitting}>
               <Plus aria-hidden="true" size={17} />
               {submitting ? 'Creating...' : 'Create deal'}
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
+  );
+}
+
+function VoidCardPanel({ card, onClose, onVoidCard }) {
+  const [reason, setReason] = useState('');
+  const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  async function submitVoid(event) {
+    event.preventDefault();
+    setError('');
+
+    if (!reason.trim()) {
+      setError('Reason is required.');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await onVoidCard(card.id, { reason: reason.trim() });
+      onClose();
+    } catch (caught) {
+      setError(caught.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <section className="slide-panel" role="dialog" aria-modal="true" aria-labelledby="void-card-title">
+        <div className="panel-heading">
+          <div>
+            <p className="eyebrow">{card.brand}</p>
+            <h2 id="void-card-title">Void card</h2>
+          </div>
+          <button type="button" className="icon-button" aria-label="Close void card" onClick={onClose}>
+            <X aria-hidden="true" size={18} />
+          </button>
+        </div>
+        <form className="panel-form" onSubmit={submitVoid}>
+          <div className="preview-box">
+            <span>Remaining write-off</span>
+            <strong>{formatMoney(card.remainingBalanceCents)}</strong>
+          </div>
+          <p className="panel-note">
+            This creates a write-off usage for the remaining balance and makes the card terminal.
+          </p>
+          <label>
+            <span>Reason</span>
+            <input value={reason} onChange={(event) => setReason(event.target.value)} required />
+          </label>
+          <FieldError message={error} />
+          <div className="panel-actions">
+            <button type="button" className="secondary-action" onClick={onClose}>
+              Cancel
+            </button>
+            <button type="submit" className="primary-action danger" disabled={submitting}>
+              <X aria-hidden="true" size={17} />
+              {submitting ? 'Voiding...' : 'Void card'}
             </button>
           </div>
         </form>
@@ -758,6 +841,7 @@ function WorkSurface({
   onUseCard,
   onSellCard,
   onUndoSale,
+  onVoidCard,
   onReserveCard,
   onUnreserveCard,
 }) {
@@ -766,6 +850,7 @@ function WorkSurface({
   const [usageCard, setUsageCard] = useState(null);
   const [saleCard, setSaleCard] = useState(null);
   const [undoSaleCard, setUndoSaleCard] = useState(null);
+  const [voidCard, setVoidCard] = useState(null);
   const activeRemaining = cards
     .filter((card) => ['available', 'reserved', 'in_use'].includes(card.status))
     .reduce((sum, card) => sum + card.remainingBalanceCents, 0);
@@ -856,6 +941,7 @@ function WorkSurface({
                 onUseCard={setUsageCard}
                 onSellCard={setSaleCard}
                 onUndoSale={setUndoSaleCard}
+                onVoidCard={setVoidCard}
                 onReserveCard={onReserveCard}
                 onUnreserveCard={onUnreserveCard}
               />
@@ -883,6 +969,7 @@ function WorkSurface({
               onUseCard={setUsageCard}
               onSellCard={setSaleCard}
               onUndoSale={setUndoSaleCard}
+              onVoidCard={setVoidCard}
               onReserveCard={onReserveCard}
               onUnreserveCard={onUnreserveCard}
             />
@@ -927,6 +1014,13 @@ function WorkSurface({
           card={undoSaleCard}
           onClose={() => setUndoSaleCard(null)}
           onUndoSale={onUndoSale}
+        />
+      ) : null}
+      {voidCard ? (
+        <VoidCardPanel
+          card={voidCard}
+          onClose={() => setVoidCard(null)}
+          onVoidCard={onVoidCard}
         />
       ) : null}
     </div>
@@ -1064,6 +1158,17 @@ export default function App() {
     );
   }
 
+  async function handleVoidCard(cardId, payload) {
+    const response = await apiFetch(`/api/cards/${cardId}/void`, {
+      method: 'POST',
+      body: payload,
+      csrfToken: auth.csrfToken,
+    });
+    setCards((current) =>
+      current.map((card) => (card.id === response.data.card.id ? response.data.card : card)),
+    );
+  }
+
   async function handleCardTransition(cardId, action) {
     const response = await apiFetch(`/api/cards/${cardId}/${action}`, {
       method: 'POST',
@@ -1122,6 +1227,7 @@ export default function App() {
       onUseCard={handleUseCard}
       onSellCard={handleSellCard}
       onUndoSale={handleUndoSale}
+      onVoidCard={handleVoidCard}
       onReserveCard={(card) => handleCardTransition(card.id, 'reserve')}
       onUnreserveCard={(card) => handleCardTransition(card.id, 'unreserve')}
     />

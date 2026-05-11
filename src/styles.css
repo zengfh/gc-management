@@ -177,6 +177,10 @@ select {
   background: #176b45;
 }
 
+.primary-action.danger {
+  background: #b42318;
+}
+
 .primary-action.compact,
 .secondary-action {
   min-height: 36px;
@@ -404,6 +408,10 @@ td {
   padding: 0 10px;
   font-size: 0.84rem;
   font-weight: 800;
+}
+
+.table-action.danger {
+  color: #b42318;
 }
 
 .row-actions {

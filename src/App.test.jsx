@@ -490,6 +490,83 @@ describe('App', () => {
     );
   });
 
+  it('voids an active card from the card table action', async () => {
+    globalThis.fetch
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            setupComplete: true,
+            sessionValid: true,
+            dekLoaded: true,
+            csrfToken: 'csrf_ready',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            {
+              id: 1,
+              brand: 'Target',
+              status: 'in_use',
+              faceValueCents: 5000,
+              remainingBalanceCents: 3750,
+              purchaseCostCents: 4500,
+              cardNumberLast4: '1111',
+            },
+          ],
+          page: { total: 1, limit: 50, offset: 0, hasMore: false },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            card: {
+              id: 1,
+              brand: 'Target',
+              status: 'void',
+              faceValueCents: 5000,
+              remainingBalanceCents: 0,
+              purchaseCostCents: 4500,
+              cardNumberLast4: '1111',
+              rowVersion: 5,
+            },
+            transactions: [],
+            usages: [{ id: 11, amountCents: 3750, merchant: 'Write-off (Voided)', isWriteOff: 1 }],
+            audit: [],
+          },
+        }),
+      );
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByRole('heading', { name: /dashboard/i });
+    await user.click(screen.getByRole('button', { name: /^cards$/i }));
+    await user.click(screen.getByRole('button', { name: /void target/i }));
+
+    const dialog = screen.getByRole('dialog', { name: /void card/i });
+    expect(within(dialog).getByText(/\$37\.50/)).toBeInTheDocument();
+    await user.type(within(dialog).getByLabelText(/^reason$/i), 'Card no longer valid');
+    await user.click(within(dialog).getByRole('button', { name: /^void card$/i }));
+
+    expect(await screen.findByText(/^void$/i)).toBeInTheDocument();
+    expect(screen.getByText(/\$0\.00/)).toBeInTheDocument();
+    expect(globalThis.fetch).toHaveBeenLastCalledWith(
+      '/api/cards/1/void',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          reason: 'Card no longer valid',
+        }),
+        headers: expect.objectContaining({
+          'X-CSRF-Token': 'csrf_ready',
+        }),
+      }),
+    );
+  });
+
   it('reserves and unreserves a card from row actions', async () => {
     globalThis.fetch
       .mockResolvedValueOnce(
