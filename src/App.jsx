@@ -208,6 +208,19 @@ function downloadJsonFile(filename, payload) {
   );
 }
 
+function readFileText(file) {
+  if (file?.text) {
+    return file.text();
+  }
+
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error('CSV file could not be read.'));
+    reader.readAsText(file);
+  });
+}
+
 function FieldError({ message }) {
   if (!message) {
     return null;
@@ -839,6 +852,135 @@ function RawDatabaseExportForm({ onExportRawDatabase }) {
       </div>
       <FieldError message={error} />
       {success ? <p className="success-copy">{success}</p> : null}
+    </form>
+  );
+}
+
+function CsvPreviewTable({ rows }) {
+  if (!rows?.length) {
+    return null;
+  }
+
+  return (
+    <div className="table-wrap import-preview-wrap">
+      <table className="import-preview-table">
+        <thead>
+          <tr>
+            <th>Row</th>
+            <th>Status</th>
+            <th>Brand</th>
+            <th>Type</th>
+            <th className="numeric">Face</th>
+            <th className="numeric">Cost</th>
+            <th>Card</th>
+            <th>PIN</th>
+            <th>ZIP</th>
+            <th>Errors</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.rowNumber}>
+              <td>{row.rowNumber}</td>
+              <td>{row.valid ? 'Valid' : 'Invalid'}</td>
+              <td>{row.parsed?.brand || 'Not provided'}</td>
+              <td>{row.parsed?.cardType || 'Not provided'}</td>
+              <td className="numeric">{formatMoney(row.parsed?.faceValueCents || 0)}</td>
+              <td className="numeric">{formatMoney(row.parsed?.purchaseCostCents || 0)}</td>
+              <td>{row.parsed?.cardNumberLast4 ? `****${row.parsed.cardNumberLast4}` : 'Not provided'}</td>
+              <td>{row.parsed?.hasPin ? 'Yes' : 'No'}</td>
+              <td>{row.parsed?.hasBillingZip ? 'Yes' : 'No'}</td>
+              <td>
+                {row.errors?.length ? (
+                  <ul className="import-errors">
+                    {row.errors.map((error) => (
+                      <li key={`${row.rowNumber}-${error.field}-${error.code}`}>
+                        {error.field}: {error.message}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  'None'
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function CsvImportPreviewForm({ onPreviewCsv }) {
+  const [csvText, setCsvText] = useState('');
+  const [fileName, setFileName] = useState('');
+  const [preview, setPreview] = useState(null);
+  const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  async function updateFile(event) {
+    const file = event.target.files?.[0];
+    setPreview(null);
+    setError('');
+    if (!file) {
+      setCsvText('');
+      setFileName('');
+      return;
+    }
+
+    setFileName(file.name);
+    try {
+      setCsvText(await readFileText(file));
+    } catch (caught) {
+      setCsvText('');
+      setError(caught.message);
+    }
+  }
+
+  async function submitPreview(event) {
+    event.preventDefault();
+    setError('');
+    setPreview(null);
+    if (!csvText) {
+      setError('Choose a CSV file first.');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const response = await onPreviewCsv({ csv: csvText });
+      setPreview(response.data);
+    } catch (caught) {
+      setError(caught.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <form className="backup-export-form csv-preview-form" onSubmit={submitPreview}>
+      <label>
+        <span>CSV file</span>
+        <input type="file" accept=".csv,text/csv" onChange={updateFile} />
+      </label>
+      <div className="backup-actions">
+        <button type="submit" className="secondary-action" disabled={submitting}>
+          <FilePlus2 aria-hidden="true" size={17} />
+          {submitting ? 'Previewing...' : 'Preview CSV'}
+        </button>
+      </div>
+      {fileName ? <p className="muted-text import-file-name">{fileName}</p> : null}
+      <FieldError message={error} />
+      {preview ? (
+        <div className="import-preview-result">
+          <div className="import-summary">
+            <span>{preview.summary.validCount} valid</span>
+            <span>{preview.summary.invalidCount} invalid</span>
+            <span>{preview.summary.rowCount} rows</span>
+          </div>
+          <CsvPreviewTable rows={preview.rows} />
+        </div>
+      ) : null}
     </form>
   );
 }
@@ -1923,6 +2065,7 @@ function WorkSurface({
   onLoadAudit,
   onExportPlaintext,
   onExportRawDatabase,
+  onPreviewCsv,
   onCreateDeal,
   onLoadDeals,
   onArchiveDeal,
@@ -2083,7 +2226,7 @@ function WorkSurface({
               <RefreshCw aria-hidden="true" size={17} />
               Refresh
             </button>
-            <button type="button" className="secondary-action">
+            <button type="button" className="secondary-action" onClick={() => setActiveView('backup')}>
               <FilePlus2 aria-hidden="true" size={17} />
               Import
             </button>
@@ -2209,6 +2352,10 @@ function WorkSurface({
               <span>{cards.length} cards tracked</span>
             </div>
             <div className="backup-stack">
+              <section className="backup-block">
+                <h3>CSV Import Preview</h3>
+                <CsvImportPreviewForm onPreviewCsv={onPreviewCsv} />
+              </section>
               <section className="backup-block">
                 <h3>Plaintext JSON Export</h3>
                 <BackupExportForm onExportPlaintext={onExportPlaintext} />
@@ -2432,6 +2579,14 @@ export default function App() {
 
   async function handleExportRawDatabase(payload) {
     return apiDownload('/api/backup/db-file', {
+      method: 'POST',
+      body: payload,
+      csrfToken: auth.csrfToken,
+    });
+  }
+
+  async function handlePreviewCsv(payload) {
+    return apiFetch('/api/cards/import-csv', {
       method: 'POST',
       body: payload,
       csrfToken: auth.csrfToken,
@@ -2686,6 +2841,7 @@ export default function App() {
       onLoadAudit={handleLoadAudit}
       onExportPlaintext={handleExportPlaintext}
       onExportRawDatabase={handleExportRawDatabase}
+      onPreviewCsv={handlePreviewCsv}
       onCreateDeal={handleCreateDeal}
       onLoadDeals={(includeArchived) => loadDeals({ includeArchived })}
       onArchiveDeal={(deal, includeArchived) =>

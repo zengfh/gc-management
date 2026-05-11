@@ -662,7 +662,9 @@ td {
 .backup-export-form .backup-check,
 .backup-export-form .backup-actions,
 .backup-export-form .field-error,
-.backup-export-form .success-copy {
+.backup-export-form .success-copy,
+.backup-export-form .import-file-name,
+.backup-export-form .import-preview-result {
   grid-column: 1 / -1;
 }
 
@@ -683,6 +685,44 @@ td {
   padding: 10px 12px;
   font-size: 0.9rem;
   font-weight: 700;
+}
+
+.import-preview-result {
+  display: grid;
+  gap: 12px;
+}
+
+.import-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.import-summary span {
+  border: 1px solid #d8dde5;
+  border-radius: 999px;
+  background: #fbfcfd;
+  color: #243244;
+  padding: 5px 10px;
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.import-preview-wrap {
+  border: 1px solid #e4e8ee;
+  border-radius: 8px;
+}
+
+.import-preview-table {
+  min-width: 940px;
+}
+
+.import-errors {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 18px;
+  color: #b42318;
 }
 
 .form-divider {

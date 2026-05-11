@@ -413,6 +413,99 @@ describe('App', () => {
     }
   });
 
+  it('previews a CSV import from the backup view without exposing full credentials', async () => {
+    globalThis.fetch
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            setupComplete: true,
+            sessionValid: true,
+            dekLoaded: true,
+            csrfToken: 'csrf_ready',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            importType: 'csv',
+            summary: {
+              rowCount: 2,
+              validCount: 1,
+              invalidCount: 1,
+            },
+            rows: [
+              {
+                rowNumber: 2,
+                valid: true,
+                parsed: {
+                  brand: 'Target',
+                  cardType: 'merchant',
+                  faceValueCents: 5000,
+                  purchaseCostCents: 4500,
+                  cardNumberLast4: '1111',
+                  hasPin: true,
+                  hasBillingZip: true,
+                },
+                errors: [],
+              },
+              {
+                rowNumber: 3,
+                valid: false,
+                parsed: {
+                  brand: null,
+                  cardType: 'merchant',
+                  faceValueCents: null,
+                  purchaseCostCents: 0,
+                  cardNumberLast4: null,
+                  hasPin: false,
+                  hasBillingZip: false,
+                },
+                errors: [
+                  { field: 'brand', code: 'required', message: 'Brand is required.' },
+                  { field: 'faceValue', code: 'invalid_money', message: 'faceValue must be greater than zero.' },
+                ],
+              },
+            ],
+          },
+        }),
+      );
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByRole('heading', { name: /dashboard/i });
+    await user.click(screen.getByRole('button', { name: /^backup$/i }));
+    await user.upload(
+      screen.getByLabelText(/^csv file$/i),
+      new File(['brand,cardType,faceValue,cardNumber,pin\nTarget,merchant,50,4111111111111111,1234'], 'cards.csv', {
+        type: 'text/csv',
+      }),
+    );
+    await user.click(screen.getByRole('button', { name: /^preview csv$/i }));
+
+    expect(await screen.findByText(/1 valid/i)).toBeInTheDocument();
+    expect(screen.getByText(/1 invalid/i)).toBeInTheDocument();
+    expect(screen.getByRole('row', { name: /2 valid target merchant/i })).toBeInTheDocument();
+    expect(screen.getByText(/brand: Brand is required/i)).toBeInTheDocument();
+    expect(screen.queryByText(/4111111111111111/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/1234/i)).not.toBeInTheDocument();
+    expect(globalThis.fetch).toHaveBeenLastCalledWith(
+      '/api/cards/import-csv',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          csv: 'brand,cardType,faceValue,cardNumber,pin\nTarget,merchant,50,4111111111111111,1234',
+        }),
+        headers: expect.objectContaining({
+          'X-CSRF-Token': 'csrf_ready',
+        }),
+      }),
+    );
+  });
+
   it('creates a deal with a starter card from the dashboard', async () => {
     globalThis.fetch
       .mockResolvedValueOnce(
