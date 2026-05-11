@@ -481,6 +481,8 @@ function DealsTable({ deals, onArchiveDeal, onUnarchiveDeal }) {
 
 function CardSearchForm({ onSearchCards }) {
   const [cardNumber, setCardNumber] = useState('');
+  const [status, setStatus] = useState('');
+  const [brand, setBrand] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -489,7 +491,7 @@ function CardSearchForm({ onSearchCards }) {
     setError('');
     setSubmitting(true);
     try {
-      await onSearchCards(cardNumber);
+      await onSearchCards({ cardNumber, status, brand });
     } catch (caught) {
       setError(caught.message);
     } finally {
@@ -500,9 +502,11 @@ function CardSearchForm({ onSearchCards }) {
   async function clearSearch() {
     setError('');
     setCardNumber('');
+    setStatus('');
+    setBrand('');
     setSubmitting(true);
     try {
-      await onSearchCards('');
+      await onSearchCards({});
     } catch (caught) {
       setError(caught.message);
     } finally {
@@ -521,6 +525,21 @@ function CardSearchForm({ onSearchCards }) {
           value={cardNumber}
           onChange={(event) => setCardNumber(event.target.value)}
         />
+      </label>
+      <label>
+        <span>Status</span>
+        <select value={status} onChange={(event) => setStatus(event.target.value)}>
+          <option value="">All statuses</option>
+          {Object.entries(statusLabels).map(([value, label]) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        <span>Brand</span>
+        <input value={brand} onChange={(event) => setBrand(event.target.value)} />
       </label>
       <div className="card-search-actions">
         <button type="submit" className="primary-action compact" disabled={submitting}>
@@ -1614,9 +1633,21 @@ export default function App() {
     }
   }
 
-  async function handleSearchCards(cardNumber) {
-    const trimmed = cardNumber.trim();
-    const query = trimmed ? `?${new URLSearchParams({ cardNumber: trimmed }).toString()}` : '';
+  async function handleSearchCards(criteria = {}) {
+    const params = new URLSearchParams();
+    const status = criteria.status?.trim();
+    const brand = criteria.brand?.trim();
+    const cardNumber = criteria.cardNumber?.trim();
+    if (status) {
+      params.set('status', status);
+    }
+    if (brand) {
+      params.set('brand', brand);
+    }
+    if (cardNumber) {
+      params.set('cardNumber', cardNumber);
+    }
+    const query = params.toString() ? `?${params.toString()}` : '';
     setInventoryLoading(true);
     try {
       const response = await apiFetch(`/api/cards${query}`);

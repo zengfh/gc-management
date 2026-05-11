@@ -424,7 +424,7 @@ describe('App', () => {
     await user.click(screen.getByRole('button', { name: /^record usage$/i }));
 
     expect(await screen.findByText(/\$37\.50/)).toBeInTheDocument();
-    expect(screen.getByText(/in use/i)).toBeInTheDocument();
+    expect(screen.getByRole('row', { name: /in use target/i })).toBeInTheDocument();
     expect(globalThis.fetch).toHaveBeenLastCalledWith(
       '/api/cards/1/use',
       expect.objectContaining({
@@ -685,7 +685,7 @@ describe('App', () => {
     await user.selectOptions(within(dialog).getByLabelText(/^buyer type$/i), 'dealer');
     await user.click(within(dialog).getByRole('button', { name: /^record sale$/i }));
 
-    expect(await screen.findByText(/sold/i)).toBeInTheDocument();
+    expect(await screen.findByRole('row', { name: /sold target/i })).toBeInTheDocument();
     expect(screen.getByText(/\$0\.00/)).toBeInTheDocument();
     expect(globalThis.fetch).toHaveBeenLastCalledWith(
       '/api/cards/1/sell',
@@ -766,7 +766,7 @@ describe('App', () => {
     await user.type(within(dialog).getByLabelText(/^reason$/i), 'Buyer canceled');
     await user.click(within(dialog).getByRole('button', { name: /^undo sale$/i }));
 
-    expect(await screen.findByText(/in use/i)).toBeInTheDocument();
+    expect(await screen.findByRole('row', { name: /in use target/i })).toBeInTheDocument();
     expect(screen.getByText(/\$37\.50/)).toBeInTheDocument();
     expect(globalThis.fetch).toHaveBeenLastCalledWith(
       '/api/cards/1/undo-sale',
@@ -843,7 +843,7 @@ describe('App', () => {
     await user.type(within(dialog).getByLabelText(/^reason$/i), 'Card no longer valid');
     await user.click(within(dialog).getByRole('button', { name: /^void card$/i }));
 
-    expect(await screen.findByText(/^void$/i)).toBeInTheDocument();
+    expect(await screen.findByRole('row', { name: /void target/i })).toBeInTheDocument();
     expect(screen.getByText(/\$0\.00/)).toBeInTheDocument();
     expect(globalThis.fetch).toHaveBeenLastCalledWith(
       '/api/cards/1/void',
@@ -929,6 +929,82 @@ describe('App', () => {
     expect(screen.queryByText(/4111 1111 1111 1111/i)).not.toBeInTheDocument();
     expect(globalThis.fetch).toHaveBeenLastCalledWith(
       '/api/cards?cardNumber=4111+1111+1111+1111',
+      expect.objectContaining({
+        method: 'GET',
+      }),
+    );
+  });
+
+  it('filters cards by status and brand from the cards view', async () => {
+    globalThis.fetch
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            setupComplete: true,
+            sessionValid: true,
+            dekLoaded: true,
+            csrfToken: 'csrf_ready',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            {
+              id: 1,
+              brand: 'Target',
+              status: 'reserved',
+              faceValueCents: 5000,
+              remainingBalanceCents: 5000,
+              purchaseCostCents: 4500,
+              cardNumberLast4: '1111',
+            },
+            {
+              id: 2,
+              brand: 'Amazon',
+              status: 'available',
+              faceValueCents: 2500,
+              remainingBalanceCents: 2500,
+              purchaseCostCents: 2200,
+              cardNumberLast4: '2222',
+            },
+          ],
+          page: { total: 2, limit: 50, offset: 0, hasMore: false },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            {
+              id: 1,
+              brand: 'Target',
+              status: 'reserved',
+              faceValueCents: 5000,
+              remainingBalanceCents: 5000,
+              purchaseCostCents: 4500,
+              cardNumberLast4: '1111',
+            },
+          ],
+          page: { total: 1, limit: 50, offset: 0, hasMore: false },
+        }),
+      );
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByRole('heading', { name: /dashboard/i });
+    await user.click(screen.getByRole('button', { name: /^cards$/i }));
+    expect(screen.getByText(/amazon/i)).toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText(/^status$/i), 'reserved');
+    await user.type(screen.getByLabelText(/^brand$/i), 'Target');
+    await user.click(screen.getByRole('button', { name: /^search cards$/i }));
+
+    expect(await screen.findByText(/target/i)).toBeInTheDocument();
+    expect(screen.queryByText(/amazon/i)).not.toBeInTheDocument();
+    expect(globalThis.fetch).toHaveBeenLastCalledWith(
+      '/api/cards?status=reserved&brand=Target',
       expect.objectContaining({
         method: 'GET',
       }),
@@ -1136,7 +1212,7 @@ describe('App', () => {
     await user.click(screen.getByRole('button', { name: /^cards$/i }));
     await user.click(screen.getByRole('button', { name: /reserve target/i }));
 
-    expect(await screen.findByText(/reserved/i)).toBeInTheDocument();
+    expect(await screen.findByRole('row', { name: /reserved target/i })).toBeInTheDocument();
     expect(globalThis.fetch).toHaveBeenNthCalledWith(
       4,
       '/api/cards/1/reserve',
@@ -1151,7 +1227,7 @@ describe('App', () => {
 
     await user.click(screen.getByRole('button', { name: /unreserve target/i }));
 
-    expect(await screen.findByText(/available/i)).toBeInTheDocument();
+    expect(await screen.findByRole('row', { name: /available target/i })).toBeInTheDocument();
     expect(globalThis.fetch).toHaveBeenLastCalledWith(
       '/api/cards/1/unreserve',
       expect.objectContaining({
