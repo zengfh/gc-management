@@ -5,6 +5,7 @@ import { verifyDatabase } from './db/index.js';
 import { errorResponse } from './http/response.js';
 import { createAuthRouter } from './routes/auth.js';
 import { createCardsRouter } from './routes/cards.js';
+import { createDealsRouter } from './routes/deals.js';
 import { csrfProtection } from './security/csrf.js';
 
 export function createApp({ db } = {}) {
@@ -51,6 +52,7 @@ export function createApp({ db } = {}) {
   if (db) {
     app.use('/api/auth', createAuthRouter({ db }));
     app.use('/api/cards', createCardsRouter({ db }));
+    app.use('/api/deals', createDealsRouter({ db }));
   }
 
   app.use((req, res) => {

@@ -464,10 +464,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DealListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
     post:
       tags: [Deals]
       summary: Create a deal, optionally with cards
       operationId: createDeal
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
       requestBody:
         required: true
         content:
@@ -480,9 +484,15 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/DealResponse"
+                $ref: "#/components/schemas/DealDetailResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
   /api/cards/import-csv:
     post:
       tags: [ImportExport]
@@ -835,6 +845,13 @@ components:
         purchaseDate:
           type: string
           nullable: true
+        inputTotalCostCents:
+          type: integer
+          nullable: true
+          minimum: 0
+        archivedAt:
+          type: string
+          nullable: true
         rowVersion:
           type: integer
     CreateDealRequest:
@@ -916,6 +933,20 @@ components:
       properties:
         data:
           $ref: "#/components/schemas/Deal"
+    DealDetailResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [deal, cards]
+          properties:
+            deal:
+              $ref: "#/components/schemas/Deal"
+            cards:
+              type: array
+              items:
+                $ref: "#/components/schemas/Card"
     DealListResponse:
       allOf:
         - $ref: "#/components/schemas/ListEnvelope"
