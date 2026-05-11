@@ -167,4 +167,88 @@ describe('App', () => {
       expect(globalThis.fetch).toHaveBeenCalledWith('/api/deals', expect.any(Object));
     });
   });
+
+  it('creates a deal with a starter card from the dashboard', async () => {
+    globalThis.fetch
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            setupComplete: true,
+            sessionValid: true,
+            dekLoaded: true,
+            csrfToken: 'csrf_ready',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            data: {
+              deal: {
+                id: 10,
+                name: 'Staples promo',
+                source: 'Staples',
+                inputTotalCostCents: 4500,
+                rowVersion: 1,
+              },
+              cards: [
+                {
+                  id: 11,
+                  dealId: 10,
+                  brand: 'Target',
+                  status: 'available',
+                  faceValueCents: 5000,
+                  remainingBalanceCents: 5000,
+                  purchaseCostCents: 4500,
+                  cardNumberLast4: '1111',
+                },
+              ],
+            },
+          },
+          201,
+        ),
+      );
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByRole('heading', { name: /dashboard/i });
+    await user.click(screen.getByRole('button', { name: /add deal/i }));
+
+    expect(screen.getByRole('heading', { name: /^add deal$/i })).toBeInTheDocument();
+    await user.type(screen.getByLabelText(/^deal name$/i), 'Staples promo');
+    await user.type(screen.getByLabelText(/^source$/i), 'Staples');
+    await user.type(screen.getByLabelText(/^total cost$/i), '45.00');
+    await user.type(screen.getByLabelText(/^card brand$/i), 'Target');
+    await user.type(screen.getByLabelText(/^face value$/i), '50.00');
+    await user.type(screen.getByLabelText(/^card number$/i), '4111 1111 1111 1111');
+    await user.click(screen.getByRole('button', { name: /^create deal$/i }));
+
+    await screen.findByText(/staples promo/i);
+    expect(screen.getByText(/target/i)).toBeInTheDocument();
+    expect(globalThis.fetch).toHaveBeenLastCalledWith(
+      '/api/deals',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          name: 'Staples promo',
+          source: 'Staples',
+          totalCostCents: 4500,
+          cards: [
+            {
+              brand: 'Target',
+              cardType: 'merchant',
+              faceValueCents: 5000,
+              cardNumber: '4111 1111 1111 1111',
+            },
+          ],
+        }),
+        headers: expect.objectContaining({
+          'X-CSRF-Token': 'csrf_ready',
+        }),
+      }),
+    );
+  });
 });

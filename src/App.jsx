@@ -11,6 +11,7 @@ import {
   RefreshCw,
   ShieldCheck,
   Tag,
+  X,
 } from 'lucide-react';
 
 const navItems = [
@@ -69,6 +70,19 @@ function formatMoney(cents = 0) {
 
 function statusText(status) {
   return statusLabels[status] || status;
+}
+
+function dollarsToCents(value) {
+  if (!value) {
+    return undefined;
+  }
+
+  const normalized = String(value).replace(/[$,]/g, '').trim();
+  if (!normalized) {
+    return undefined;
+  }
+
+  return Math.round(Number(normalized) * 100);
 }
 
 function FieldError({ message }) {
@@ -315,8 +329,133 @@ function DealsTable({ deals }) {
   );
 }
 
-function WorkSurface({ cards, deals, loading, onRefresh, onLogout }) {
+function AddDealPanel({ onClose, onCreateDeal }) {
+  const [form, setForm] = useState({
+    name: '',
+    source: '',
+    totalCost: '',
+    cardBrand: '',
+    faceValue: '',
+    cardNumber: '',
+  });
+  const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  function updateField(field, value) {
+    setForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  }
+
+  async function submitDeal(event) {
+    event.preventDefault();
+    setError('');
+
+    const totalCostCents = dollarsToCents(form.totalCost);
+    const faceValueCents = dollarsToCents(form.faceValue);
+
+    if (!form.name.trim() || !form.cardBrand.trim() || !faceValueCents) {
+      setError('Deal name, card brand, and face value are required.');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await onCreateDeal({
+        name: form.name.trim(),
+        ...(form.source.trim() ? { source: form.source.trim() } : {}),
+        ...(totalCostCents !== undefined ? { totalCostCents } : {}),
+        cards: [
+          {
+            brand: form.cardBrand.trim(),
+            cardType: 'merchant',
+            faceValueCents,
+            ...(form.cardNumber.trim() ? { cardNumber: form.cardNumber.trim() } : {}),
+          },
+        ],
+      });
+      onClose();
+    } catch (caught) {
+      setError(caught.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <section className="slide-panel" role="dialog" aria-modal="true" aria-labelledby="add-deal-title">
+        <div className="panel-heading">
+          <div>
+            <p className="eyebrow">Acquisition</p>
+            <h2 id="add-deal-title">Add deal</h2>
+          </div>
+          <button type="button" className="icon-button" aria-label="Close add deal" onClick={onClose}>
+            <X aria-hidden="true" size={18} />
+          </button>
+        </div>
+        <form className="panel-form" onSubmit={submitDeal}>
+          <label>
+            <span>Deal name</span>
+            <input value={form.name} onChange={(event) => updateField('name', event.target.value)} required />
+          </label>
+          <label>
+            <span>Source</span>
+            <input value={form.source} onChange={(event) => updateField('source', event.target.value)} />
+          </label>
+          <label>
+            <span>Total cost</span>
+            <input
+              inputMode="decimal"
+              placeholder="45.00"
+              value={form.totalCost}
+              onChange={(event) => updateField('totalCost', event.target.value)}
+            />
+          </label>
+          <div className="form-divider" />
+          <label>
+            <span>Card brand</span>
+            <input value={form.cardBrand} onChange={(event) => updateField('cardBrand', event.target.value)} required />
+          </label>
+          <label>
+            <span>Face value</span>
+            <input
+              inputMode="decimal"
+              placeholder="50.00"
+              value={form.faceValue}
+              onChange={(event) => updateField('faceValue', event.target.value)}
+              required
+            />
+          </label>
+          <label>
+            <span>Card number</span>
+            <input
+              className="mono"
+              inputMode="numeric"
+              value={form.cardNumber}
+              onChange={(event) => updateField('cardNumber', event.target.value)}
+            />
+          </label>
+          <FieldError message={error} />
+          <div className="panel-actions">
+            <button type="button" className="secondary-action" onClick={onClose}>
+              Cancel
+            </button>
+            <button type="submit" className="primary-action" disabled={submitting}>
+              <Plus aria-hidden="true" size={17} />
+              {submitting ? 'Creating...' : 'Create deal'}
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
+  );
+}
+
+function WorkSurface({ cards, deals, loading, onRefresh, onLogout, onCreateDeal }) {
   const [activeView, setActiveView] = useState('dashboard');
+  const [showAddDeal, setShowAddDeal] = useState(false);
   const activeRemaining = cards
     .filter((card) => ['available', 'reserved', 'in_use'].includes(card.status))
     .reduce((sum, card) => sum + card.remainingBalanceCents, 0);
@@ -379,7 +518,7 @@ function WorkSurface({ cards, deals, loading, onRefresh, onLogout }) {
               <FilePlus2 aria-hidden="true" size={17} />
               Import
             </button>
-            <button type="button" className="primary-action compact">
+            <button type="button" className="primary-action compact" onClick={() => setShowAddDeal(true)}>
               <Plus aria-hidden="true" size={17} />
               Add Deal
             </button>
@@ -436,6 +575,15 @@ function WorkSurface({ cards, deals, loading, onRefresh, onLogout }) {
           </section>
         ) : null}
       </main>
+      {showAddDeal ? (
+        <AddDealPanel
+          onClose={() => setShowAddDeal(false)}
+          onCreateDeal={async (payload) => {
+            await onCreateDeal(payload);
+            setActiveView('dashboard');
+          }}
+        />
+      ) : null}
     </div>
   );
 }
@@ -525,6 +673,19 @@ export default function App() {
     setDeals([]);
   }
 
+  async function handleCreateDeal(payload) {
+    const response = await apiFetch('/api/deals', {
+      method: 'POST',
+      body: payload,
+      csrfToken: auth.csrfToken,
+    });
+    setDeals((current) => [response.data.deal, ...current.filter((deal) => deal.id !== response.data.deal.id)]);
+    setCards((current) => [
+      ...response.data.cards,
+      ...current.filter((card) => !response.data.cards.some((created) => created.id === card.id)),
+    ]);
+  }
+
   if (loading) {
     return (
       <main className="auth-layout">
@@ -568,6 +729,7 @@ export default function App() {
       loading={inventoryLoading}
       onRefresh={loadInventory}
       onLogout={handleLogout}
+      onCreateDeal={handleCreateDeal}
     />
   );
 }
