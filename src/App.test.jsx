@@ -281,6 +281,71 @@ describe('App', () => {
     );
   });
 
+  it('exports plaintext JSON from the backup view with confirmation controls', async () => {
+    const originalCreateObjectURL = globalThis.URL.createObjectURL;
+    const originalRevokeObjectURL = globalThis.URL.revokeObjectURL;
+    globalThis.URL.createObjectURL = undefined;
+    globalThis.URL.revokeObjectURL = undefined;
+    globalThis.fetch
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            setupComplete: true,
+            sessionValid: true,
+            dekLoaded: true,
+            csrfToken: 'csrf_ready',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            schemaVersion: 1,
+            exportType: 'plaintext_json',
+            exportedAt: '2026-05-11T17:30:00.000Z',
+            warning: 'This plaintext export contains spendable credentials.',
+            cards: [],
+            deals: [],
+            transactions: [],
+            usages: [],
+          },
+        }),
+      );
+
+    try {
+      const user = userEvent.setup();
+      render(<App />);
+
+      await screen.findByRole('heading', { name: /dashboard/i });
+      await user.click(screen.getByRole('button', { name: /^backup$/i }));
+      await user.type(screen.getByLabelText(/^fresh unlock secret$/i), 'a strong unlock phrase');
+      await user.type(screen.getByLabelText(/^type EXPORT to confirm$/i), 'EXPORT');
+      await user.click(screen.getByRole('checkbox', { name: /contains spendable credentials/i }));
+      await user.click(screen.getByRole('button', { name: /^export plaintext json$/i }));
+
+      expect(await screen.findByText(/plaintext export prepared/i)).toBeInTheDocument();
+      expect(globalThis.fetch).toHaveBeenLastCalledWith(
+        '/api/backup/export',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({
+            unlockSecret: 'a strong unlock phrase',
+            confirmation: 'EXPORT',
+            acknowledgePlaintext: true,
+          }),
+          headers: expect.objectContaining({
+            'X-CSRF-Token': 'csrf_ready',
+          }),
+        }),
+      );
+    } finally {
+      globalThis.URL.createObjectURL = originalCreateObjectURL;
+      globalThis.URL.revokeObjectURL = originalRevokeObjectURL;
+    }
+  });
+
   it('creates a deal with a starter card from the dashboard', async () => {
     globalThis.fetch
       .mockResolvedValueOnce(

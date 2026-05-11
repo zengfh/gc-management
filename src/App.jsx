@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  AlertTriangle,
   CircleDollarSign,
   CreditCard,
+  DatabaseBackup,
+  Download,
   FilePlus2,
   LayoutDashboard,
   Lock,
@@ -20,6 +23,7 @@ const navItems = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'cards', label: 'Cards', icon: CreditCard },
   { id: 'deals', label: 'Deals', icon: Tag },
+  { id: 'backup', label: 'Backup', icon: DatabaseBackup },
   { id: 'audit', label: 'Audit Log', icon: ScrollText },
 ];
 
@@ -110,6 +114,9 @@ function viewTitle(view) {
   if (view === 'audit') {
     return 'Audit Log';
   }
+  if (view === 'backup') {
+    return 'Backup';
+  }
   return 'Deals';
 }
 
@@ -132,6 +139,24 @@ function dollarsToCents(value) {
 
 function criteriaValue(value) {
   return value == null ? '' : String(value).trim();
+}
+
+function downloadJsonFile(filename, payload) {
+  if (typeof document === 'undefined' || !globalThis.URL?.createObjectURL) {
+    return;
+  }
+
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {
+    type: 'application/json',
+  });
+  const url = globalThis.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  globalThis.URL.revokeObjectURL?.(url);
 }
 
 function FieldError({ message }) {
@@ -640,6 +665,82 @@ function AuditFilterForm({ onLoadAudit }) {
         </button>
       </div>
       <FieldError message={error} />
+    </form>
+  );
+}
+
+function BackupExportForm({ onExportPlaintext }) {
+  const [unlockSecret, setUnlockSecret] = useState('');
+  const [confirmation, setConfirmation] = useState('');
+  const [acknowledgePlaintext, setAcknowledgePlaintext] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  async function submitExport(event) {
+    event.preventDefault();
+    setError('');
+    setSuccess('');
+    setSubmitting(true);
+    try {
+      const response = await onExportPlaintext({
+        unlockSecret,
+        confirmation,
+        acknowledgePlaintext,
+      });
+      const payload = response.data;
+      const exportedDate = (payload?.exportedAt || new Date().toISOString()).slice(0, 10);
+      downloadJsonFile(`gift-card-plaintext-export-${exportedDate}.json`, payload);
+      setUnlockSecret('');
+      setConfirmation('');
+      setAcknowledgePlaintext(false);
+      setSuccess(`Plaintext export prepared with ${payload?.cards?.length || 0} cards.`);
+    } catch (caught) {
+      setError(caught.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <form className="backup-export-form" onSubmit={submitExport}>
+      <div className="warning-copy danger-warning">
+        <AlertTriangle aria-hidden="true" size={18} />
+        <span>This export contains full card numbers and PINs. Anyone with the file may be able to spend your cards.</span>
+      </div>
+      <label>
+        <span>Fresh unlock secret</span>
+        <input
+          type="password"
+          value={unlockSecret}
+          autoComplete="current-password"
+          onChange={(event) => setUnlockSecret(event.target.value)}
+        />
+      </label>
+      <label>
+        <span>Type EXPORT to confirm</span>
+        <input
+          value={confirmation}
+          autoCapitalize="characters"
+          onChange={(event) => setConfirmation(event.target.value)}
+        />
+      </label>
+      <label className="check-row backup-check">
+        <input
+          type="checkbox"
+          checked={acknowledgePlaintext}
+          onChange={(event) => setAcknowledgePlaintext(event.target.checked)}
+        />
+        <span>I understand this file contains spendable credentials.</span>
+      </label>
+      <div className="backup-actions">
+        <button type="submit" className="primary-action danger" disabled={submitting}>
+          <Download aria-hidden="true" size={17} />
+          {submitting ? 'Exporting...' : 'Export plaintext JSON'}
+        </button>
+      </div>
+      <FieldError message={error} />
+      {success ? <p className="success-copy">{success}</p> : null}
     </form>
   );
 }
@@ -1722,6 +1823,7 @@ function WorkSurface({
   onRefresh,
   onLogout,
   onLoadAudit,
+  onExportPlaintext,
   onCreateDeal,
   onLoadDeals,
   onArchiveDeal,
@@ -2000,6 +2102,16 @@ function WorkSurface({
             <AuditTable events={auditEvents} />
           </section>
         ) : null}
+
+        {activeView === 'backup' ? (
+          <section className="content-section">
+            <div className="section-heading">
+              <h2>Plaintext JSON Export</h2>
+              <span>{cards.length} cards tracked</span>
+            </div>
+            <BackupExportForm onExportPlaintext={onExportPlaintext} />
+          </section>
+        ) : null}
       </main>
       {showAddDeal ? (
         <AddDealPanel
@@ -2200,6 +2312,14 @@ export default function App() {
     } finally {
       setAuditLoading(false);
     }
+  }
+
+  async function handleExportPlaintext(payload) {
+    return apiFetch('/api/backup/export', {
+      method: 'POST',
+      body: payload,
+      csrfToken: auth.csrfToken,
+    });
   }
 
   async function loadDeals({ includeArchived = false } = {}) {
@@ -2448,6 +2568,7 @@ export default function App() {
       onRefresh={loadInventory}
       onLogout={handleLogout}
       onLoadAudit={handleLoadAudit}
+      onExportPlaintext={handleExportPlaintext}
       onCreateDeal={handleCreateDeal}
       onLoadDeals={(includeArchived) => loadDeals({ includeArchived })}
       onArchiveDeal={(deal, includeArchived) =>

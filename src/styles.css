@@ -611,6 +611,58 @@ td {
   font-size: 0.86rem;
 }
 
+.danger-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  border-color: #fecdca;
+  background: #fffbfa;
+  color: #912018;
+  line-height: 1.45;
+}
+
+.backup-export-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  gap: 14px;
+  padding: 16px;
+}
+
+.backup-export-form label {
+  display: grid;
+  gap: 6px;
+  color: #1f2937;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.backup-export-form .danger-warning,
+.backup-export-form .backup-check,
+.backup-export-form .backup-actions,
+.backup-export-form .field-error,
+.backup-export-form .success-copy {
+  grid-column: 1 / -1;
+}
+
+.backup-check {
+  max-width: 620px;
+}
+
+.backup-actions {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.success-copy {
+  border: 1px solid #abefc6;
+  border-radius: 8px;
+  background: #ecfdf3;
+  color: #05603a;
+  padding: 10px 12px;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
 .form-divider {
   height: 1px;
   margin: 2px 0;
@@ -770,6 +822,10 @@ td {
   }
 
   .card-search {
+    grid-template-columns: 1fr;
+  }
+
+  .backup-export-form {
     grid-template-columns: 1fr;
   }
 
