@@ -14,6 +14,7 @@ import {
   RefreshCw,
   ScrollText,
   Search,
+  Settings,
   ShieldCheck,
   Tag,
   X,
@@ -25,6 +26,7 @@ const navItems = [
   { id: 'deals', label: 'Deals', icon: Tag },
   { id: 'backup', label: 'Backup', icon: DatabaseBackup },
   { id: 'audit', label: 'Audit Log', icon: ScrollText },
+  { id: 'settings', label: 'Settings', icon: Settings },
 ];
 
 const defaultPage = {
@@ -159,6 +161,9 @@ function viewTitle(view) {
   }
   if (view === 'backup') {
     return 'Backup';
+  }
+  if (view === 'settings') {
+    return 'Settings';
   }
   return 'Deals';
 }
@@ -1008,6 +1013,78 @@ function CsvImportPreviewForm({ onPreviewCsv, onConfirmCsv }) {
           ) : null}
         </div>
       ) : null}
+    </form>
+  );
+}
+
+function ChangeUnlockSecretForm({ onChangeUnlockSecret }) {
+  const [oldUnlockSecret, setOldUnlockSecret] = useState('');
+  const [newUnlockSecret, setNewUnlockSecret] = useState('');
+  const [confirmUnlockSecret, setConfirmUnlockSecret] = useState('');
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  async function submitChange(event) {
+    event.preventDefault();
+    setError('');
+    setSuccess('');
+    if (newUnlockSecret !== confirmUnlockSecret) {
+      setError('New unlock secrets do not match.');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await onChangeUnlockSecret({ oldUnlockSecret, newUnlockSecret });
+      setOldUnlockSecret('');
+      setNewUnlockSecret('');
+      setConfirmUnlockSecret('');
+      setSuccess('Unlock secret changed.');
+    } catch (caught) {
+      setError(caught.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <form className="settings-form" onSubmit={submitChange}>
+      <label>
+        <span>Current unlock secret</span>
+        <input
+          type="password"
+          value={oldUnlockSecret}
+          autoComplete="current-password"
+          onChange={(event) => setOldUnlockSecret(event.target.value)}
+        />
+      </label>
+      <label>
+        <span>New unlock secret</span>
+        <input
+          type="password"
+          value={newUnlockSecret}
+          autoComplete="new-password"
+          onChange={(event) => setNewUnlockSecret(event.target.value)}
+        />
+      </label>
+      <label>
+        <span>Confirm new unlock secret</span>
+        <input
+          type="password"
+          value={confirmUnlockSecret}
+          autoComplete="new-password"
+          onChange={(event) => setConfirmUnlockSecret(event.target.value)}
+        />
+      </label>
+      <div className="backup-actions">
+        <button type="submit" className="primary-action" disabled={submitting}>
+          <Lock aria-hidden="true" size={17} />
+          {submitting ? 'Changing...' : 'Change unlock secret'}
+        </button>
+      </div>
+      <FieldError message={error} />
+      {success ? <p className="success-copy">{success}</p> : null}
     </form>
   );
 }
@@ -2094,6 +2171,7 @@ function WorkSurface({
   onExportRawDatabase,
   onPreviewCsv,
   onConfirmCsv,
+  onChangeUnlockSecret,
   onCreateDeal,
   onLoadDeals,
   onArchiveDeal,
@@ -2395,6 +2473,21 @@ function WorkSurface({
             </div>
           </section>
         ) : null}
+
+        {activeView === 'settings' ? (
+          <section className="content-section">
+            <div className="section-heading">
+              <h2>Security Settings</h2>
+              <span>Local vault</span>
+            </div>
+            <div className="settings-stack">
+              <section className="backup-block">
+                <h3>Unlock Secret</h3>
+                <ChangeUnlockSecretForm onChangeUnlockSecret={onChangeUnlockSecret} />
+              </section>
+            </div>
+          </section>
+        ) : null}
       </main>
       {showAddDeal ? (
         <AddDealPanel
@@ -2636,6 +2729,14 @@ export default function App() {
       total: current.total + response.data.cards.length,
     }));
     return response;
+  }
+
+  async function handleChangeUnlockSecret(payload) {
+    return apiFetch('/api/auth/change-unlock-secret', {
+      method: 'POST',
+      body: payload,
+      csrfToken: auth.csrfToken,
+    });
   }
 
   async function loadDeals({ includeArchived = false } = {}) {
@@ -2888,6 +2989,7 @@ export default function App() {
       onExportRawDatabase={handleExportRawDatabase}
       onPreviewCsv={handlePreviewCsv}
       onConfirmCsv={handleConfirmCsv}
+      onChangeUnlockSecret={handleChangeUnlockSecret}
       onCreateDeal={handleCreateDeal}
       onLoadDeals={(includeArchived) => loadDeals({ includeArchived })}
       onArchiveDeal={(deal, includeArchived) =>

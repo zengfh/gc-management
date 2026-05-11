@@ -642,6 +642,33 @@ td {
   padding: 16px;
 }
 
+.settings-stack {
+  display: grid;
+  gap: 20px;
+  padding: 16px;
+}
+
+.settings-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(180px, 1fr));
+  gap: 14px;
+  padding-top: 12px;
+}
+
+.settings-form label {
+  display: grid;
+  gap: 6px;
+  color: #1f2937;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.settings-form .backup-actions,
+.settings-form .field-error,
+.settings-form .success-copy {
+  grid-column: 1 / -1;
+}
+
 .backup-block {
   display: grid;
   gap: 0;
@@ -888,6 +915,10 @@ td {
   }
 
   .backup-export-form {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-form {
     grid-template-columns: 1fr;
   }
 

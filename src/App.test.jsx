@@ -612,6 +612,48 @@ describe('App', () => {
     );
   });
 
+  it('changes the unlock secret from settings', async () => {
+    globalThis.fetch
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            setupComplete: true,
+            sessionValid: true,
+            dekLoaded: true,
+            csrfToken: 'csrf_ready',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(jsonResponse({ data: { changed: true } }));
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByRole('heading', { name: /dashboard/i });
+    await user.click(screen.getByRole('button', { name: /^settings$/i }));
+    await user.type(screen.getByLabelText(/^current unlock secret$/i), 'a strong unlock phrase');
+    await user.type(screen.getByLabelText(/^new unlock secret$/i), 'a better unlock phrase');
+    await user.type(screen.getByLabelText(/^confirm new unlock secret$/i), 'a better unlock phrase');
+    await user.click(screen.getByRole('button', { name: /^change unlock secret$/i }));
+
+    expect(await screen.findByText(/unlock secret changed/i)).toBeInTheDocument();
+    expect(globalThis.fetch).toHaveBeenLastCalledWith(
+      '/api/auth/change-unlock-secret',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          oldUnlockSecret: 'a strong unlock phrase',
+          newUnlockSecret: 'a better unlock phrase',
+        }),
+        headers: expect.objectContaining({
+          'X-CSRF-Token': 'csrf_ready',
+        }),
+      }),
+    );
+  });
+
   it('creates a deal with a starter card from the dashboard', async () => {
     globalThis.fetch
       .mockResolvedValueOnce(
