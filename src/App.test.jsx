@@ -612,6 +612,124 @@ describe('App', () => {
     );
   });
 
+  it('imports a plaintext JSON backup from the backup view without rendering secrets', async () => {
+    const payload = {
+      schemaVersion: 1,
+      exportType: 'plaintext_json',
+      appSettings: [],
+      deals: [],
+      cards: [
+        {
+          id: 1,
+          brand: 'Target',
+          cardType: 'merchant',
+          faceValueCents: 5000,
+          remainingBalanceCents: 5000,
+          purchaseCostCents: 4500,
+          cardNumber: '4111111111111111',
+          pin: '1234',
+          billingZip: '94105',
+          status: 'available',
+        },
+      ],
+      transactions: [],
+      usages: [],
+    };
+
+    globalThis.fetch
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            setupComplete: true,
+            sessionValid: true,
+            dekLoaded: true,
+            csrfToken: 'csrf_ready',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            data: {
+              summary: {
+                mode: 'merge',
+                backupCreated: false,
+                dealCount: 0,
+                cardCount: 1,
+                transactionCount: 0,
+                usageCount: 0,
+                settingCount: 0,
+              },
+              importJob: {
+                id: 5,
+                type: 'json_merge',
+                status: 'confirmed',
+                rowCount: 1,
+                validCount: 1,
+                invalidCount: 0,
+              },
+            },
+          },
+          201,
+        ),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            {
+              id: 8,
+              brand: 'Target',
+              cardType: 'merchant',
+              status: 'available',
+              faceValueCents: 5000,
+              remainingBalanceCents: 5000,
+              purchaseCostCents: 4500,
+              cardNumberLast4: '1111',
+            },
+          ],
+          page: { total: 1, limit: 50, offset: 0, hasMore: false },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }));
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByRole('heading', { name: /dashboard/i });
+    await user.click(screen.getByRole('button', { name: /^backup$/i }));
+    await user.upload(
+      screen.getByLabelText(/^plaintext json backup file$/i),
+      new File([JSON.stringify(payload)], 'gift-card-plaintext-export-2026-05-11.json', {
+        type: 'application/json',
+      }),
+    );
+    await user.type(screen.getByLabelText(/^json import unlock secret$/i), 'a strong unlock phrase');
+    await user.click(screen.getByRole('button', { name: /^import json backup$/i }));
+
+    expect(await screen.findByText(/json merge import completed: 1 card, 0 deals/i)).toBeInTheDocument();
+    expect(screen.getByText(/1 cards tracked/i)).toBeInTheDocument();
+    expect(screen.queryByText(/4111111111111111/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/1234/i)).not.toBeInTheDocument();
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(
+      4,
+      '/api/backup/import',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          unlockSecret: 'a strong unlock phrase',
+          mode: 'merge',
+          confirmation: '',
+          payload,
+        }),
+        headers: expect.objectContaining({
+          'X-CSRF-Token': 'csrf_ready',
+        }),
+      }),
+    );
+  });
+
   it('changes the unlock secret from settings', async () => {
     globalThis.fetch
       .mockResolvedValueOnce(

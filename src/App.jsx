@@ -1019,6 +1019,120 @@ function CsvImportPreviewForm({ onPreviewCsv, onConfirmCsv }) {
   );
 }
 
+function PlaintextJsonImportForm({ onImportBackup }) {
+  const [payload, setPayload] = useState(null);
+  const [fileName, setFileName] = useState('');
+  const [unlockSecret, setUnlockSecret] = useState('');
+  const [mode, setMode] = useState('merge');
+  const [confirmation, setConfirmation] = useState('');
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  async function updateFile(event) {
+    const file = event.target.files?.[0];
+    setPayload(null);
+    setFileName('');
+    setError('');
+    setSuccess('');
+    if (!file) {
+      return;
+    }
+
+    setFileName(file.name);
+    try {
+      const text = await readFileText(file);
+      setPayload(JSON.parse(text));
+    } catch {
+      setPayload(null);
+      setError('Choose a valid plaintext JSON backup file.');
+    }
+  }
+
+  async function submitImport(event) {
+    event.preventDefault();
+    setError('');
+    setSuccess('');
+    if (!payload) {
+      setError('Choose a plaintext JSON backup file first.');
+      return;
+    }
+    if (mode === 'replace' && confirmation !== 'REPLACE') {
+      setError('Type REPLACE to confirm destructive import.');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const response = await onImportBackup({
+        unlockSecret,
+        mode,
+        confirmation,
+        payload,
+      });
+      const summary = response.data.summary;
+      setUnlockSecret('');
+      setConfirmation('');
+      setSuccess(
+        `JSON ${summary.mode} import completed: ${summary.cardCount} ${
+          summary.cardCount === 1 ? 'card' : 'cards'
+        }, ${summary.dealCount} ${summary.dealCount === 1 ? 'deal' : 'deals'}.`,
+      );
+    } catch (caught) {
+      setError(caught.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <form className="backup-export-form json-import-form" onSubmit={submitImport}>
+      <div className="warning-copy">
+        Merge adds backup records to this vault. Replace removes current cards and deals after creating a server-side database backup.
+      </div>
+      <label>
+        <span>Plaintext JSON backup file</span>
+        <input type="file" accept=".json,application/json" onChange={updateFile} />
+      </label>
+      <label>
+        <span>Import mode</span>
+        <select value={mode} onChange={(event) => setMode(event.target.value)}>
+          <option value="merge">Merge into current vault</option>
+          <option value="replace">Replace current cards and deals</option>
+        </select>
+      </label>
+      <label>
+        <span>JSON import unlock secret</span>
+        <input
+          type="password"
+          value={unlockSecret}
+          autoComplete="current-password"
+          onChange={(event) => setUnlockSecret(event.target.value)}
+        />
+      </label>
+      {mode === 'replace' ? (
+        <label>
+          <span>Type REPLACE to confirm</span>
+          <input
+            value={confirmation}
+            autoCapitalize="characters"
+            onChange={(event) => setConfirmation(event.target.value)}
+          />
+        </label>
+      ) : null}
+      <div className="backup-actions">
+        <button type="submit" className={mode === 'replace' ? 'primary-action danger' : 'primary-action'} disabled={submitting}>
+          <FilePlus2 aria-hidden="true" size={17} />
+          {submitting ? 'Importing...' : 'Import JSON backup'}
+        </button>
+      </div>
+      {fileName ? <p className="muted-text import-file-name">{fileName}</p> : null}
+      <FieldError message={error} />
+      {success ? <p className="success-copy">{success}</p> : null}
+    </form>
+  );
+}
+
 function ChangeUnlockSecretForm({ onChangeUnlockSecret }) {
   const [oldUnlockSecret, setOldUnlockSecret] = useState('');
   const [newUnlockSecret, setNewUnlockSecret] = useState('');
@@ -2273,6 +2387,7 @@ function WorkSurface({
   onExportRawDatabase,
   onPreviewCsv,
   onConfirmCsv,
+  onImportBackup,
   onChangeUnlockSecret,
   onCreateDeal,
   onLoadDeals,
@@ -2566,6 +2681,10 @@ function WorkSurface({
                 <CsvImportPreviewForm onPreviewCsv={onPreviewCsv} onConfirmCsv={onConfirmCsv} />
               </section>
               <section className="backup-block">
+                <h3>Plaintext JSON Import</h3>
+                <PlaintextJsonImportForm onImportBackup={onImportBackup} />
+              </section>
+              <section className="backup-block">
                 <h3>Plaintext JSON Export</h3>
                 <BackupExportForm onExportPlaintext={onExportPlaintext} />
               </section>
@@ -2843,6 +2962,16 @@ export default function App() {
     return response;
   }
 
+  async function handleImportBackup(payload) {
+    const response = await apiFetch('/api/backup/import', {
+      method: 'POST',
+      body: payload,
+      csrfToken: auth.csrfToken,
+    });
+    await loadInventory();
+    return response;
+  }
+
   async function handleChangeUnlockSecret(payload) {
     return apiFetch('/api/auth/change-unlock-secret', {
       method: 'POST',
@@ -3101,6 +3230,7 @@ export default function App() {
       onExportRawDatabase={handleExportRawDatabase}
       onPreviewCsv={handlePreviewCsv}
       onConfirmCsv={handleConfirmCsv}
+      onImportBackup={handleImportBackup}
       onChangeUnlockSecret={handleChangeUnlockSecret}
       onCreateDeal={handleCreateDeal}
       onLoadDeals={(includeArchived) => loadDeals({ includeArchived })}
