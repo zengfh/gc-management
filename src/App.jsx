@@ -1443,7 +1443,11 @@ function CardDetailPanel({ detailState, onClose, onUndoUsage, onRevealCredential
     }
 
     window.addEventListener('blur', hideCredentials);
-    return () => window.removeEventListener('blur', hideCredentials);
+    document.addEventListener('visibilitychange', hideCredentials);
+    return () => {
+      window.removeEventListener('blur', hideCredentials);
+      document.removeEventListener('visibilitychange', hideCredentials);
+    };
   }, []);
 
   function startUndoUsage(usage) {

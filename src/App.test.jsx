@@ -860,6 +860,11 @@ describe('App', () => {
     });
     expect(await screen.findByText(/card number copied/i)).toBeInTheDocument();
     expect(screen.queryByText(/4111111111111111 copied/i)).not.toBeInTheDocument();
+    document.dispatchEvent(new Event('visibilitychange'));
+    await waitFor(() => {
+      expect(screen.queryByText('4111111111111111')).not.toBeInTheDocument();
+    });
+    expect(screen.queryByText('1234')).not.toBeInTheDocument();
     expect(globalThis.fetch).toHaveBeenLastCalledWith(
       '/api/cards/1/reveal',
       expect.objectContaining({
