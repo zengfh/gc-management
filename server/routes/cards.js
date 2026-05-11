@@ -71,6 +71,13 @@ const useCardSchema = z
   })
   .strict();
 
+const undoUsageSchema = z
+  .object({
+    usageId: z.number().int().positive(),
+    reason: z.string().trim().min(1),
+  })
+  .strict();
+
 const voidCardSchema = z
   .object({
     reason: z.string().trim().nullable().optional(),
@@ -678,6 +685,88 @@ export function createCardsRouter({ db }) {
           newValue: mutationAuditValue(after),
           metadata: {
             amountCents: body.amountCents,
+          },
+          timestamp,
+        });
+      })();
+
+      res.json(objectResponse(cardDetail(req.auth, cardId)));
+    }),
+  );
+
+  router.post(
+    '/:cardId/undo-usage',
+    asyncHandler(async (req, res) => {
+      const cardId = parsePositiveInt(req.params.cardId, null, { min: 1 });
+      const body = validateBody(undoUsageSchema, req.body);
+      const timestamp = nowIso();
+
+      db.transaction(() => {
+        const before = loadCard(req.auth, cardId);
+        const usage = db
+          .prepare('SELECT * FROM usages WHERE accountId = ? AND cardId = ? AND id = ?')
+          .get(req.auth.accountId, cardId, body.usageId);
+
+        if (!usage) {
+          throw notFound('USAGE_NOT_FOUND', 'Usage not found.');
+        }
+
+        if (usage.isWriteOff) {
+          throw conflict('WRITE_OFF_USAGE_NOT_REVERSIBLE', 'Write-off usages cannot be undone.');
+        }
+
+        if (usage.isReversed) {
+          throw conflict('USAGE_ALREADY_REVERSED', 'Usage has already been reversed.');
+        }
+
+        const transition = transitionFor('undo-usage', before.status);
+
+        db.prepare(
+          `UPDATE usages
+           SET isReversed = 1,
+               reversalReason = ?,
+               reversedAt = ?
+           WHERE id = ? AND accountId = ? AND cardId = ?`,
+        ).run(body.reason, timestamp, usage.id, req.auth.accountId, cardId);
+
+        const activeUsageTotal =
+          db
+            .prepare(
+              `SELECT COALESCE(SUM(amountCents), 0) AS amountCents
+               FROM usages
+               WHERE accountId = ?
+                 AND cardId = ?
+                 AND isReversed = 0
+                 AND isWriteOff = 0`,
+            )
+            .get(req.auth.accountId, cardId).amountCents || 0;
+        const remainingBalanceCents = before.faceValueCents - activeUsageTotal;
+        const nextStatus =
+          activeUsageTotal === 0 ? 'available' : remainingBalanceCents === 0 ? 'used_up' : 'in_use';
+
+        db.prepare(
+          `UPDATE cards
+           SET status = ?,
+               remainingBalanceCents = ?,
+               updatedByUserId = ?,
+               updatedAt = ?,
+               rowVersion = rowVersion + 1
+           WHERE id = ? AND accountId = ?`,
+        ).run(nextStatus, remainingBalanceCents, req.auth.userId, timestamp, cardId, req.auth.accountId);
+
+        const after = loadCard(req.auth, cardId);
+        insertAuditEvent(db, {
+          accountId: req.auth.accountId,
+          userId: req.auth.userId,
+          requestId: req.requestId,
+          entityType: 'card',
+          entityId: cardId,
+          action: transition.action,
+          oldValue: mutationAuditValue(before),
+          newValue: mutationAuditValue(after),
+          metadata: {
+            usageId: usage.id,
+            reason: body.reason,
           },
           timestamp,
         });

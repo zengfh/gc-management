@@ -344,4 +344,79 @@ describe('card routes', () => {
       .map((row) => row.action);
     expect(actions).toEqual(['card.create', 'card.use', 'card.void']);
   }, 45_000);
+
+  it('undoes a non-write-off usage and recalculates card balance and status', async () => {
+    const csrfToken = await setupOwner();
+    const createResponse = await postWithCsrf('/api/cards', csrfToken).send({
+      cards: [sampleCard()],
+    });
+    const cardId = createResponse.body.data[0].id;
+
+    await postWithCsrf(`/api/cards/${cardId}/use`, csrfToken).send({
+      amountCents: 2_000,
+      merchant: 'Target',
+    });
+    const finalUse = await postWithCsrf(`/api/cards/${cardId}/use`, csrfToken).send({
+      amountCents: 3_000,
+      merchant: 'Target',
+    });
+    const usageId = finalUse.body.data.usages[0].id;
+    expect(finalUse.body.data.card.status).toBe('used_up');
+
+    const missingReason = await postWithCsrf(`/api/cards/${cardId}/undo-usage`, csrfToken).send({
+      usageId,
+    });
+    expect(missingReason.status).toBe(400);
+
+    const undoResponse = await postWithCsrf(`/api/cards/${cardId}/undo-usage`, csrfToken).send({
+      usageId,
+      reason: 'Mistyped amount',
+    });
+    expect(undoResponse.status).toBe(200);
+    expect(undoResponse.body.data.card).toMatchObject({
+      id: cardId,
+      status: 'in_use',
+      remainingBalanceCents: 3_000,
+      rowVersion: 4,
+    });
+    expect(undoResponse.body.data.usages[0]).toMatchObject({
+      id: usageId,
+      amountCents: 3_000,
+      isReversed: 1,
+      reversalReason: 'Mistyped amount',
+    });
+
+    const duplicateUndo = await postWithCsrf(`/api/cards/${cardId}/undo-usage`, csrfToken).send({
+      usageId,
+      reason: 'Try again',
+    });
+    expect(duplicateUndo.status).toBe(409);
+    expect(duplicateUndo.body.error.code).toBe('USAGE_ALREADY_REVERSED');
+
+    const actions = db
+      .prepare("SELECT action FROM audit_log WHERE entityType = 'card' AND entityId = ? ORDER BY id")
+      .all(cardId)
+      .map((row) => row.action);
+    expect(actions).toEqual(['card.create', 'card.use', 'card.use', 'card.undo_usage']);
+  }, 45_000);
+
+  it('rejects undoing a void write-off usage', async () => {
+    const csrfToken = await setupOwner();
+    const createResponse = await postWithCsrf('/api/cards', csrfToken).send({
+      cards: [sampleCard()],
+    });
+    const cardId = createResponse.body.data[0].id;
+
+    const voidResponse = await postWithCsrf(`/api/cards/${cardId}/void`, csrfToken).send({
+      reason: 'Card lost',
+    });
+    const writeOffUsageId = voidResponse.body.data.usages[0].id;
+
+    const undoWriteOff = await postWithCsrf(`/api/cards/${cardId}/undo-usage`, csrfToken).send({
+      usageId: writeOffUsageId,
+      reason: 'Try to restore',
+    });
+    expect(undoWriteOff.status).toBe(409);
+    expect(undoWriteOff.body.error.code).toBe('WRITE_OFF_USAGE_NOT_REVERSIBLE');
+  }, 45_000);
 });

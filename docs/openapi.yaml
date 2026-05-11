@@ -371,6 +371,38 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "409":
           $ref: "#/components/responses/Conflict"
+  /api/cards/{cardId}/undo-usage:
+    post:
+      tags: [Cards]
+      summary: Undo a non-write-off card usage
+      operationId: undoUsageCard
+      parameters:
+        - $ref: "#/components/parameters/CardId"
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UndoUsageRequest"
+      responses:
+        "200":
+          description: Usage reversed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CardDetailResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
   /api/cards/{cardId}/void:
     post:
       tags: [Cards]
@@ -755,6 +787,16 @@ components:
           type: string
         usageDate:
           type: string
+    UndoUsageRequest:
+      type: object
+      required: [usageId, reason]
+      properties:
+        usageId:
+          type: integer
+          minimum: 1
+        reason:
+          type: string
+          minLength: 1
     VoidCardRequest:
       type: object
       properties:
