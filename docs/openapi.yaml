@@ -493,6 +493,66 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "409":
           $ref: "#/components/responses/Conflict"
+  /api/deals/{dealId}:
+    parameters:
+      - $ref: "#/components/parameters/DealId"
+    get:
+      tags: [Deals]
+      summary: Deal detail with associated cards
+      operationId: getDeal
+      responses:
+        "200":
+          description: Deal detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DealDetailResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/deals/{dealId}/archive:
+    post:
+      tags: [Deals]
+      summary: Archive a deal without removing cards
+      operationId: archiveDeal
+      parameters:
+        - $ref: "#/components/parameters/DealId"
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "200":
+          description: Deal archived
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DealDetailResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/deals/{dealId}/unarchive:
+    post:
+      tags: [Deals]
+      summary: Restore an archived deal to the default list
+      operationId: unarchiveDeal
+      parameters:
+        - $ref: "#/components/parameters/DealId"
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "200":
+          description: Deal unarchived
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DealDetailResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /api/cards/import-csv:
     post:
       tags: [ImportExport]
@@ -536,6 +596,13 @@ components:
   parameters:
     CardId:
       name: cardId
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+    DealId:
+      name: dealId
       in: path
       required: true
       schema:

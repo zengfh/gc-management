@@ -137,4 +137,50 @@ describe('deal routes', () => {
     expect(excessiveExplicitCost.status).toBe(400);
     expect(excessiveExplicitCost.body.error.code).toBe('COST_ALLOCATION_INVALID');
   }, 45_000);
+
+  it('lists deal detail and archives or unarchives without removing cards', async () => {
+    const csrfToken = await setupOwner();
+    const createResponse = await postWithCsrf('/api/deals', csrfToken).send({
+      name: 'Archive me',
+      totalCostCents: 5_000,
+      cards: [card('4111 1111 1111 1111')],
+    });
+    const dealId = createResponse.body.data.deal.id;
+    const cardId = createResponse.body.data.cards[0].id;
+
+    const listResponse = await agent.get('/api/deals');
+    expect(listResponse.status).toBe(200);
+    expect(listResponse.body.data.map((deal) => deal.id)).toEqual([dealId]);
+
+    const detailResponse = await agent.get(`/api/deals/${dealId}`);
+    expect(detailResponse.status).toBe(200);
+    expect(detailResponse.body.data.deal.id).toBe(dealId);
+    expect(detailResponse.body.data.cards.map((dealCard) => dealCard.id)).toEqual([cardId]);
+
+    const archiveResponse = await postWithCsrf(`/api/deals/${dealId}/archive`, csrfToken).send({});
+    expect(archiveResponse.status).toBe(200);
+    expect(archiveResponse.body.data.deal.id).toBe(dealId);
+    expect(archiveResponse.body.data.deal.archivedAt).toEqual(expect.any(String));
+
+    const hiddenList = await agent.get('/api/deals');
+    expect(hiddenList.status).toBe(200);
+    expect(hiddenList.body.data).toEqual([]);
+
+    const cardDetail = await agent.get(`/api/cards/${cardId}`);
+    expect(cardDetail.status).toBe(200);
+    expect(cardDetail.body.data.card.dealId).toBe(dealId);
+
+    const unarchiveResponse = await postWithCsrf(`/api/deals/${dealId}/unarchive`, csrfToken).send({});
+    expect(unarchiveResponse.status).toBe(200);
+    expect(unarchiveResponse.body.data.deal.archivedAt).toBeNull();
+
+    const visibleList = await agent.get('/api/deals');
+    expect(visibleList.body.data.map((deal) => deal.id)).toEqual([dealId]);
+
+    const actions = db
+      .prepare("SELECT action FROM audit_log WHERE entityType = 'deal' AND entityId = ? ORDER BY id")
+      .all(dealId)
+      .map((row) => row.action);
+    expect(actions).toEqual(['deal.create', 'deal.archive', 'deal.unarchive']);
+  }, 45_000);
 });

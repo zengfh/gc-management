@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { insertAuditEvent } from '../audit/index.js';
 import { requireUnlockedSession } from '../auth/requireAuth.js';
-import { asyncHandler, badRequest, conflict } from '../http/errors.js';
+import { asyncHandler, badRequest, conflict, notFound } from '../http/errors.js';
 import {
   cardNumberHash as hashCardNumber,
   cardNumberLast4,
@@ -235,6 +235,17 @@ function createCardAuditValue(card) {
   };
 }
 
+function dealAuditValue(deal) {
+  return {
+    name: deal.name,
+    source: deal.source,
+    purchaseDate: deal.purchaseDate,
+    inputTotalCostCents: deal.inputTotalCostCents,
+    archivedAt: deal.archivedAt,
+    rowVersion: deal.rowVersion,
+  };
+}
+
 function translateSqliteError(error) {
   if (error.code === 'SQLITE_CONSTRAINT_UNIQUE' || error.message?.includes('idx_cards_active_dedupe')) {
     return conflict('DUPLICATE_ACTIVE_CARD', 'Active duplicate card number for this brand already exists.');
@@ -251,6 +262,30 @@ export function createDealsRouter({ db }) {
   const router = Router();
 
   router.use(requireUnlockedSession);
+
+  function loadDeal(auth, dealId) {
+    const deal = db
+      .prepare('SELECT * FROM deals WHERE accountId = ? AND id = ?')
+      .get(auth.accountId, dealId);
+
+    if (!deal) {
+      throw notFound('DEAL_NOT_FOUND', 'Deal not found.');
+    }
+
+    return deal;
+  }
+
+  function dealDetail(auth, dealId) {
+    const deal = loadDeal(auth, dealId);
+    const cards = db
+      .prepare('SELECT * FROM cards WHERE accountId = ? AND dealId = ? ORDER BY id')
+      .all(auth.accountId, dealId);
+
+    return {
+      deal: toDealResponse(deal),
+      cards: cards.map(toCardResponse),
+    };
+  }
 
   router.get(
     '/',
@@ -388,6 +423,64 @@ export function createDealsRouter({ db }) {
       } catch (error) {
         throw translateSqliteError(error);
       }
+    }),
+  );
+
+  function archiveDeal({ req, dealId, archivedAt }) {
+    const timestamp = nowIso();
+
+    return db.transaction(() => {
+      const before = loadDeal(req.auth, dealId);
+
+      db.prepare(
+        `UPDATE deals
+         SET archivedAt = ?,
+             updatedByUserId = ?,
+             updatedAt = ?,
+             rowVersion = rowVersion + 1
+         WHERE id = ? AND accountId = ?`,
+      ).run(archivedAt, req.auth.userId, timestamp, dealId, req.auth.accountId);
+
+      const after = loadDeal(req.auth, dealId);
+      insertAuditEvent(db, {
+        accountId: req.auth.accountId,
+        userId: req.auth.userId,
+        requestId: req.requestId,
+        entityType: 'deal',
+        entityId: dealId,
+        action: archivedAt ? 'deal.archive' : 'deal.unarchive',
+        oldValue: dealAuditValue(before),
+        newValue: dealAuditValue(after),
+        timestamp,
+      });
+
+      return after;
+    })();
+  }
+
+  router.post(
+    '/:dealId/archive',
+    asyncHandler(async (req, res) => {
+      const dealId = parsePositiveInt(req.params.dealId, null, { min: 1 });
+      archiveDeal({ req, dealId, archivedAt: nowIso() });
+      res.json(objectResponse(dealDetail(req.auth, dealId)));
+    }),
+  );
+
+  router.post(
+    '/:dealId/unarchive',
+    asyncHandler(async (req, res) => {
+      const dealId = parsePositiveInt(req.params.dealId, null, { min: 1 });
+      archiveDeal({ req, dealId, archivedAt: null });
+      res.json(objectResponse(dealDetail(req.auth, dealId)));
+    }),
+  );
+
+  router.get(
+    '/:dealId',
+    asyncHandler(async (req, res) => {
+      const dealId = parsePositiveInt(req.params.dealId, null, { min: 1 });
+      res.json(objectResponse(dealDetail(req.auth, dealId)));
     }),
   );
 
