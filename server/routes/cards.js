@@ -9,6 +9,7 @@ import { objectResponse } from '../http/response.js';
 import {
   cardNumberHash as hashCardNumber,
   cardNumberLast4,
+  decryptString,
   encryptString,
   normalizeCardNumber,
 } from '../security/crypto.js';
@@ -193,6 +194,10 @@ function parseCardSort(query) {
 
 function encryptedOrNull(value, key) {
   return value ? encryptString(value, key) : null;
+}
+
+function decryptedOrNull(value, key) {
+  return value ? decryptString(value, key) : null;
 }
 
 function normalizeHeader(value) {
@@ -866,6 +871,43 @@ export function createCardsRouter({ db }) {
       audit: audit.map(toAuditResponse),
     };
   }
+
+  router.post(
+    '/:cardId/reveal',
+    asyncHandler(async (req, res) => {
+      const cardId = parsePositiveInt(req.params.cardId, null, { min: 1 });
+      const timestamp = nowIso();
+      const card = loadCard(req.auth, cardId);
+
+      insertAuditEvent(db, {
+        accountId: req.auth.accountId,
+        userId: req.auth.userId,
+        requestId: req.requestId,
+        entityType: 'card',
+        entityId: cardId,
+        action: 'card.credentials_reveal',
+        metadata: {
+          cardNumberLast4: card.cardNumberLast4,
+          hasPin: Boolean(card.pin),
+          hasBillingZip: Boolean(card.billingZip),
+        },
+        timestamp,
+      });
+
+      res.set({
+        'Cache-Control': 'no-store',
+        Pragma: 'no-cache',
+      });
+      res.json(
+        objectResponse({
+          cardNumber: decryptedOrNull(card.cardNumber, req.auth.dek),
+          cardNumberLast4: card.cardNumberLast4,
+          pin: decryptedOrNull(card.pin, req.auth.dek),
+          billingZip: decryptedOrNull(card.billingZip, req.auth.dek),
+        }),
+      );
+    }),
+  );
 
   function mutateCardStatus({ req, cardId, transitionAction, body = {} }) {
     const timestamp = nowIso();

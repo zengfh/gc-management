@@ -207,6 +207,37 @@ describe('card routes', () => {
     expect(auditText).not.toContain('94105');
   }, 45_000);
 
+  it('reveals card credentials through an explicit CSRF-protected action with redacted audit', async () => {
+    const csrfToken = await setupOwner();
+    const createResponse = await postWithCsrf('/api/cards', csrfToken).send({
+      cards: [sampleCard()],
+    });
+    const cardId = createResponse.body.data[0].id;
+
+    const missingCsrf = await agent.post(`/api/cards/${cardId}/reveal`).send({});
+    expect(missingCsrf.status).toBe(403);
+
+    const revealResponse = await postWithCsrf(`/api/cards/${cardId}/reveal`, csrfToken).send({});
+
+    expect(revealResponse.status).toBe(200);
+    expect(revealResponse.headers['cache-control']).toContain('no-store');
+    expect(revealResponse.body.data).toEqual({
+      cardNumber: '4111111111111111',
+      cardNumberLast4: '1111',
+      pin: '1234',
+      billingZip: '94105',
+    });
+
+    const auditRows = db
+      .prepare("SELECT * FROM audit_log WHERE entityType = 'card' AND action = 'card.credentials_reveal'")
+      .all();
+    expect(auditRows).toHaveLength(1);
+    const auditText = JSON.stringify(auditRows);
+    expect(auditText).not.toContain('4111111111111111');
+    expect(auditText).not.toContain('1234');
+    expect(auditText).not.toContain('94105');
+  }, 45_000);
+
   it('reserves and unreserves an available card with audit records', async () => {
     const csrfToken = await setupOwner();
     const createResponse = await postWithCsrf('/api/cards', csrfToken).send({
