@@ -1,3 +1,7 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import Database from 'better-sqlite3';
 import request from 'supertest';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../app.js';
@@ -25,6 +29,12 @@ describe('backup routes', () => {
 
   function postWithCsrf(path, csrfToken) {
     return agent.post(path).set('Origin', appOrigin).set('X-CSRF-Token', csrfToken);
+  }
+
+  function parseBuffer(res, callback) {
+    const chunks = [];
+    res.on('data', (chunk) => chunks.push(chunk));
+    res.on('end', () => callback(null, Buffer.concat(chunks)));
   }
 
   async function createSampleCard(csrfToken) {
@@ -150,6 +160,69 @@ describe('backup routes', () => {
 
     const backupAuditCount = db
       .prepare("SELECT COUNT(*) AS count FROM audit_log WHERE entityType = 'backup'")
+      .get().count;
+    expect(backupAuditCount).toBe(0);
+  }, 45_000);
+
+  it('exports a raw sqlite database file with fresh secret controls and audit', async () => {
+    const csrfToken = await setupOwner();
+    await createSampleCard(csrfToken);
+
+    const response = await postWithCsrf('/api/backup/db-file', csrfToken)
+      .buffer(true)
+      .parse(parseBuffer)
+      .send({ unlockSecret });
+
+    expect(response.status).toBe(200);
+    expect(response.headers['cache-control']).toContain('no-store');
+    expect(response.headers['content-disposition']).toMatch(
+      /attachment; filename="gift-card-raw-db-export-\d{4}-\d{2}-\d{2}\.sqlite"/,
+    );
+    expect(Buffer.isBuffer(response.body)).toBe(true);
+
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gc-raw-export-test-'));
+    const exportedPath = path.join(tempDir, 'export.sqlite');
+    fs.writeFileSync(exportedPath, response.body);
+    const exportedDb = new Database(exportedPath, { readonly: true });
+    try {
+      const cardCount = exportedDb.prepare('SELECT COUNT(*) AS count FROM cards').get().count;
+      const stored = exportedDb.prepare('SELECT cardNumber, pin, billingZip FROM cards LIMIT 1').get();
+      expect(cardCount).toBe(1);
+      expect(JSON.stringify(stored)).not.toContain('4111111111111111');
+      expect(JSON.stringify(stored)).not.toContain('1234');
+      expect(JSON.stringify(stored)).not.toContain('94105');
+    } finally {
+      exportedDb.close();
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+
+    const auditRows = db
+      .prepare("SELECT * FROM audit_log WHERE entityType = 'backup' AND action = 'backup.export_db_file'")
+      .all();
+    expect(auditRows).toHaveLength(1);
+    expect(JSON.parse(auditRows[0].metadata)).toMatchObject({
+      exportType: 'raw_sqlite',
+    });
+
+    const auditText = JSON.stringify(auditRows);
+    expect(auditText).not.toContain('4111111111111111');
+    expect(auditText).not.toContain('1234');
+    expect(auditText).not.toContain('94105');
+    expect(auditText).not.toContain(unlockSecret);
+  }, 45_000);
+
+  it('rejects raw database export without the current unlock secret', async () => {
+    const csrfToken = await setupOwner();
+    await createSampleCard(csrfToken);
+
+    const response = await postWithCsrf('/api/backup/db-file', csrfToken).send({
+      unlockSecret: 'wrong unlock phrase',
+    });
+
+    expect(response.status).toBe(401);
+    expect(response.body.error.code).toBe('INVALID_UNLOCK_SECRET');
+    const backupAuditCount = db
+      .prepare("SELECT COUNT(*) AS count FROM audit_log WHERE action = 'backup.export_db_file'")
       .get().count;
     expect(backupAuditCount).toBe(0);
   }, 45_000);

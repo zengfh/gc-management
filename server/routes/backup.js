@@ -1,3 +1,6 @@
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import bcrypt from 'bcryptjs';
 import { Router } from 'express';
 import { z } from 'zod';
@@ -12,6 +15,12 @@ const plaintextExportSchema = z
     unlockSecret: z.string().min(1),
     confirmation: z.literal('EXPORT'),
     acknowledgePlaintext: z.literal(true),
+  })
+  .strict();
+
+const rawDatabaseExportSchema = z
+  .object({
+    unlockSecret: z.string().min(1),
   })
   .strict();
 
@@ -43,6 +52,14 @@ function loadPrimaryUser(db, userId, accountId) {
        WHERE id = ? AND accountId = ?`,
     )
     .get(userId, accountId);
+}
+
+async function verifyFreshUnlockSecret(db, auth, unlockSecret) {
+  const user = loadPrimaryUser(db, auth.userId, auth.accountId);
+  const passwordMatches = await bcrypt.compare(unlockSecret, user?.unlockSecretHash || '');
+  if (!passwordMatches) {
+    throw unauthorized('INVALID_UNLOCK_SECRET', 'Invalid unlock secret.');
+  }
 }
 
 function decryptNullable(value, key) {
@@ -193,11 +210,7 @@ export function createBackupRouter({ db }) {
     '/export',
     asyncHandler(async (req, res) => {
       const body = validateBody(plaintextExportSchema, req.body || {});
-      const user = loadPrimaryUser(db, req.auth.userId, req.auth.accountId);
-      const passwordMatches = await bcrypt.compare(body.unlockSecret, user?.unlockSecretHash || '');
-      if (!passwordMatches) {
-        throw unauthorized('INVALID_UNLOCK_SECRET', 'Invalid unlock secret.');
-      }
+      await verifyFreshUnlockSecret(db, req.auth, body.unlockSecret);
 
       const timestamp = new Date().toISOString();
       const payload = buildPlaintextExport(db, req.auth, timestamp);
@@ -223,6 +236,44 @@ export function createBackupRouter({ db }) {
         'Content-Disposition': `attachment; filename="gift-card-plaintext-export-${exportDate(timestamp)}.json"`,
       });
       res.json(objectResponse(payload));
+    }),
+  );
+
+  router.post(
+    '/db-file',
+    asyncHandler(async (req, res, next) => {
+      const body = validateBody(rawDatabaseExportSchema, req.body || {});
+      await verifyFreshUnlockSecret(db, req.auth, body.unlockSecret);
+
+      const timestamp = new Date().toISOString();
+      const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'gc-raw-db-export-'));
+      const filename = `gift-card-raw-db-export-${exportDate(timestamp)}.sqlite`;
+      const exportPath = path.join(tempDir, filename);
+
+      await db.backup(exportPath);
+      insertAuditEvent(db, {
+        accountId: req.auth.accountId,
+        userId: req.auth.userId,
+        requestId: req.requestId,
+        entityType: 'backup',
+        action: 'backup.export_db_file',
+        metadata: {
+          exportType: 'raw_sqlite',
+        },
+        timestamp,
+      });
+
+      res.set({
+        'Cache-Control': 'no-store',
+        Pragma: 'no-cache',
+        'Content-Type': 'application/vnd.sqlite3',
+      });
+      res.download(exportPath, filename, (error) => {
+        fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+        if (error) {
+          next(error);
+        }
+      });
     }),
   );
 
