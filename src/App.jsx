@@ -911,17 +911,20 @@ function CsvPreviewTable({ rows }) {
   );
 }
 
-function CsvImportPreviewForm({ onPreviewCsv }) {
+function CsvImportPreviewForm({ onPreviewCsv, onConfirmCsv }) {
   const [csvText, setCsvText] = useState('');
   const [fileName, setFileName] = useState('');
   const [preview, setPreview] = useState(null);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [confirming, setConfirming] = useState(false);
 
   async function updateFile(event) {
     const file = event.target.files?.[0];
     setPreview(null);
     setError('');
+    setSuccess('');
     if (!file) {
       setCsvText('');
       setFileName('');
@@ -940,6 +943,7 @@ function CsvImportPreviewForm({ onPreviewCsv }) {
   async function submitPreview(event) {
     event.preventDefault();
     setError('');
+    setSuccess('');
     setPreview(null);
     if (!csvText) {
       setError('Choose a CSV file first.');
@@ -957,6 +961,20 @@ function CsvImportPreviewForm({ onPreviewCsv }) {
     }
   }
 
+  async function confirmImport() {
+    setError('');
+    setSuccess('');
+    setConfirming(true);
+    try {
+      const response = await onConfirmCsv({ csv: csvText });
+      setSuccess(`Imported ${response.data.cards.length} ${response.data.cards.length === 1 ? 'card' : 'cards'}.`);
+    } catch (caught) {
+      setError(caught.message);
+    } finally {
+      setConfirming(false);
+    }
+  }
+
   return (
     <form className="backup-export-form csv-preview-form" onSubmit={submitPreview}>
       <label>
@@ -971,6 +989,7 @@ function CsvImportPreviewForm({ onPreviewCsv }) {
       </div>
       {fileName ? <p className="muted-text import-file-name">{fileName}</p> : null}
       <FieldError message={error} />
+      {success ? <p className="success-copy">{success}</p> : null}
       {preview ? (
         <div className="import-preview-result">
           <div className="import-summary">
@@ -979,6 +998,14 @@ function CsvImportPreviewForm({ onPreviewCsv }) {
             <span>{preview.summary.rowCount} rows</span>
           </div>
           <CsvPreviewTable rows={preview.rows} />
+          {preview.summary.rowCount > 0 && preview.summary.invalidCount === 0 ? (
+            <div className="backup-actions">
+              <button type="button" className="primary-action" onClick={confirmImport} disabled={confirming}>
+                <FilePlus2 aria-hidden="true" size={17} />
+                {confirming ? 'Importing...' : 'Confirm CSV import'}
+              </button>
+            </div>
+          ) : null}
         </div>
       ) : null}
     </form>
@@ -2066,6 +2093,7 @@ function WorkSurface({
   onExportPlaintext,
   onExportRawDatabase,
   onPreviewCsv,
+  onConfirmCsv,
   onCreateDeal,
   onLoadDeals,
   onArchiveDeal,
@@ -2354,7 +2382,7 @@ function WorkSurface({
             <div className="backup-stack">
               <section className="backup-block">
                 <h3>CSV Import Preview</h3>
-                <CsvImportPreviewForm onPreviewCsv={onPreviewCsv} />
+                <CsvImportPreviewForm onPreviewCsv={onPreviewCsv} onConfirmCsv={onConfirmCsv} />
               </section>
               <section className="backup-block">
                 <h3>Plaintext JSON Export</h3>
@@ -2591,6 +2619,23 @@ export default function App() {
       body: payload,
       csrfToken: auth.csrfToken,
     });
+  }
+
+  async function handleConfirmCsv(payload) {
+    const response = await apiFetch('/api/cards/import-csv/confirm', {
+      method: 'POST',
+      body: payload,
+      csrfToken: auth.csrfToken,
+    });
+    setCards((current) => [
+      ...response.data.cards,
+      ...current.filter((card) => !response.data.cards.some((created) => created.id === card.id)),
+    ]);
+    setCardsPage((current) => ({
+      ...current,
+      total: current.total + response.data.cards.length,
+    }));
+    return response;
   }
 
   async function loadDeals({ includeArchived = false } = {}) {
@@ -2842,6 +2887,7 @@ export default function App() {
       onExportPlaintext={handleExportPlaintext}
       onExportRawDatabase={handleExportRawDatabase}
       onPreviewCsv={handlePreviewCsv}
+      onConfirmCsv={handleConfirmCsv}
       onCreateDeal={handleCreateDeal}
       onLoadDeals={(includeArchived) => loadDeals({ includeArchived })}
       onArchiveDeal={(deal, includeArchived) =>

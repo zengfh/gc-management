@@ -506,6 +506,112 @@ describe('App', () => {
     );
   });
 
+  it('confirms a valid CSV import from the backup view', async () => {
+    const csv = 'brand,cardType,faceValue,cardNumber\nTarget,merchant,50,4111111111111111';
+    globalThis.fetch
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            setupComplete: true,
+            sessionValid: true,
+            dekLoaded: true,
+            csrfToken: 'csrf_ready',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            importType: 'csv',
+            summary: {
+              rowCount: 1,
+              validCount: 1,
+              invalidCount: 0,
+            },
+            rows: [
+              {
+                rowNumber: 2,
+                valid: true,
+                parsed: {
+                  brand: 'Target',
+                  cardType: 'merchant',
+                  faceValueCents: 5000,
+                  purchaseCostCents: 0,
+                  cardNumberLast4: '1111',
+                  hasPin: false,
+                  hasBillingZip: false,
+                },
+                errors: [],
+              },
+            ],
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            data: {
+              summary: {
+                rowCount: 1,
+                validCount: 1,
+                invalidCount: 0,
+              },
+              importJob: {
+                id: 8,
+                type: 'csv',
+                status: 'confirmed',
+                rowCount: 1,
+                validCount: 1,
+                invalidCount: 0,
+              },
+              cards: [
+                {
+                  id: 9,
+                  brand: 'Target',
+                  cardType: 'merchant',
+                  faceValueCents: 5000,
+                  remainingBalanceCents: 5000,
+                  purchaseCostCents: 0,
+                  cardNumberLast4: '1111',
+                  status: 'available',
+                },
+              ],
+            },
+          },
+          201,
+        ),
+      );
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByRole('heading', { name: /dashboard/i });
+    await user.click(screen.getByRole('button', { name: /^backup$/i }));
+    await user.upload(
+      screen.getByLabelText(/^csv file$/i),
+      new File([csv], 'cards.csv', {
+        type: 'text/csv',
+      }),
+    );
+    await user.click(screen.getByRole('button', { name: /^preview csv$/i }));
+    await user.click(await screen.findByRole('button', { name: /^confirm csv import$/i }));
+
+    expect(await screen.findByText(/imported 1 card/i)).toBeInTheDocument();
+    expect(screen.getByText(/1 cards tracked/i)).toBeInTheDocument();
+    expect(globalThis.fetch).toHaveBeenLastCalledWith(
+      '/api/cards/import-csv/confirm',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ csv }),
+        headers: expect.objectContaining({
+          'X-CSRF-Token': 'csrf_ready',
+        }),
+      }),
+    );
+  });
+
   it('creates a deal with a starter card from the dashboard', async () => {
     globalThis.fetch
       .mockResolvedValueOnce(
