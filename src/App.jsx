@@ -69,6 +69,13 @@ function formatMoney(cents = 0) {
   }).format(cents / 100);
 }
 
+function formatDateTime(value) {
+  if (!value) {
+    return 'Not recorded';
+  }
+  return new Date(value).toLocaleString();
+}
+
 function statusText(status) {
   return statusLabels[status] || status;
 }
@@ -253,6 +260,7 @@ function Metric({ label, value, icon: Icon }) {
 function CardsTable({
   cards,
   onUseCard,
+  onViewCard,
   onSellCard,
   onUndoSale,
   onVoidCard,
@@ -289,7 +297,16 @@ function CardsTable({
               <td>
                 <StatusBadge status={card.status} />
               </td>
-              <td>{card.brand}</td>
+              <td>
+                <button
+                  type="button"
+                  className="table-link"
+                  aria-label={`Open ${card.brand} details`}
+                  onClick={() => onViewCard(card)}
+                >
+                  {card.brand}
+                </button>
+              </td>
               <td className="mono">{card.cardNumberLast4 ? `**** ${card.cardNumberLast4}` : 'Hidden'}</td>
               <td className="numeric">{formatMoney(card.faceValueCents)}</td>
               <td className="numeric">{formatMoney(card.remainingBalanceCents)}</td>
@@ -490,6 +507,103 @@ function CardSearchForm({ onSearchCards }) {
       </div>
       <FieldError message={error} />
     </form>
+  );
+}
+
+function HistoryList({ title, items, renderItem, emptyText }) {
+  return (
+    <section className="detail-section">
+      <h3>{title}</h3>
+      {items?.length ? (
+        <ul className="detail-list">
+          {items.map((item) => (
+            <li key={`${title}-${item.id}`}>{renderItem(item)}</li>
+          ))}
+        </ul>
+      ) : (
+        <p className="muted-text">{emptyText}</p>
+      )}
+    </section>
+  );
+}
+
+function CardDetailPanel({ detailState, onClose }) {
+  const { card, data, error, loading } = detailState;
+  const detailCard = data?.card || card;
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <section className="slide-panel" role="dialog" aria-modal="true" aria-labelledby="card-detail-title">
+        <div className="panel-heading">
+          <div>
+            <p className="eyebrow">{detailCard.brand}</p>
+            <h2 id="card-detail-title">Card details</h2>
+          </div>
+          <button type="button" className="icon-button" aria-label="Close card details" onClick={onClose}>
+            <X aria-hidden="true" size={18} />
+          </button>
+        </div>
+        <div className="detail-panel-body">
+          {loading ? <div className="loading-strip">Loading card detail...</div> : null}
+          <FieldError message={error} />
+          <div className="detail-grid">
+            <div className="preview-box">
+              <span>Status</span>
+              <strong>{statusText(detailCard.status)}</strong>
+            </div>
+            <div className="preview-box">
+              <span>Masked number</span>
+              <strong className="mono">
+                {detailCard.cardNumberLast4 ? `**** ${detailCard.cardNumberLast4}` : 'Hidden'}
+              </strong>
+            </div>
+            <div className="preview-box">
+              <span>Remaining</span>
+              <strong>{formatMoney(detailCard.remainingBalanceCents)}</strong>
+            </div>
+            <div className="preview-box">
+              <span>Cost</span>
+              <strong>{formatMoney(detailCard.purchaseCostCents)}</strong>
+            </div>
+          </div>
+          <HistoryList
+            title="Transactions"
+            items={data?.transactions || []}
+            emptyText="No transactions recorded."
+            renderItem={(transaction) => (
+              <>
+                <strong>{transaction.type}</strong>
+                <span>{transaction.buyerName || transaction.platform || 'No counterparty'}</span>
+                {transaction.salePriceCents != null ? <span>{formatMoney(transaction.salePriceCents)}</span> : null}
+              </>
+            )}
+          />
+          <HistoryList
+            title="Usages"
+            items={data?.usages || []}
+            emptyText="No usages recorded."
+            renderItem={(usage) => (
+              <>
+                <strong>{usage.merchant || 'Usage'}</strong>
+                <span>{formatMoney(usage.amountCents)}</span>
+                {usage.usageDate ? <span>{usage.usageDate}</span> : null}
+              </>
+            )}
+          />
+          <HistoryList
+            title="Audit"
+            items={data?.audit || []}
+            emptyText="No audit events recorded."
+            renderItem={(event) => (
+              <>
+                <strong>{event.action}</strong>
+                <span>{formatDateTime(event.timestamp || event.createdAt)}</span>
+              </>
+            )}
+          />
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -930,6 +1044,7 @@ function WorkSurface({
   onArchiveDeal,
   onUnarchiveDeal,
   onSearchCards,
+  onLoadCardDetail,
   onUseCard,
   onSellCard,
   onUndoSale,
@@ -943,6 +1058,7 @@ function WorkSurface({
   const [saleCard, setSaleCard] = useState(null);
   const [undoSaleCard, setUndoSaleCard] = useState(null);
   const [voidCard, setVoidCard] = useState(null);
+  const [detailState, setDetailState] = useState(null);
   const [showArchivedDeals, setShowArchivedDeals] = useState(false);
   const [dealError, setDealError] = useState('');
   const activeRemaining = cards
@@ -990,6 +1106,16 @@ function WorkSurface({
       await onUnarchiveDeal(deal, showArchivedDeals);
     } catch (caught) {
       setDealError(caught.message);
+    }
+  }
+
+  async function openCardDetail(card) {
+    setDetailState({ card, data: null, error: '', loading: true });
+    try {
+      const response = await onLoadCardDetail(card.id);
+      setDetailState({ card: response.data.card, data: response.data, error: '', loading: false });
+    } catch (caught) {
+      setDetailState({ card, data: null, error: caught.message, loading: false });
     }
   }
 
@@ -1063,6 +1189,7 @@ function WorkSurface({
               <CardsTable
                 cards={cards.slice(0, 6)}
                 onUseCard={setUsageCard}
+                onViewCard={openCardDetail}
                 onSellCard={setSaleCard}
                 onUndoSale={setUndoSaleCard}
                 onVoidCard={setVoidCard}
@@ -1096,6 +1223,7 @@ function WorkSurface({
             <CardsTable
               cards={cards}
               onUseCard={setUsageCard}
+              onViewCard={openCardDetail}
               onSellCard={setSaleCard}
               onUndoSale={setUndoSaleCard}
               onVoidCard={setVoidCard}
@@ -1163,6 +1291,12 @@ function WorkSurface({
           onVoidCard={onVoidCard}
         />
       ) : null}
+      {detailState ? (
+        <CardDetailPanel
+          detailState={detailState}
+          onClose={() => setDetailState(null)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -1199,6 +1333,10 @@ export default function App() {
     } finally {
       setInventoryLoading(false);
     }
+  }
+
+  async function handleLoadCardDetail(cardId) {
+    return apiFetch(`/api/cards/${cardId}`);
   }
 
   async function loadDeals({ includeArchived = false } = {}) {
@@ -1413,6 +1551,7 @@ export default function App() {
       onUnarchiveDeal={(deal, includeArchived) =>
         handleDealArchiveTransition(deal.id, 'unarchive', includeArchived)}
       onSearchCards={handleSearchCards}
+      onLoadCardDetail={handleLoadCardDetail}
       onUseCard={handleUseCard}
       onSellCard={handleSellCard}
       onUndoSale={handleUndoSale}

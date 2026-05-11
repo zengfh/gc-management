@@ -440,6 +440,76 @@ describe('App', () => {
     );
   });
 
+  it('opens card detail with transactions usages and audit summary', async () => {
+    globalThis.fetch
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            setupComplete: true,
+            sessionValid: true,
+            dekLoaded: true,
+            csrfToken: 'csrf_ready',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            {
+              id: 1,
+              brand: 'Target',
+              status: 'in_use',
+              faceValueCents: 5000,
+              remainingBalanceCents: 3750,
+              purchaseCostCents: 4500,
+              cardNumberLast4: '1111',
+            },
+          ],
+          page: { total: 1, limit: 50, offset: 0, hasMore: false },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            card: {
+              id: 1,
+              brand: 'Target',
+              status: 'in_use',
+              faceValueCents: 5000,
+              remainingBalanceCents: 3750,
+              purchaseCostCents: 4500,
+              cardNumberLast4: '1111',
+              rowVersion: 2,
+            },
+            transactions: [{ id: 8, type: 'sale', salePriceCents: 3800, buyerName: 'Dealer A' }],
+            usages: [{ id: 7, amountCents: 1250, merchant: 'Target' }],
+            audit: [{ id: 12, action: 'card.use', timestamp: '2026-05-11T16:00:00.000Z' }],
+          },
+        }),
+      );
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByRole('heading', { name: /dashboard/i });
+    await user.click(screen.getByRole('button', { name: /^cards$/i }));
+    await user.click(screen.getByRole('button', { name: /open target details/i }));
+
+    const dialog = await screen.findByRole('dialog', { name: /card details/i });
+    expect(within(dialog).getAllByText(/^target$/i).length).toBeGreaterThan(0);
+    expect(within(dialog).getByText(/\*\*\*\* 1111/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(/dealer a/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(/card.use/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(/2026/i)).toBeInTheDocument();
+    expect(globalThis.fetch).toHaveBeenLastCalledWith(
+      '/api/cards/1',
+      expect.objectContaining({
+        method: 'GET',
+      }),
+    );
+  });
+
   it('sells a card from the card table action', async () => {
     globalThis.fetch
       .mockResolvedValueOnce(
