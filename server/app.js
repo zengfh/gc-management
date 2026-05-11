@@ -1,5 +1,6 @@
 import express from 'express';
 import session from 'express-session';
+import helmet from 'helmet';
 import { nanoid } from 'nanoid';
 import { verifyDatabase } from './db/index.js';
 import { errorResponse } from './http/response.js';
@@ -14,6 +15,36 @@ export function createApp({ db } = {}) {
   const app = express();
 
   app.disable('x-powered-by');
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        useDefaults: false,
+        directives: {
+          defaultSrc: ["'self'"],
+          scriptSrc: ["'self'"],
+          styleSrc: ["'self'", "'unsafe-inline'"],
+          imgSrc: ["'self'", 'data:'],
+          connectSrc: ["'self'"],
+          frameAncestors: ["'none'"],
+          baseUri: ["'self'"],
+          formAction: ["'self'"],
+        },
+      },
+      frameguard: {
+        action: 'deny',
+      },
+      hsts:
+        process.env.NODE_ENV === 'production'
+          ? {
+              maxAge: 15552000,
+              includeSubDomains: true,
+            }
+          : false,
+      referrerPolicy: {
+        policy: 'no-referrer',
+      },
+    }),
+  );
   app.use(express.json({ limit: '1mb' }));
   app.use(
     session({
