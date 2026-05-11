@@ -362,6 +362,98 @@ describe('App', () => {
     );
   });
 
+  it('opens deal detail with cards and totals from the deals view', async () => {
+    globalThis.fetch
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            setupComplete: true,
+            sessionValid: true,
+            dekLoaded: true,
+            csrfToken: 'csrf_ready',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            {
+              id: 10,
+              name: 'Staples promo',
+              source: 'Staples',
+              purchaseDate: '2026-05-01',
+              inputTotalCostCents: 9000,
+              notes: 'May promo batch',
+              archivedAt: null,
+              rowVersion: 1,
+            },
+          ],
+          page: { total: 1, limit: 50, offset: 0, hasMore: false },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            deal: {
+              id: 10,
+              name: 'Staples promo',
+              source: 'Staples',
+              purchaseDate: '2026-05-01',
+              inputTotalCostCents: 9000,
+              notes: 'May promo batch',
+              archivedAt: null,
+              rowVersion: 1,
+            },
+            cards: [
+              {
+                id: 11,
+                brand: 'Target',
+                status: 'available',
+                faceValueCents: 5000,
+                remainingBalanceCents: 5000,
+                purchaseCostCents: 4500,
+                cardNumberLast4: '1111',
+              },
+              {
+                id: 12,
+                brand: 'Amazon',
+                status: 'in_use',
+                faceValueCents: 5000,
+                remainingBalanceCents: 2500,
+                purchaseCostCents: 4500,
+                cardNumberLast4: '2222',
+              },
+            ],
+          },
+        }),
+      );
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByRole('heading', { name: /dashboard/i });
+    await user.click(screen.getByRole('button', { name: /^deals$/i }));
+    await user.click(screen.getByRole('button', { name: /open staples promo details/i }));
+
+    const dialog = await screen.findByRole('dialog', { name: /deal details/i });
+    expect(within(dialog).getByText(/^staples$/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(/2026-05-01/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(/may promo batch/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(/2 cards/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(/\$100\.00/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(/\$75\.00/i)).toBeInTheDocument();
+    expect(within(dialog).getAllByText(/\$90\.00/i).length).toBeGreaterThan(0);
+    expect(within(dialog).getByRole('row', { name: /available target/i })).toBeInTheDocument();
+    expect(within(dialog).getByRole('row', { name: /in use amazon/i })).toBeInTheDocument();
+    expect(globalThis.fetch).toHaveBeenLastCalledWith(
+      '/api/deals/10',
+      expect.objectContaining({
+        method: 'GET',
+      }),
+    );
+  });
+
   it('records card usage from the card table action', async () => {
     globalThis.fetch
       .mockResolvedValueOnce(

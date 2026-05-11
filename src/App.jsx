@@ -422,7 +422,7 @@ function CardsTable({
   );
 }
 
-function DealsTable({ deals, onArchiveDeal, onUnarchiveDeal }) {
+function DealsTable({ deals, onViewDeal, onArchiveDeal, onUnarchiveDeal }) {
   if (deals.length === 0) {
     return (
       <div className="empty-state">
@@ -453,7 +453,16 @@ function DealsTable({ deals, onArchiveDeal, onUnarchiveDeal }) {
                   {deal.archivedAt ? 'Archived' : 'Active'}
                 </span>
               </td>
-              <td>{deal.name}</td>
+              <td>
+                <button
+                  type="button"
+                  className="table-link"
+                  aria-label={`Open ${deal.name} details`}
+                  onClick={() => onViewDeal(deal)}
+                >
+                  {deal.name}
+                </button>
+              </td>
               <td>{deal.source || 'Not recorded'}</td>
               <td>{deal.purchaseDate || 'Not recorded'}</td>
               <td className="numeric">{formatMoney(deal.inputTotalCostCents || 0)}</td>
@@ -756,6 +765,107 @@ function CardDetailPanel({ detailState, onClose, onUndoUsage }) {
               </>
             )}
           />
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function DealDetailPanel({ detailState, onClose }) {
+  const { deal, data, error, loading } = detailState;
+  const detailDeal = data?.deal || deal;
+  const dealCards = data?.cards || [];
+  const totalFace = dealCards.reduce((sum, card) => sum + card.faceValueCents, 0);
+  const totalRemaining = dealCards.reduce((sum, card) => sum + card.remainingBalanceCents, 0);
+  const totalCost = dealCards.reduce((sum, card) => sum + card.purchaseCostCents, 0);
+  const cardCount = `${dealCards.length} ${dealCards.length === 1 ? 'card' : 'cards'}`;
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <section className="slide-panel" role="dialog" aria-modal="true" aria-labelledby="deal-detail-title">
+        <div className="panel-heading">
+          <div>
+            <p className="eyebrow">{detailDeal.name}</p>
+            <h2 id="deal-detail-title">Deal details</h2>
+          </div>
+          <button type="button" className="icon-button" aria-label="Close deal details" onClick={onClose}>
+            <X aria-hidden="true" size={18} />
+          </button>
+        </div>
+        <div className="detail-panel-body">
+          {loading ? <div className="loading-strip">Loading deal detail...</div> : null}
+          <FieldError message={error} />
+          <div className="detail-grid">
+            <div className="preview-box">
+              <span>Status</span>
+              <strong>{detailDeal.archivedAt ? 'Archived' : 'Active'}</strong>
+            </div>
+            <div className="preview-box">
+              <span>Source</span>
+              <strong>{detailDeal.source || 'Not recorded'}</strong>
+            </div>
+            <div className="preview-box">
+              <span>Purchase date</span>
+              <strong>{detailDeal.purchaseDate || 'Not recorded'}</strong>
+            </div>
+            <div className="preview-box">
+              <span>Cards</span>
+              <strong>{cardCount}</strong>
+            </div>
+            <div className="preview-box">
+              <span>Face value</span>
+              <strong>{formatMoney(totalFace)}</strong>
+            </div>
+            <div className="preview-box">
+              <span>Remaining</span>
+              <strong>{formatMoney(totalRemaining)}</strong>
+            </div>
+            <div className="preview-box">
+              <span>Cost basis</span>
+              <strong>{formatMoney(totalCost)}</strong>
+            </div>
+            <div className="preview-box">
+              <span>Input cost</span>
+              <strong>{formatMoney(detailDeal.inputTotalCostCents || 0)}</strong>
+            </div>
+            <div className="preview-box detail-note">
+              <span>Notes</span>
+              <strong>{detailDeal.notes || 'Not recorded'}</strong>
+            </div>
+          </div>
+          <section className="detail-section">
+            <h3>Cards</h3>
+            {dealCards.length ? (
+              <div className="table-wrap detail-table-wrap">
+                <table className="detail-table">
+                  <thead>
+                    <tr>
+                      <th>Status</th>
+                      <th>Brand</th>
+                      <th>Last 4</th>
+                      <th className="numeric">Face</th>
+                      <th className="numeric">Remaining</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {dealCards.map((card) => (
+                      <tr key={card.id}>
+                        <td>
+                          <StatusBadge status={card.status} />
+                        </td>
+                        <td>{card.brand}</td>
+                        <td className="mono">{card.cardNumberLast4 ? `**** ${card.cardNumberLast4}` : 'Hidden'}</td>
+                        <td className="numeric">{formatMoney(card.faceValueCents)}</td>
+                        <td className="numeric">{formatMoney(card.remainingBalanceCents)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="muted-text">No cards attached to this deal.</p>
+            )}
+          </section>
         </div>
       </section>
     </div>
@@ -1357,6 +1467,7 @@ function WorkSurface({
   onUnarchiveDeal,
   onSearchCards,
   onLoadCardDetail,
+  onLoadDealDetail,
   onUseCard,
   onUndoUsage,
   onEditCard,
@@ -1376,6 +1487,7 @@ function WorkSurface({
   const [undoSaleCard, setUndoSaleCard] = useState(null);
   const [voidCard, setVoidCard] = useState(null);
   const [detailState, setDetailState] = useState(null);
+  const [dealDetailState, setDealDetailState] = useState(null);
   const [showArchivedDeals, setShowArchivedDeals] = useState(false);
   const [dealError, setDealError] = useState('');
   const activeRemaining = cards
@@ -1433,6 +1545,16 @@ function WorkSurface({
       setDetailState({ card: response.data.card, data: response.data, error: '', loading: false });
     } catch (caught) {
       setDetailState({ card, data: null, error: caught.message, loading: false });
+    }
+  }
+
+  async function openDealDetail(deal) {
+    setDealDetailState({ deal, data: null, error: '', loading: true });
+    try {
+      const response = await onLoadDealDetail(deal.id);
+      setDealDetailState({ deal: response.data.deal, data: response.data, error: '', loading: false });
+    } catch (caught) {
+      setDealDetailState({ deal, data: null, error: caught.message, loading: false });
     }
   }
 
@@ -1532,6 +1654,7 @@ function WorkSurface({
               </div>
               <DealsTable
                 deals={deals.slice(0, 6)}
+                onViewDeal={openDealDetail}
                 onArchiveDeal={archiveDeal}
                 onUnarchiveDeal={unarchiveDeal}
               />
@@ -1578,7 +1701,12 @@ function WorkSurface({
               </label>
               <FieldError message={dealError} />
             </div>
-            <DealsTable deals={deals} onArchiveDeal={archiveDeal} onUnarchiveDeal={unarchiveDeal} />
+            <DealsTable
+              deals={deals}
+              onViewDeal={openDealDetail}
+              onArchiveDeal={archiveDeal}
+              onUnarchiveDeal={unarchiveDeal}
+            />
           </section>
         ) : null}
       </main>
@@ -1640,6 +1768,9 @@ function WorkSurface({
           onUndoUsage={undoUsageFromDetail}
         />
       ) : null}
+      {dealDetailState ? (
+        <DealDetailPanel detailState={dealDetailState} onClose={() => setDealDetailState(null)} />
+      ) : null}
     </div>
   );
 }
@@ -1692,6 +1823,10 @@ export default function App() {
 
   async function handleLoadCardDetail(cardId) {
     return apiFetch(`/api/cards/${cardId}`);
+  }
+
+  async function handleLoadDealDetail(dealId) {
+    return apiFetch(`/api/deals/${dealId}`);
   }
 
   async function loadDeals({ includeArchived = false } = {}) {
@@ -1939,6 +2074,7 @@ export default function App() {
         handleDealArchiveTransition(deal.id, 'unarchive', includeArchived)}
       onSearchCards={handleSearchCards}
       onLoadCardDetail={handleLoadCardDetail}
+      onLoadDealDetail={handleLoadDealDetail}
       onUseCard={handleUseCard}
       onUndoUsage={handleUndoUsage}
       onEditCard={handleEditCard}

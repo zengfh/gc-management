@@ -645,6 +645,15 @@ td {
   grid-column: 1 / -1;
 }
 
+.detail-table-wrap {
+  border: 1px solid #e4e8ee;
+  border-radius: 8px;
+}
+
+.detail-table {
+  min-width: 520px;
+}
+
 .detail-section {
   display: grid;
   gap: 10px;
