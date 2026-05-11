@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App.jsx';
@@ -322,6 +322,87 @@ describe('App', () => {
         body: JSON.stringify({
           amountCents: 1250,
           merchant: 'Target',
+        }),
+        headers: expect.objectContaining({
+          'X-CSRF-Token': 'csrf_ready',
+        }),
+      }),
+    );
+  });
+
+  it('sells a card from the card table action', async () => {
+    globalThis.fetch
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            setupComplete: true,
+            sessionValid: true,
+            dekLoaded: true,
+            csrfToken: 'csrf_ready',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            {
+              id: 1,
+              brand: 'Target',
+              status: 'in_use',
+              faceValueCents: 5000,
+              remainingBalanceCents: 3750,
+              purchaseCostCents: 4500,
+              cardNumberLast4: '1111',
+            },
+          ],
+          page: { total: 1, limit: 50, offset: 0, hasMore: false },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            card: {
+              id: 1,
+              brand: 'Target',
+              status: 'sold',
+              faceValueCents: 5000,
+              remainingBalanceCents: 0,
+              purchaseCostCents: 4500,
+              cardNumberLast4: '1111',
+              rowVersion: 3,
+            },
+            transactions: [{ id: 8, type: 'sale', salePriceCents: 3800, buyerName: 'Dealer A' }],
+            usages: [],
+            audit: [],
+          },
+        }),
+      );
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByRole('heading', { name: /dashboard/i });
+    await user.click(screen.getByRole('button', { name: /^cards$/i }));
+    await user.click(screen.getByRole('button', { name: /sell target/i }));
+
+    const dialog = screen.getByRole('dialog', { name: /sell card/i });
+    expect(within(dialog).getByText(/\$37\.50/)).toBeInTheDocument();
+    await user.type(within(dialog).getByLabelText(/^sale price$/i), '38.00');
+    await user.type(within(dialog).getByLabelText(/^buyer$/i), 'Dealer A');
+    await user.selectOptions(within(dialog).getByLabelText(/^buyer type$/i), 'dealer');
+    await user.click(within(dialog).getByRole('button', { name: /^record sale$/i }));
+
+    expect(await screen.findByText(/sold/i)).toBeInTheDocument();
+    expect(screen.getByText(/\$0\.00/)).toBeInTheDocument();
+    expect(globalThis.fetch).toHaveBeenLastCalledWith(
+      '/api/cards/1/sell',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          salePriceCents: 3800,
+          buyerName: 'Dealer A',
+          buyerType: 'dealer',
         }),
         headers: expect.objectContaining({
           'X-CSRF-Token': 'csrf_ready',

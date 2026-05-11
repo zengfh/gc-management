@@ -249,7 +249,7 @@ function Metric({ label, value, icon: Icon }) {
   );
 }
 
-function CardsTable({ cards, onUseCard, onReserveCard, onUnreserveCard }) {
+function CardsTable({ cards, onUseCard, onSellCard, onReserveCard, onUnreserveCard }) {
   if (cards.length === 0) {
     return (
       <div className="empty-state">
@@ -306,6 +306,16 @@ function CardsTable({ cards, onUseCard, onReserveCard, onUnreserveCard }) {
                       onClick={() => onUnreserveCard(card)}
                     >
                       Unreserve
+                    </button>
+                  ) : null}
+                  {['available', 'reserved', 'in_use'].includes(card.status) ? (
+                    <button
+                      type="button"
+                      className="table-action"
+                      aria-label={`Sell ${card.brand}`}
+                      onClick={() => onSellCard(card)}
+                    >
+                      Sell
                     </button>
                   ) : null}
                   {['available', 'in_use'].includes(card.status) ? (
@@ -491,6 +501,101 @@ function AddDealPanel({ onClose, onCreateDeal }) {
   );
 }
 
+function SellCardPanel({ card, onClose, onSellCard }) {
+  const [salePrice, setSalePrice] = useState('');
+  const [buyerName, setBuyerName] = useState('');
+  const [buyerType, setBuyerType] = useState('');
+  const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  async function submitSale(event) {
+    event.preventDefault();
+    setError('');
+    const salePriceCents = dollarsToCents(salePrice);
+
+    if (salePriceCents === undefined || !Number.isFinite(salePriceCents)) {
+      setError('Sale price is required.');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await onSellCard(card.id, {
+        salePriceCents,
+        ...(buyerName.trim() ? { buyerName: buyerName.trim() } : {}),
+        ...(buyerType ? { buyerType } : {}),
+      });
+      onClose();
+    } catch (caught) {
+      setError(caught.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <section className="slide-panel" role="dialog" aria-modal="true" aria-labelledby="sell-card-title">
+        <div className="panel-heading">
+          <div>
+            <p className="eyebrow">{card.brand}</p>
+            <h2 id="sell-card-title">Sell card</h2>
+          </div>
+          <button type="button" className="icon-button" aria-label="Close sell card" onClick={onClose}>
+            <X aria-hidden="true" size={18} />
+          </button>
+        </div>
+        <form className="panel-form" onSubmit={submitSale}>
+          <div className="preview-box">
+            <span>Remaining being sold</span>
+            <strong>{formatMoney(card.remainingBalanceCents)}</strong>
+          </div>
+          {card.status === 'in_use' ? (
+            <p className="panel-note">
+              This records a sale for the remaining balance and snapshots the current card state.
+            </p>
+          ) : null}
+          <label>
+            <span>Sale price</span>
+            <input
+              inputMode="decimal"
+              placeholder="38.00"
+              value={salePrice}
+              onChange={(event) => setSalePrice(event.target.value)}
+              required
+            />
+          </label>
+          <label>
+            <span>Buyer</span>
+            <input value={buyerName} onChange={(event) => setBuyerName(event.target.value)} />
+          </label>
+          <label>
+            <span>Buyer type</span>
+            <select value={buyerType} onChange={(event) => setBuyerType(event.target.value)}>
+              <option value="">Not specified</option>
+              <option value="dealer">Dealer</option>
+              <option value="group_chat">Group chat</option>
+              <option value="friend">Friend</option>
+              <option value="self">Self</option>
+              <option value="other">Other</option>
+            </select>
+          </label>
+          <FieldError message={error} />
+          <div className="panel-actions">
+            <button type="button" className="secondary-action" onClick={onClose}>
+              Cancel
+            </button>
+            <button type="submit" className="primary-action" disabled={submitting}>
+              <CircleDollarSign aria-hidden="true" size={17} />
+              {submitting ? 'Recording...' : 'Record sale'}
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
+  );
+}
+
 function UseCardPanel({ card, onClose, onUseCard }) {
   const [amount, setAmount] = useState('');
   const [merchant, setMerchant] = useState('');
@@ -576,12 +681,14 @@ function WorkSurface({
   onLogout,
   onCreateDeal,
   onUseCard,
+  onSellCard,
   onReserveCard,
   onUnreserveCard,
 }) {
   const [activeView, setActiveView] = useState('dashboard');
   const [showAddDeal, setShowAddDeal] = useState(false);
   const [usageCard, setUsageCard] = useState(null);
+  const [saleCard, setSaleCard] = useState(null);
   const activeRemaining = cards
     .filter((card) => ['available', 'reserved', 'in_use'].includes(card.status))
     .reduce((sum, card) => sum + card.remainingBalanceCents, 0);
@@ -670,6 +777,7 @@ function WorkSurface({
               <CardsTable
                 cards={cards.slice(0, 6)}
                 onUseCard={setUsageCard}
+                onSellCard={setSaleCard}
                 onReserveCard={onReserveCard}
                 onUnreserveCard={onUnreserveCard}
               />
@@ -695,6 +803,7 @@ function WorkSurface({
             <CardsTable
               cards={cards}
               onUseCard={setUsageCard}
+              onSellCard={setSaleCard}
               onReserveCard={onReserveCard}
               onUnreserveCard={onUnreserveCard}
             />
@@ -725,6 +834,13 @@ function WorkSurface({
           card={usageCard}
           onClose={() => setUsageCard(null)}
           onUseCard={onUseCard}
+        />
+      ) : null}
+      {saleCard ? (
+        <SellCardPanel
+          card={saleCard}
+          onClose={() => setSaleCard(null)}
+          onSellCard={onSellCard}
         />
       ) : null}
     </div>
@@ -840,6 +956,17 @@ export default function App() {
     );
   }
 
+  async function handleSellCard(cardId, payload) {
+    const response = await apiFetch(`/api/cards/${cardId}/sell`, {
+      method: 'POST',
+      body: payload,
+      csrfToken: auth.csrfToken,
+    });
+    setCards((current) =>
+      current.map((card) => (card.id === response.data.card.id ? response.data.card : card)),
+    );
+  }
+
   async function handleCardTransition(cardId, action) {
     const response = await apiFetch(`/api/cards/${cardId}/${action}`, {
       method: 'POST',
@@ -896,6 +1023,7 @@ export default function App() {
       onLogout={handleLogout}
       onCreateDeal={handleCreateDeal}
       onUseCard={handleUseCard}
+      onSellCard={handleSellCard}
       onReserveCard={(card) => handleCardTransition(card.id, 'reserve')}
       onUnreserveCard={(card) => handleCardTransition(card.id, 'unreserve')}
     />
