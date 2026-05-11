@@ -828,6 +828,47 @@ td {
   font-size: 0.95rem;
 }
 
+.credential-section {
+  border: 1px solid #e4e8ee;
+  border-radius: 8px;
+  background: #fbfcfd;
+  padding: 12px;
+}
+
+.credential-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.credential-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.credential-row {
+  display: grid;
+  grid-template-columns: minmax(90px, 0.8fr) minmax(120px, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  border-top: 1px solid #e4e8ee;
+  padding-top: 8px;
+}
+
+.credential-row span {
+  color: #536073;
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.credential-row .table-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: center;
+}
+
 .detail-list {
   display: grid;
   gap: 8px;
@@ -923,6 +964,10 @@ td {
   }
 
   .detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .credential-row {
     grid-template-columns: 1fr;
   }
 }

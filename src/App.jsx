@@ -2,9 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   CircleDollarSign,
+  Copy,
   CreditCard,
   DatabaseBackup,
   Download,
+  Eye,
   FilePlus2,
   LayoutDashboard,
   Lock,
@@ -1296,13 +1298,39 @@ function HistoryList({ title, items, renderItem, emptyText, children }) {
   );
 }
 
-function CardDetailPanel({ detailState, onClose, onUndoUsage }) {
+function CardDetailPanel({ detailState, onClose, onUndoUsage, onRevealCredentials }) {
   const { card, data, error, loading } = detailState;
   const detailCard = data?.card || card;
   const [undoUsage, setUndoUsage] = useState(null);
   const [undoReason, setUndoReason] = useState('');
   const [undoError, setUndoError] = useState('');
   const [submittingUndo, setSubmittingUndo] = useState(false);
+  const [credentials, setCredentials] = useState(null);
+  const [credentialError, setCredentialError] = useState('');
+  const [credentialMessage, setCredentialMessage] = useState('');
+  const [revealing, setRevealing] = useState(false);
+
+  useEffect(() => {
+    if (!credentials) {
+      return undefined;
+    }
+
+    const timer = setTimeout(() => {
+      setCredentials(null);
+      setCredentialMessage('');
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, [credentials]);
+
+  useEffect(() => {
+    function hideCredentials() {
+      setCredentials(null);
+      setCredentialMessage('');
+    }
+
+    window.addEventListener('blur', hideCredentials);
+    return () => window.removeEventListener('blur', hideCredentials);
+  }, []);
 
   function startUndoUsage(usage) {
     setUndoUsage(usage);
@@ -1330,6 +1358,40 @@ function CardDetailPanel({ detailState, onClose, onUndoUsage }) {
     } finally {
       setSubmittingUndo(false);
     }
+  }
+
+  async function revealCredentials() {
+    setCredentialError('');
+    setCredentialMessage('');
+    setRevealing(true);
+    try {
+      const response = await onRevealCredentials(detailCard.id);
+      setCredentials(response.data);
+      return response.data;
+    } catch (caught) {
+      setCredentialError(caught.message);
+      return null;
+    } finally {
+      setRevealing(false);
+    }
+  }
+
+  async function copyCredential(field, label) {
+    setCredentialError('');
+    setCredentialMessage('');
+    const currentCredentials = credentials || (await revealCredentials());
+    const value = currentCredentials?.[field];
+    if (!value) {
+      setCredentialError(`${label} is not recorded.`);
+      return;
+    }
+    const clipboard = globalThis.navigator?.clipboard;
+    if (!clipboard?.writeText) {
+      setCredentialError('Clipboard is not available.');
+      return;
+    }
+    await clipboard.writeText(value);
+    setCredentialMessage(`${label} copied.`);
   }
 
   return (
@@ -1391,6 +1453,46 @@ function CardDetailPanel({ detailState, onClose, onUndoUsage }) {
               <strong>{detailCard.notes || 'Not recorded'}</strong>
             </div>
           </div>
+          <section className="detail-section credential-section">
+            <div className="credential-heading">
+              <h3>Credentials</h3>
+              <button type="button" className="secondary-action" onClick={revealCredentials} disabled={revealing}>
+                <Eye aria-hidden="true" size={17} />
+                {revealing ? 'Revealing...' : 'Reveal credentials'}
+              </button>
+            </div>
+            <div className="credential-grid">
+              <div className="credential-row">
+                <span>Card number</span>
+                <strong className="mono">
+                  {credentials?.cardNumber ||
+                    (detailCard.cardNumberLast4 ? `**** ${detailCard.cardNumberLast4}` : 'Hidden')}
+                </strong>
+                <button type="button" className="table-action" onClick={() => copyCredential('cardNumber', 'Card number')}>
+                  <Copy aria-hidden="true" size={15} />
+                  Copy card number
+                </button>
+              </div>
+              <div className="credential-row">
+                <span>PIN</span>
+                <strong className="mono">{credentials ? credentials.pin || 'Not recorded' : 'Hidden'}</strong>
+                <button type="button" className="table-action" onClick={() => copyCredential('pin', 'PIN')}>
+                  <Copy aria-hidden="true" size={15} />
+                  Copy PIN
+                </button>
+              </div>
+              <div className="credential-row">
+                <span>Billing ZIP</span>
+                <strong className="mono">{credentials ? credentials.billingZip || 'Not recorded' : 'Hidden'}</strong>
+                <button type="button" className="table-action" onClick={() => copyCredential('billingZip', 'Billing ZIP')}>
+                  <Copy aria-hidden="true" size={15} />
+                  Copy ZIP
+                </button>
+              </div>
+            </div>
+            <FieldError message={credentialError} />
+            {credentialMessage ? <p className="success-copy">{credentialMessage}</p> : null}
+          </section>
           <HistoryList
             title="Transactions"
             items={data?.transactions || []}
@@ -2179,6 +2281,7 @@ function WorkSurface({
   onSearchCards,
   onLoadCardDetail,
   onLoadDealDetail,
+  onRevealCardCredentials,
   onUseCard,
   onUndoUsage,
   onEditCard,
@@ -2545,6 +2648,7 @@ function WorkSurface({
           detailState={detailState}
           onClose={() => setDetailState(null)}
           onUndoUsage={undoUsageFromDetail}
+          onRevealCredentials={onRevealCardCredentials}
         />
       ) : null}
       {dealDetailState ? (
@@ -2656,6 +2760,14 @@ export default function App() {
 
   async function handleLoadDealDetail(dealId) {
     return apiFetch(`/api/deals/${dealId}`);
+  }
+
+  async function handleRevealCardCredentials(cardId) {
+    return apiFetch(`/api/cards/${cardId}/reveal`, {
+      method: 'POST',
+      body: {},
+      csrfToken: auth.csrfToken,
+    });
   }
 
   async function handleLoadAudit(criteria = {}) {
@@ -2999,6 +3111,7 @@ export default function App() {
       onSearchCards={handleSearchCards}
       onLoadCardDetail={handleLoadCardDetail}
       onLoadDealDetail={handleLoadDealDetail}
+      onRevealCardCredentials={handleRevealCardCredentials}
       onUseCard={handleUseCard}
       onUndoUsage={handleUndoUsage}
       onEditCard={handleEditCard}

@@ -654,6 +654,106 @@ describe('App', () => {
     );
   });
 
+  it('reveals and copies card credentials from card detail without putting secrets in status text', async () => {
+    globalThis.fetch
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            setupComplete: true,
+            sessionValid: true,
+            dekLoaded: true,
+            csrfToken: 'csrf_ready',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            {
+              id: 1,
+              brand: 'Target',
+              cardType: 'merchant',
+              status: 'available',
+              faceValueCents: 5000,
+              remainingBalanceCents: 5000,
+              purchaseCostCents: 4500,
+              cardNumberLast4: '1111',
+            },
+          ],
+          page: { total: 1, limit: 50, offset: 0, hasMore: false },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            card: {
+              id: 1,
+              brand: 'Target',
+              cardType: 'merchant',
+              status: 'available',
+              faceValueCents: 5000,
+              remainingBalanceCents: 5000,
+              purchaseCostCents: 4500,
+              cardNumberLast4: '1111',
+            },
+            transactions: [],
+            usages: [],
+            audit: [],
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            cardNumber: '4111111111111111',
+            cardNumberLast4: '1111',
+            pin: '1234',
+            billingZip: '94105',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            cardNumber: '4111111111111111',
+            cardNumberLast4: '1111',
+            pin: '1234',
+            billingZip: '94105',
+          },
+        }),
+      );
+
+    const user = userEvent.setup();
+    const writeText = vi.spyOn(window.navigator.clipboard, 'writeText');
+    render(<App />);
+
+    await screen.findByRole('heading', { name: /dashboard/i });
+    await user.click(screen.getByRole('button', { name: /open target details/i }));
+    await screen.findByRole('heading', { name: /card details/i });
+    await user.click(screen.getByRole('button', { name: /^reveal credentials$/i }));
+
+    expect(await screen.findByText('4111111111111111')).toBeInTheDocument();
+    expect(screen.getByText('1234')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /^copy card number$/i }));
+
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith('4111111111111111');
+    });
+    expect(await screen.findByText(/card number copied/i)).toBeInTheDocument();
+    expect(screen.queryByText(/4111111111111111 copied/i)).not.toBeInTheDocument();
+    expect(globalThis.fetch).toHaveBeenLastCalledWith(
+      '/api/cards/1/reveal',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({}),
+        headers: expect.objectContaining({
+          'X-CSRF-Token': 'csrf_ready',
+        }),
+      }),
+    );
+  });
+
   it('creates a deal with a starter card from the dashboard', async () => {
     globalThis.fetch
       .mockResolvedValueOnce(
@@ -1086,7 +1186,7 @@ describe('App', () => {
 
     const dialog = await screen.findByRole('dialog', { name: /card details/i });
     expect(within(dialog).getAllByText(/^target$/i).length).toBeGreaterThan(0);
-    expect(within(dialog).getByText(/\*\*\*\* 1111/i)).toBeInTheDocument();
+    expect(within(dialog).getAllByText(/\*\*\*\* 1111/i).length).toBeGreaterThan(0);
     expect(within(dialog).getByText(/merchant/i)).toBeInTheDocument();
     expect(within(dialog).getByText(/staples/i)).toBeInTheDocument();
     expect(within(dialog).getByText(/2028-01-31/i)).toBeInTheDocument();
