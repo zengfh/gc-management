@@ -402,6 +402,11 @@ describe('App', () => {
               remainingBalanceCents: 3750,
               purchaseCostCents: 4500,
               cardNumberLast4: '1111',
+              cardType: 'merchant',
+              source: 'Staples',
+              expirationDate: '2028-01-31',
+              format: 'digital',
+              notes: 'Promo notes',
               rowVersion: 2,
             },
             transactions: [],
@@ -480,6 +485,11 @@ describe('App', () => {
               remainingBalanceCents: 3750,
               purchaseCostCents: 4500,
               cardNumberLast4: '1111',
+              cardType: 'merchant',
+              source: 'Staples',
+              expirationDate: '2028-01-31',
+              format: 'digital',
+              notes: 'Promo notes',
               rowVersion: 2,
             },
             transactions: [{ id: 8, type: 'sale', salePriceCents: 3800, buyerName: 'Dealer A' }],
@@ -499,6 +509,11 @@ describe('App', () => {
     const dialog = await screen.findByRole('dialog', { name: /card details/i });
     expect(within(dialog).getAllByText(/^target$/i).length).toBeGreaterThan(0);
     expect(within(dialog).getByText(/\*\*\*\* 1111/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(/merchant/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(/staples/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(/2028-01-31/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(/digital/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(/promo notes/i)).toBeInTheDocument();
     expect(within(dialog).getByText(/dealer a/i)).toBeInTheDocument();
     expect(within(dialog).getByText(/card.use/i)).toBeInTheDocument();
     expect(within(dialog).getByText(/2026/i)).toBeInTheDocument();
@@ -603,7 +618,7 @@ describe('App', () => {
     await user.click(within(dialog).getByRole('button', { name: /^undo usage$/i }));
 
     expect(await within(dialog).findByText(/available/i)).toBeInTheDocument();
-    expect(within(dialog).getByText(/\$50\.00/i)).toBeInTheDocument();
+    expect(within(dialog).getAllByText(/\$50\.00/i).length).toBeGreaterThan(0);
     expect(within(dialog).getByText(/reversed/i)).toBeInTheDocument();
     expect(within(dialog).getByText(/mistyped amount/i)).toBeInTheDocument();
     expect(within(dialog).getByText(/card.undo_usage/i)).toBeInTheDocument();

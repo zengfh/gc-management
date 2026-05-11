@@ -78,6 +78,15 @@ function formatDateTime(value) {
   return new Date(value).toLocaleString();
 }
 
+function formatDisplayValue(value) {
+  if (!value) {
+    return 'Not recorded';
+  }
+  return String(value)
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
 function statusText(status) {
   return statusLabels[status] || status;
 }
@@ -644,8 +653,32 @@ function CardDetailPanel({ detailState, onClose, onUndoUsage }) {
               <strong>{formatMoney(detailCard.remainingBalanceCents)}</strong>
             </div>
             <div className="preview-box">
+              <span>Face value</span>
+              <strong>{formatMoney(detailCard.faceValueCents)}</strong>
+            </div>
+            <div className="preview-box">
               <span>Cost</span>
               <strong>{formatMoney(detailCard.purchaseCostCents)}</strong>
+            </div>
+            <div className="preview-box">
+              <span>Type</span>
+              <strong>{formatDisplayValue(detailCard.cardType)}</strong>
+            </div>
+            <div className="preview-box">
+              <span>Source</span>
+              <strong>{detailCard.source || 'Not recorded'}</strong>
+            </div>
+            <div className="preview-box">
+              <span>Expiration</span>
+              <strong>{detailCard.expirationDate || 'Not recorded'}</strong>
+            </div>
+            <div className="preview-box">
+              <span>Format</span>
+              <strong>{formatDisplayValue(detailCard.format)}</strong>
+            </div>
+            <div className="preview-box detail-note">
+              <span>Notes</span>
+              <strong>{detailCard.notes || 'Not recorded'}</strong>
             </div>
           </div>
           <HistoryList

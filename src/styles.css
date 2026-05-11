@@ -641,6 +641,10 @@ td {
   gap: 10px;
 }
 
+.detail-note {
+  grid-column: 1 / -1;
+}
+
 .detail-section {
   display: grid;
   gap: 10px;
