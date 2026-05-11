@@ -510,10 +510,15 @@ function CardSearchForm({ onSearchCards }) {
   );
 }
 
-function HistoryList({ title, items, renderItem, emptyText }) {
+function canUndoUsage(usage) {
+  return !usage.isReversed && !usage.reversedAt && !usage.isWriteOff;
+}
+
+function HistoryList({ title, items, renderItem, emptyText, children }) {
   return (
     <section className="detail-section">
       <h3>{title}</h3>
+      {children}
       {items?.length ? (
         <ul className="detail-list">
           {items.map((item) => (
@@ -527,9 +532,41 @@ function HistoryList({ title, items, renderItem, emptyText }) {
   );
 }
 
-function CardDetailPanel({ detailState, onClose }) {
+function CardDetailPanel({ detailState, onClose, onUndoUsage }) {
   const { card, data, error, loading } = detailState;
   const detailCard = data?.card || card;
+  const [undoUsage, setUndoUsage] = useState(null);
+  const [undoReason, setUndoReason] = useState('');
+  const [undoError, setUndoError] = useState('');
+  const [submittingUndo, setSubmittingUndo] = useState(false);
+
+  function startUndoUsage(usage) {
+    setUndoUsage(usage);
+    setUndoReason('');
+    setUndoError('');
+  }
+
+  async function submitUndoUsage(event) {
+    event.preventDefault();
+    setUndoError('');
+
+    const reason = undoReason.trim();
+    if (!reason) {
+      setUndoError('Reason is required.');
+      return;
+    }
+
+    setSubmittingUndo(true);
+    try {
+      await onUndoUsage(undoUsage.id, reason);
+      setUndoUsage(null);
+      setUndoReason('');
+    } catch (caught) {
+      setUndoError(caught.message);
+    } finally {
+      setSubmittingUndo(false);
+    }
+  }
 
   return (
     <div className="modal-backdrop" role="presentation">
@@ -582,11 +619,51 @@ function CardDetailPanel({ detailState, onClose }) {
             title="Usages"
             items={data?.usages || []}
             emptyText="No usages recorded."
+            children={
+              undoUsage ? (
+                <form className="inline-detail-form" onSubmit={submitUndoUsage}>
+                  <p className="muted-text">
+                    Undo {undoUsage.merchant || 'usage'} for {formatMoney(undoUsage.amountCents)}.
+                  </p>
+                  <label>
+                    <span>Reason</span>
+                    <input value={undoReason} onChange={(event) => setUndoReason(event.target.value)} />
+                  </label>
+                  <FieldError message={undoError} />
+                  <div className="inline-form-actions">
+                    <button
+                      type="button"
+                      className="secondary-action"
+                      onClick={() => setUndoUsage(null)}
+                      disabled={submittingUndo}
+                    >
+                      Cancel
+                    </button>
+                    <button type="submit" className="primary-action compact" disabled={submittingUndo}>
+                      {submittingUndo ? 'Undoing...' : 'Undo usage'}
+                    </button>
+                  </div>
+                </form>
+              ) : null
+            }
             renderItem={(usage) => (
               <>
                 <strong>{usage.merchant || 'Usage'}</strong>
                 <span>{formatMoney(usage.amountCents)}</span>
                 {usage.usageDate ? <span>{usage.usageDate}</span> : null}
+                {usage.isWriteOff ? <span className="detail-pill">Write-off</span> : null}
+                {usage.isReversed ? <span className="detail-pill">Reversed</span> : null}
+                {usage.reversalReason ? <span>{usage.reversalReason}</span> : null}
+                {canUndoUsage(usage) ? (
+                  <button
+                    type="button"
+                    className="table-action"
+                    aria-label={`Undo ${usage.merchant || 'usage'} usage`}
+                    onClick={() => startUndoUsage(usage)}
+                  >
+                    Undo usage
+                  </button>
+                ) : null}
               </>
             )}
           />
@@ -1046,6 +1123,7 @@ function WorkSurface({
   onSearchCards,
   onLoadCardDetail,
   onUseCard,
+  onUndoUsage,
   onSellCard,
   onUndoSale,
   onVoidCard,
@@ -1117,6 +1195,13 @@ function WorkSurface({
     } catch (caught) {
       setDetailState({ card, data: null, error: caught.message, loading: false });
     }
+  }
+
+  async function undoUsageFromDetail(usageId, reason) {
+    const cardId = (detailState?.data?.card || detailState?.card)?.id;
+    const response = await onUndoUsage(cardId, { usageId, reason });
+    setDetailState({ card: response.data.card, data: response.data, error: '', loading: false });
+    return response;
   }
 
   return (
@@ -1295,6 +1380,7 @@ function WorkSurface({
         <CardDetailPanel
           detailState={detailState}
           onClose={() => setDetailState(null)}
+          onUndoUsage={undoUsageFromDetail}
         />
       ) : null}
     </div>
@@ -1457,6 +1543,18 @@ export default function App() {
     );
   }
 
+  async function handleUndoUsage(cardId, payload) {
+    const response = await apiFetch(`/api/cards/${cardId}/undo-usage`, {
+      method: 'POST',
+      body: payload,
+      csrfToken: auth.csrfToken,
+    });
+    setCards((current) =>
+      current.map((card) => (card.id === response.data.card.id ? response.data.card : card)),
+    );
+    return response;
+  }
+
   async function handleSellCard(cardId, payload) {
     const response = await apiFetch(`/api/cards/${cardId}/sell`, {
       method: 'POST',
@@ -1553,6 +1651,7 @@ export default function App() {
       onSearchCards={handleSearchCards}
       onLoadCardDetail={handleLoadCardDetail}
       onUseCard={handleUseCard}
+      onUndoUsage={handleUndoUsage}
       onSellCard={handleSellCard}
       onUndoSale={handleUndoSale}
       onVoidCard={handleVoidCard}

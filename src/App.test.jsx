@@ -510,6 +510,118 @@ describe('App', () => {
     );
   });
 
+  it('undoes a usage from the card detail panel', async () => {
+    globalThis.fetch
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            setupComplete: true,
+            sessionValid: true,
+            dekLoaded: true,
+            csrfToken: 'csrf_ready',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            {
+              id: 1,
+              brand: 'Target',
+              status: 'in_use',
+              faceValueCents: 5000,
+              remainingBalanceCents: 3750,
+              purchaseCostCents: 4500,
+              cardNumberLast4: '1111',
+            },
+          ],
+          page: { total: 1, limit: 50, offset: 0, hasMore: false },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            card: {
+              id: 1,
+              brand: 'Target',
+              status: 'in_use',
+              faceValueCents: 5000,
+              remainingBalanceCents: 3750,
+              purchaseCostCents: 4500,
+              cardNumberLast4: '1111',
+              rowVersion: 2,
+            },
+            transactions: [],
+            usages: [{ id: 7, amountCents: 1250, merchant: 'Target', usageDate: '2026-05-11' }],
+            audit: [{ id: 12, action: 'card.use', timestamp: '2026-05-11T16:00:00.000Z' }],
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            card: {
+              id: 1,
+              brand: 'Target',
+              status: 'available',
+              faceValueCents: 5000,
+              remainingBalanceCents: 5000,
+              purchaseCostCents: 4500,
+              cardNumberLast4: '1111',
+              rowVersion: 3,
+            },
+            transactions: [],
+            usages: [
+              {
+                id: 7,
+                amountCents: 1250,
+                merchant: 'Target',
+                usageDate: '2026-05-11',
+                isReversed: 1,
+                reversalReason: 'Mistyped amount',
+              },
+            ],
+            audit: [
+              { id: 13, action: 'card.undo_usage', timestamp: '2026-05-11T16:05:00.000Z' },
+              { id: 12, action: 'card.use', timestamp: '2026-05-11T16:00:00.000Z' },
+            ],
+          },
+        }),
+      );
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByRole('heading', { name: /dashboard/i });
+    await user.click(screen.getByRole('button', { name: /^cards$/i }));
+    await user.click(screen.getByRole('button', { name: /open target details/i }));
+
+    const dialog = await screen.findByRole('dialog', { name: /card details/i });
+    await user.click(within(dialog).getByRole('button', { name: /undo target usage/i }));
+    await user.type(within(dialog).getByLabelText(/^reason$/i), 'Mistyped amount');
+    await user.click(within(dialog).getByRole('button', { name: /^undo usage$/i }));
+
+    expect(await within(dialog).findByText(/available/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(/\$50\.00/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(/reversed/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(/mistyped amount/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(/card.undo_usage/i)).toBeInTheDocument();
+    expect(globalThis.fetch).toHaveBeenLastCalledWith(
+      '/api/cards/1/undo-usage',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          usageId: 7,
+          reason: 'Mistyped amount',
+        }),
+        headers: expect.objectContaining({
+          'X-CSRF-Token': 'csrf_ready',
+        }),
+      }),
+    );
+  });
+
   it('sells a card from the card table action', async () => {
     globalThis.fetch
       .mockResolvedValueOnce(
