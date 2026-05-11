@@ -8,6 +8,7 @@ export function errorResponse(error, requestId) {
       code: error.code || 'INTERNAL_ERROR',
       message: error.message || 'Unexpected server error.',
       fieldErrors: error.fieldErrors || [],
+      ...(error.details === undefined ? {} : { details: error.details }),
       requestId,
     },
   };

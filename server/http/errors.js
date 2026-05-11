@@ -5,6 +5,7 @@ export class HttpError extends Error {
     this.status = status;
     this.code = code;
     this.fieldErrors = options.fieldErrors || [];
+    this.details = options.details;
   }
 }
 
@@ -24,8 +25,8 @@ export function notFound(code = 'NOT_FOUND', message = 'Not found.') {
   return new HttpError(404, code, message);
 }
 
-export function conflict(code, message) {
-  return new HttpError(409, code, message);
+export function conflict(code, message, details) {
+  return new HttpError(409, code, message, { details });
 }
 
 export function rateLimited(code, message) {

@@ -379,6 +379,45 @@ function buildCsvPreview(db, auth, csv) {
   };
 }
 
+function csvRecordToCardInput(record) {
+  return {
+    brand: csvValue(record, ['brand']),
+    cardType: csvValue(record, ['cardType', 'card type', 'type']) || 'merchant',
+    faceValueCents: parseMoneyInput(
+      csvValue(record, ['faceValue', 'face value', 'faceValueCents', 'face value cents']),
+      'faceValue',
+      { required: true, positive: true },
+    ).cents,
+    purchaseCostCents: parseMoneyInput(
+      csvValue(record, ['purchaseCost', 'purchase cost', 'purchaseCostCents', 'purchase cost cents']),
+      'purchaseCost',
+    ).cents,
+    cardNumber: normalizeCardNumber(csvValue(record, ['cardNumber', 'card number'])),
+    pin: csvValue(record, ['pin']) || null,
+    billingZip: csvValue(record, ['billingZip', 'billing zip', 'zip']) || null,
+    expirationDate: csvValue(record, ['expirationDate', 'expiration date', 'expires']) || null,
+    format: csvValue(record, ['format']) || null,
+    source: csvValue(record, ['source']) || null,
+    notes: csvValue(record, ['notes']) || null,
+  };
+}
+
+function toImportJobResponse(row) {
+  return {
+    id: row.id,
+    accountId: row.accountId,
+    userId: row.userId,
+    type: row.type,
+    status: row.status,
+    rowCount: row.rowCount,
+    validCount: row.validCount,
+    invalidCount: row.invalidCount,
+    summary: row.summaryJson ? JSON.parse(row.summaryJson) : null,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
 function buildCardCredentialFields(input, auth) {
   const normalizedCardNumber = normalizeCardNumber(input.cardNumber);
   return {
@@ -661,6 +700,133 @@ export function createCardsRouter({ db }) {
     asyncHandler(async (req, res) => {
       const body = validateBody(importCsvPreviewSchema, req.body || {});
       res.json(objectResponse(buildCsvPreview(db, req.auth, body.csv)));
+    }),
+  );
+
+  router.post(
+    '/import-csv/confirm',
+    asyncHandler(async (req, res) => {
+      const body = validateBody(importCsvPreviewSchema, req.body || {});
+      const preview = buildCsvPreview(db, req.auth, body.csv);
+      if (preview.summary.invalidCount > 0) {
+        throw conflict('CSV_IMPORT_INVALID', 'CSV import has invalid rows.', {
+          summary: preview.summary,
+          rows: preview.rows,
+        });
+      }
+
+      const timestamp = nowIso();
+      const cards = parseCsvRecords(body.csv).map(csvRecordToCardInput);
+      const preparedCards = cards.map((card) => ({
+        ...card,
+        ...buildCardCredentialFields(card, req.auth),
+        status: 'available',
+      }));
+      assertNoDuplicateInputs(preparedCards);
+
+      try {
+        const result = db.transaction(() => {
+          const jobInfo = db
+            .prepare(
+              `INSERT INTO import_jobs (
+                accountId, userId, type, status, rowCount, validCount, invalidCount,
+                summaryJson, createdAt, updatedAt
+              ) VALUES (?, ?, 'csv', 'confirmed', ?, ?, ?, ?, ?, ?)`,
+            )
+            .run(
+              req.auth.accountId,
+              req.auth.userId,
+              preview.summary.rowCount,
+              preview.summary.validCount,
+              preview.summary.invalidCount,
+              JSON.stringify(preview.summary),
+              timestamp,
+              timestamp,
+            );
+
+          const createdCards = preparedCards.map((card) => {
+            const info = db
+              .prepare(
+                `INSERT INTO cards (
+                  accountId, dealId, brand, cardType, network, faceValueCents,
+                  remainingBalanceCents, purchaseCostCents, cardNumber,
+                  cardNumberHash, cardNumberLast4, pin, billingZip,
+                  expirationDate, status, format, source, notes, createdByUserId,
+                  updatedByUserId, createdAt, updatedAt
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              )
+              .run(
+                req.auth.accountId,
+                null,
+                card.brand,
+                card.cardType,
+                null,
+                card.faceValueCents,
+                card.faceValueCents,
+                card.purchaseCostCents,
+                card.encryptedCardNumber,
+                card.cardNumberHash,
+                card.cardNumberLast4,
+                card.pin,
+                card.billingZip,
+                card.expirationDate,
+                card.status,
+                card.format,
+                card.source,
+                card.notes,
+                req.auth.userId,
+                req.auth.userId,
+                timestamp,
+                timestamp,
+              );
+
+            const row = db.prepare('SELECT * FROM cards WHERE id = ?').get(info.lastInsertRowid);
+            insertAuditEvent(db, {
+              accountId: req.auth.accountId,
+              userId: req.auth.userId,
+              requestId: req.requestId,
+              entityType: 'card',
+              entityId: row.id,
+              action: 'card.create',
+              newValue: createCardAuditValue(row),
+              timestamp,
+            });
+            return row;
+          });
+
+          const importJob = db.prepare('SELECT * FROM import_jobs WHERE id = ?').get(jobInfo.lastInsertRowid);
+          insertAuditEvent(db, {
+            accountId: req.auth.accountId,
+            userId: req.auth.userId,
+            requestId: req.requestId,
+            entityType: 'import',
+            entityId: importJob.id,
+            action: 'import.csv_confirm',
+            metadata: {
+              rowCount: preview.summary.rowCount,
+              validCount: preview.summary.validCount,
+              invalidCount: preview.summary.invalidCount,
+              cardCount: createdCards.length,
+            },
+            timestamp,
+          });
+
+          return {
+            importJob,
+            cards: createdCards,
+          };
+        })();
+
+        res.status(201).json(
+          objectResponse({
+            summary: preview.summary,
+            importJob: toImportJobResponse(result.importJob),
+            cards: result.cards.map(toCardResponse),
+          }),
+        );
+      } catch (error) {
+        throw translateSqliteError(error);
+      }
     }),
   );
 

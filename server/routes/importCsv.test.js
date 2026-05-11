@@ -133,4 +133,94 @@ describe('CSV import preview route', () => {
     expect(responseText).not.toContain('4111111111111111');
     expect(responseText).not.toContain('9999');
   }, 45_000);
+
+  it('confirms a valid CSV by revalidating, creating cards, and writing an import job', async () => {
+    const csrfToken = await setupOwner();
+    const csv = [
+      'brand,cardType,faceValue,purchaseCost,cardNumber,pin,billingZip,expirationDate,format,source,notes',
+      'Target,merchant,50.00,45.00,4111 1111 1111 1111,1234,94105,2027-12-31,digital,Costco,Holiday balance',
+      'Amazon,merchant,25,20,,,,2028-01-31,digital,Staples,Bulk reward',
+    ].join('\n');
+
+    const response = await postWithCsrf('/api/cards/import-csv/confirm', csrfToken).send({ csv });
+
+    expect(response.status).toBe(201);
+    expect(response.body.data.summary).toEqual({
+      rowCount: 2,
+      validCount: 2,
+      invalidCount: 0,
+    });
+    expect(response.body.data.importJob).toMatchObject({
+      type: 'csv',
+      status: 'confirmed',
+      rowCount: 2,
+      validCount: 2,
+      invalidCount: 0,
+    });
+    expect(response.body.data.cards).toEqual([
+      expect.objectContaining({
+        brand: 'Target',
+        faceValueCents: 5000,
+        purchaseCostCents: 4500,
+        cardNumberLast4: '1111',
+      }),
+      expect.objectContaining({
+        brand: 'Amazon',
+        faceValueCents: 2500,
+        purchaseCostCents: 2000,
+        cardNumberLast4: null,
+      }),
+    ]);
+    expect(response.body.data.cards[0]).not.toHaveProperty('cardNumber');
+    expect(response.body.data.cards[0]).not.toHaveProperty('pin');
+    expect(response.body.data.cards[0]).not.toHaveProperty('billingZip');
+
+    expect(db.prepare('SELECT COUNT(*) AS count FROM cards').get().count).toBe(2);
+    expect(db.prepare('SELECT COUNT(*) AS count FROM import_jobs').get().count).toBe(1);
+    const auditRows = db
+      .prepare("SELECT * FROM audit_log WHERE entityType = 'import' AND action = 'import.csv_confirm'")
+      .all();
+    expect(auditRows).toHaveLength(1);
+    expect(JSON.parse(auditRows[0].metadata)).toMatchObject({
+      rowCount: 2,
+      cardCount: 2,
+    });
+
+    const auditText = JSON.stringify(auditRows);
+    expect(auditText).not.toContain('4111111111111111');
+    expect(auditText).not.toContain('1234');
+    expect(auditText).not.toContain('94105');
+  }, 45_000);
+
+  it('rejects CSV confirm when revalidation finds row errors or duplicate conflicts', async () => {
+    const csrfToken = await setupOwner();
+    const existing = await postWithCsrf('/api/cards', csrfToken).send({
+      cards: [
+        {
+          brand: 'Target',
+          cardType: 'merchant',
+          faceValueCents: 5000,
+          cardNumber: '4111 1111 1111 1111',
+        },
+      ],
+    });
+    expect(existing.status).toBe(201);
+    const csv = [
+      'brand,cardType,faceValue,purchaseCost,cardNumber',
+      'Target,merchant,50.00,45.00,4111 1111 1111 1111',
+      ',merchant,-5,4.00,',
+    ].join('\n');
+
+    const response = await postWithCsrf('/api/cards/import-csv/confirm', csrfToken).send({ csv });
+
+    expect(response.status).toBe(409);
+    expect(response.body.error.code).toBe('CSV_IMPORT_INVALID');
+    expect(response.body.error.details.summary).toEqual({
+      rowCount: 2,
+      validCount: 0,
+      invalidCount: 2,
+    });
+    expect(db.prepare('SELECT COUNT(*) AS count FROM cards').get().count).toBe(1);
+    expect(db.prepare('SELECT COUNT(*) AS count FROM import_jobs').get().count).toBe(0);
+  }, 45_000);
 });
