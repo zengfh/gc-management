@@ -252,6 +252,116 @@ describe('App', () => {
     );
   });
 
+  it('archives and restores deals from the deals view', async () => {
+    globalThis.fetch
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            setupComplete: true,
+            sessionValid: true,
+            dekLoaded: true,
+            csrfToken: 'csrf_ready',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            {
+              id: 10,
+              name: 'Staples promo',
+              source: 'Staples',
+              inputTotalCostCents: 4500,
+              archivedAt: null,
+              rowVersion: 1,
+            },
+          ],
+          page: { total: 1, limit: 50, offset: 0, hasMore: false },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            deal: {
+              id: 10,
+              name: 'Staples promo',
+              source: 'Staples',
+              inputTotalCostCents: 4500,
+              archivedAt: '2026-05-11T16:00:00.000Z',
+              rowVersion: 2,
+            },
+            cards: [],
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            {
+              id: 10,
+              name: 'Staples promo',
+              source: 'Staples',
+              inputTotalCostCents: 4500,
+              archivedAt: '2026-05-11T16:00:00.000Z',
+              rowVersion: 2,
+            },
+          ],
+          page: { total: 1, limit: 50, offset: 0, hasMore: false },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            deal: {
+              id: 10,
+              name: 'Staples promo',
+              source: 'Staples',
+              inputTotalCostCents: 4500,
+              archivedAt: null,
+              rowVersion: 3,
+            },
+            cards: [],
+          },
+        }),
+      );
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByRole('heading', { name: /dashboard/i });
+    await user.click(screen.getByRole('button', { name: /^deals$/i }));
+    await user.click(screen.getByRole('button', { name: /archive staples promo/i }));
+
+    expect(await screen.findByText(/no deals yet/i)).toBeInTheDocument();
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(
+      4,
+      '/api/deals/10/archive',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          'X-CSRF-Token': 'csrf_ready',
+        }),
+      }),
+    );
+
+    await user.click(screen.getByRole('checkbox', { name: /show archived/i }));
+
+    expect(await screen.findByText(/^archived$/i)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /unarchive staples promo/i }));
+
+    expect(await screen.findByText(/^active$/i)).toBeInTheDocument();
+    expect(globalThis.fetch).toHaveBeenLastCalledWith(
+      '/api/deals/10/unarchive',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          'X-CSRF-Token': 'csrf_ready',
+        }),
+      }),
+    );
+  });
+
   it('records card usage from the card table action', async () => {
     globalThis.fetch
       .mockResolvedValueOnce(

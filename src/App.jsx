@@ -370,7 +370,7 @@ function CardsTable({
   );
 }
 
-function DealsTable({ deals }) {
+function DealsTable({ deals, onArchiveDeal, onUnarchiveDeal }) {
   if (deals.length === 0) {
     return (
       <div className="empty-state">
@@ -385,19 +385,49 @@ function DealsTable({ deals }) {
       <table>
         <thead>
           <tr>
+            <th>Status</th>
             <th>Name</th>
             <th>Source</th>
             <th>Purchase date</th>
             <th className="numeric">Input cost</th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody>
           {deals.map((deal) => (
             <tr key={deal.id}>
+              <td>
+                <span className={deal.archivedAt ? 'status-badge status-used_up' : 'status-badge status-available'}>
+                  {deal.archivedAt ? 'Archived' : 'Active'}
+                </span>
+              </td>
               <td>{deal.name}</td>
               <td>{deal.source || 'Not recorded'}</td>
               <td>{deal.purchaseDate || 'Not recorded'}</td>
               <td className="numeric">{formatMoney(deal.inputTotalCostCents || 0)}</td>
+              <td>
+                <div className="row-actions">
+                  {deal.archivedAt ? (
+                    <button
+                      type="button"
+                      className="table-action"
+                      aria-label={`Unarchive ${deal.name}`}
+                      onClick={() => onUnarchiveDeal(deal)}
+                    >
+                      Unarchive
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="table-action"
+                      aria-label={`Archive ${deal.name}`}
+                      onClick={() => onArchiveDeal(deal)}
+                    >
+                      Archive
+                    </button>
+                  )}
+                </div>
+              </td>
             </tr>
           ))}
         </tbody>
@@ -896,6 +926,9 @@ function WorkSurface({
   onRefresh,
   onLogout,
   onCreateDeal,
+  onLoadDeals,
+  onArchiveDeal,
+  onUnarchiveDeal,
   onSearchCards,
   onUseCard,
   onSellCard,
@@ -910,6 +943,8 @@ function WorkSurface({
   const [saleCard, setSaleCard] = useState(null);
   const [undoSaleCard, setUndoSaleCard] = useState(null);
   const [voidCard, setVoidCard] = useState(null);
+  const [showArchivedDeals, setShowArchivedDeals] = useState(false);
+  const [dealError, setDealError] = useState('');
   const activeRemaining = cards
     .filter((card) => ['available', 'reserved', 'in_use'].includes(card.status))
     .reduce((sum, card) => sum + card.remainingBalanceCents, 0);
@@ -927,6 +962,36 @@ function WorkSurface({
     ],
     [activeRemaining, availableFace, cards.length, costBasis],
   );
+
+  async function toggleArchivedDeals(event) {
+    const nextValue = event.target.checked;
+    setDealError('');
+    setShowArchivedDeals(nextValue);
+    try {
+      await onLoadDeals(nextValue);
+    } catch (caught) {
+      setShowArchivedDeals(!nextValue);
+      setDealError(caught.message);
+    }
+  }
+
+  async function archiveDeal(deal) {
+    setDealError('');
+    try {
+      await onArchiveDeal(deal, showArchivedDeals);
+    } catch (caught) {
+      setDealError(caught.message);
+    }
+  }
+
+  async function unarchiveDeal(deal) {
+    setDealError('');
+    try {
+      await onUnarchiveDeal(deal, showArchivedDeals);
+    } catch (caught) {
+      setDealError(caught.message);
+    }
+  }
 
   return (
     <div className="product-shell">
@@ -1012,7 +1077,11 @@ function WorkSurface({
                   View all
                 </button>
               </div>
-              <DealsTable deals={deals.slice(0, 6)} />
+              <DealsTable
+                deals={deals.slice(0, 6)}
+                onArchiveDeal={archiveDeal}
+                onUnarchiveDeal={unarchiveDeal}
+              />
             </section>
           </>
         ) : null}
@@ -1042,7 +1111,18 @@ function WorkSurface({
               <h2>Deal Groups</h2>
               <span>{deals.length} records</span>
             </div>
-            <DealsTable deals={deals} />
+            <div className="deal-controls">
+              <label className="check-row">
+                <input
+                  type="checkbox"
+                  checked={showArchivedDeals}
+                  onChange={toggleArchivedDeals}
+                />
+                <span>Show archived</span>
+              </label>
+              <FieldError message={dealError} />
+            </div>
+            <DealsTable deals={deals} onArchiveDeal={archiveDeal} onUnarchiveDeal={unarchiveDeal} />
           </section>
         ) : null}
       </main>
@@ -1116,6 +1196,17 @@ export default function App() {
     try {
       const response = await apiFetch(`/api/cards${query}`);
       setCards(response.data || []);
+    } finally {
+      setInventoryLoading(false);
+    }
+  }
+
+  async function loadDeals({ includeArchived = false } = {}) {
+    const query = includeArchived ? '?includeArchived=true' : '';
+    setInventoryLoading(true);
+    try {
+      const response = await apiFetch(`/api/deals${query}`);
+      setDeals(response.data || []);
     } finally {
       setInventoryLoading(false);
     }
@@ -1195,6 +1286,26 @@ export default function App() {
       ...response.data.cards,
       ...current.filter((card) => !response.data.cards.some((created) => created.id === card.id)),
     ]);
+  }
+
+  async function handleDealArchiveTransition(dealId, action, includeArchived) {
+    const response = await apiFetch(`/api/deals/${dealId}/${action}`, {
+      method: 'POST',
+      body: {},
+      csrfToken: auth.csrfToken,
+    });
+    const updatedDeal = response.data.deal;
+    setDeals((current) => {
+      if (action === 'archive' && !includeArchived) {
+        return current.filter((deal) => deal.id !== updatedDeal.id);
+      }
+
+      const exists = current.some((deal) => deal.id === updatedDeal.id);
+      if (!exists) {
+        return [updatedDeal, ...current];
+      }
+      return current.map((deal) => (deal.id === updatedDeal.id ? updatedDeal : deal));
+    });
   }
 
   async function handleUseCard(cardId, payload) {
@@ -1296,6 +1407,11 @@ export default function App() {
       onRefresh={loadInventory}
       onLogout={handleLogout}
       onCreateDeal={handleCreateDeal}
+      onLoadDeals={(includeArchived) => loadDeals({ includeArchived })}
+      onArchiveDeal={(deal, includeArchived) =>
+        handleDealArchiveTransition(deal.id, 'archive', includeArchived)}
+      onUnarchiveDeal={(deal, includeArchived) =>
+        handleDealArchiveTransition(deal.id, 'unarchive', includeArchived)}
       onSearchCards={handleSearchCards}
       onUseCard={handleUseCard}
       onSellCard={handleSellCard}

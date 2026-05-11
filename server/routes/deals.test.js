@@ -166,6 +166,15 @@ describe('deal routes', () => {
     expect(hiddenList.status).toBe(200);
     expect(hiddenList.body.data).toEqual([]);
 
+    const archivedList = await agent.get('/api/deals?includeArchived=true');
+    expect(archivedList.status).toBe(200);
+    expect(archivedList.body.data).toEqual([
+      expect.objectContaining({
+        id: dealId,
+        archivedAt: expect.any(String),
+      }),
+    ]);
+
     const cardDetail = await agent.get(`/api/cards/${cardId}`);
     expect(cardDetail.status).toBe(200);
     expect(cardDetail.body.data.card.dealId).toBe(dealId);

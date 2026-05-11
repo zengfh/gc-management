@@ -292,14 +292,14 @@ export function createDealsRouter({ db }) {
     asyncHandler(async (req, res) => {
       const limit = parsePositiveInt(req.query.limit, 50, { min: 1, max: 100 });
       const offset = parsePositiveInt(req.query.offset, 0, { min: 0 });
-      const total = db
-        .prepare('SELECT COUNT(*) AS count FROM deals WHERE accountId = ? AND archivedAt IS NULL')
-        .get(req.auth.accountId).count;
+      const includeArchived = req.query.includeArchived === 'true';
+      const whereClause = includeArchived ? 'accountId = ?' : 'accountId = ? AND archivedAt IS NULL';
+      const total = db.prepare(`SELECT COUNT(*) AS count FROM deals WHERE ${whereClause}`).get(req.auth.accountId).count;
       const rows = db
         .prepare(
           `SELECT *
            FROM deals
-           WHERE accountId = ? AND archivedAt IS NULL
+           WHERE ${whereClause}
            ORDER BY updatedAt DESC, id DESC
            LIMIT ? OFFSET ?`,
         )

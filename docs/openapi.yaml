@@ -457,6 +457,12 @@ paths:
       parameters:
         - $ref: "#/components/parameters/Limit"
         - $ref: "#/components/parameters/Offset"
+        - name: includeArchived
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
       responses:
         "200":
           description: Deals page
