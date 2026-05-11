@@ -1017,6 +1017,60 @@ describe('App', () => {
     );
   });
 
+  it('deletes an untouched available card from the cards view', async () => {
+    globalThis.fetch
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            setupComplete: true,
+            sessionValid: true,
+            dekLoaded: true,
+            csrfToken: 'csrf_ready',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            {
+              id: 1,
+              brand: 'Target',
+              status: 'available',
+              faceValueCents: 5000,
+              remainingBalanceCents: 5000,
+              purchaseCostCents: 4500,
+              cardNumberLast4: '1111',
+            },
+          ],
+          page: { total: 1, limit: 50, offset: 0, hasMore: false },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(jsonResponse({}, 204));
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByRole('heading', { name: /dashboard/i });
+    await user.click(screen.getByRole('button', { name: /^cards$/i }));
+    await user.click(screen.getByRole('button', { name: /delete target/i }));
+
+    const dialog = await screen.findByRole('dialog', { name: /delete card/i });
+    expect(within(dialog).getByText(/\*\*\*\* 1111/i)).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: /^delete card$/i }));
+
+    expect(await screen.findByText(/no cards yet/i)).toBeInTheDocument();
+    expect(globalThis.fetch).toHaveBeenLastCalledWith(
+      '/api/cards/1',
+      expect.objectContaining({
+        method: 'DELETE',
+        headers: expect.objectContaining({
+          'X-CSRF-Token': 'csrf_ready',
+        }),
+      }),
+    );
+  });
+
   it('reserves and unreserves a card from row actions', async () => {
     globalThis.fetch
       .mockResolvedValueOnce(

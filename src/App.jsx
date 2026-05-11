@@ -268,6 +268,7 @@ function CardsTable({
   onUseCard,
   onViewCard,
   onEditCard,
+  onDeleteCard,
   onSellCard,
   onUndoSale,
   onVoidCard,
@@ -329,6 +330,16 @@ function CardsTable({
                   >
                     Edit
                   </button>
+                  {card.status === 'available' ? (
+                    <button
+                      type="button"
+                      className="table-action danger"
+                      aria-label={`Delete ${card.brand}`}
+                      onClick={() => onDeleteCard(card)}
+                    >
+                      Delete
+                    </button>
+                  ) : null}
                   {card.status === 'available' ? (
                     <button
                       type="button"
@@ -799,6 +810,63 @@ function EditCardPanel({ card, onClose, onEditCard }) {
   );
 }
 
+function DeleteCardPanel({ card, onClose, onDeleteCard }) {
+  const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  async function submitDelete(event) {
+    event.preventDefault();
+    setError('');
+    setSubmitting(true);
+    try {
+      await onDeleteCard(card.id);
+      onClose();
+    } catch (caught) {
+      setError(caught.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <section className="slide-panel" role="dialog" aria-modal="true" aria-labelledby="delete-card-title">
+        <div className="panel-heading">
+          <div>
+            <p className="eyebrow">{card.brand}</p>
+            <h2 id="delete-card-title">Delete card</h2>
+          </div>
+          <button type="button" className="icon-button" aria-label="Close delete card" onClick={onClose}>
+            <X aria-hidden="true" size={18} />
+          </button>
+        </div>
+        <form className="panel-form" onSubmit={submitDelete}>
+          <p className="warning-copy">
+            Delete only if this card was entered by mistake and has no activity. This cannot be undone.
+          </p>
+          <div className="preview-box">
+            <span>Masked number</span>
+            <strong className="mono">{card.cardNumberLast4 ? `**** ${card.cardNumberLast4}` : 'Hidden'}</strong>
+          </div>
+          <div className="preview-box">
+            <span>Face value</span>
+            <strong>{formatMoney(card.faceValueCents)}</strong>
+          </div>
+          <FieldError message={error} />
+          <div className="panel-actions">
+            <button type="button" className="secondary-action" onClick={onClose}>
+              Cancel
+            </button>
+            <button type="submit" className="primary-action danger" disabled={submitting}>
+              {submitting ? 'Deleting...' : 'Delete card'}
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
+  );
+}
+
 function AddDealPanel({ onClose, onCreateDeal }) {
   const [form, setForm] = useState({
     name: '',
@@ -1240,6 +1308,7 @@ function WorkSurface({
   onUseCard,
   onUndoUsage,
   onEditCard,
+  onDeleteCard,
   onSellCard,
   onUndoSale,
   onVoidCard,
@@ -1250,6 +1319,7 @@ function WorkSurface({
   const [showAddDeal, setShowAddDeal] = useState(false);
   const [usageCard, setUsageCard] = useState(null);
   const [editCard, setEditCard] = useState(null);
+  const [deleteCard, setDeleteCard] = useState(null);
   const [saleCard, setSaleCard] = useState(null);
   const [undoSaleCard, setUndoSaleCard] = useState(null);
   const [voidCard, setVoidCard] = useState(null);
@@ -1393,6 +1463,7 @@ function WorkSurface({
                 onUseCard={setUsageCard}
                 onViewCard={openCardDetail}
                 onEditCard={setEditCard}
+                onDeleteCard={setDeleteCard}
                 onSellCard={setSaleCard}
                 onUndoSale={setUndoSaleCard}
                 onVoidCard={setVoidCard}
@@ -1428,6 +1499,7 @@ function WorkSurface({
               onUseCard={setUsageCard}
               onViewCard={openCardDetail}
               onEditCard={setEditCard}
+              onDeleteCard={setDeleteCard}
               onSellCard={setSaleCard}
               onUndoSale={setUndoSaleCard}
               onVoidCard={setVoidCard}
@@ -1479,6 +1551,13 @@ function WorkSurface({
           card={editCard}
           onClose={() => setEditCard(null)}
           onEditCard={onEditCard}
+        />
+      ) : null}
+      {deleteCard ? (
+        <DeleteCardPanel
+          card={deleteCard}
+          onClose={() => setDeleteCard(null)}
+          onDeleteCard={onDeleteCard}
         />
       ) : null}
       {saleCard ? (
@@ -1693,6 +1772,14 @@ export default function App() {
     return response;
   }
 
+  async function handleDeleteCard(cardId) {
+    await apiFetch(`/api/cards/${cardId}`, {
+      method: 'DELETE',
+      csrfToken: auth.csrfToken,
+    });
+    setCards((current) => current.filter((card) => card.id !== cardId));
+  }
+
   async function handleSellCard(cardId, payload) {
     const response = await apiFetch(`/api/cards/${cardId}/sell`, {
       method: 'POST',
@@ -1791,6 +1878,7 @@ export default function App() {
       onUseCard={handleUseCard}
       onUndoUsage={handleUndoUsage}
       onEditCard={handleEditCard}
+      onDeleteCard={handleDeleteCard}
       onSellCard={handleSellCard}
       onUndoSale={handleUndoSale}
       onVoidCard={handleVoidCard}
