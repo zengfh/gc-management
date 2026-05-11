@@ -226,4 +226,157 @@ describe('backup routes', () => {
       .get().count;
     expect(backupAuditCount).toBe(0);
   }, 45_000);
+
+  it('merges a plaintext JSON export into an unlocked vault with encrypted imported credentials', async () => {
+    const csrfToken = await setupOwner();
+    await createSampleCard(csrfToken);
+    const exportResponse = await postWithCsrf('/api/backup/export', csrfToken).send({
+      unlockSecret,
+      confirmation: 'EXPORT',
+      acknowledgePlaintext: true,
+    });
+    expect(exportResponse.status).toBe(200);
+
+    const targetDb = openDatabase({ filename: ':memory:' });
+    const targetAgent = request.agent(createApp({ db: targetDb }));
+    try {
+      const setupResponse = await targetAgent.post('/api/auth/setup').send({ unlockSecret });
+      const targetCsrfToken = setupResponse.body.data.csrfToken;
+
+      const importResponse = await targetAgent
+        .post('/api/backup/import')
+        .set('Origin', appOrigin)
+        .set('X-CSRF-Token', targetCsrfToken)
+        .send({
+          unlockSecret,
+          mode: 'merge',
+          payload: exportResponse.body.data,
+        });
+
+      expect(importResponse.status).toBe(201);
+      expect(importResponse.body.data.summary).toMatchObject({
+        mode: 'merge',
+        dealCount: 1,
+        cardCount: 1,
+        transactionCount: 0,
+        usageCount: 0,
+      });
+      expect(importResponse.body.data.importJob).toMatchObject({
+        type: 'json_merge',
+        status: 'confirmed',
+        rowCount: 2,
+        validCount: 2,
+        invalidCount: 0,
+      });
+
+      const cardsResponse = await targetAgent.get('/api/cards');
+      expect(cardsResponse.body.data).toHaveLength(1);
+      expect(cardsResponse.body.data[0]).toMatchObject({
+        brand: 'Target',
+        cardNumberLast4: '1111',
+        remainingBalanceCents: 5000,
+      });
+
+      const revealResponse = await targetAgent
+        .post(`/api/cards/${cardsResponse.body.data[0].id}/reveal`)
+        .set('Origin', appOrigin)
+        .set('X-CSRF-Token', targetCsrfToken)
+        .send({});
+      expect(revealResponse.body.data).toMatchObject({
+        cardNumber: '4111111111111111',
+        pin: '1234',
+        billingZip: '94105',
+      });
+
+      const stored = targetDb.prepare('SELECT cardNumber, pin, billingZip FROM cards LIMIT 1').get();
+      expect(JSON.stringify(stored)).not.toContain('4111111111111111');
+      expect(JSON.stringify(stored)).not.toContain('1234');
+      expect(JSON.stringify(stored)).not.toContain('94105');
+
+      const auditRows = targetDb
+        .prepare("SELECT * FROM audit_log WHERE entityType = 'import' AND action = 'import.json_merge'")
+        .all();
+      expect(auditRows).toHaveLength(1);
+      const auditText = JSON.stringify(auditRows);
+      expect(auditText).not.toContain('4111111111111111');
+      expect(auditText).not.toContain('1234');
+      expect(auditText).not.toContain('94105');
+      expect(auditText).not.toContain(unlockSecret);
+    } finally {
+      targetDb.close();
+    }
+  }, 45_000);
+
+  it('replaces current data from plaintext JSON only after creating an automatic database backup', async () => {
+    const sourceCsrfToken = await setupOwner();
+    await createSampleCard(sourceCsrfToken);
+    const exportResponse = await postWithCsrf('/api/backup/export', sourceCsrfToken).send({
+      unlockSecret,
+      confirmation: 'EXPORT',
+      acknowledgePlaintext: true,
+    });
+    expect(exportResponse.status).toBe(200);
+
+    const targetDb = openDatabase({ filename: ':memory:' });
+    const targetAgent = request.agent(createApp({ db: targetDb }));
+    try {
+      const setupResponse = await targetAgent.post('/api/auth/setup').send({ unlockSecret });
+      const targetCsrfToken = setupResponse.body.data.csrfToken;
+      const currentCard = await targetAgent
+        .post('/api/cards')
+        .set('Origin', appOrigin)
+        .set('X-CSRF-Token', targetCsrfToken)
+        .send({
+          cards: [
+            {
+              brand: 'Amazon',
+              cardType: 'merchant',
+              faceValueCents: 2500,
+              purchaseCostCents: 2000,
+              cardNumber: '5555555555554444',
+            },
+          ],
+        });
+      expect(currentCard.status).toBe(201);
+
+      const importResponse = await targetAgent
+        .post('/api/backup/import')
+        .set('Origin', appOrigin)
+        .set('X-CSRF-Token', targetCsrfToken)
+        .send({
+          unlockSecret,
+          mode: 'replace',
+          confirmation: 'REPLACE',
+          payload: exportResponse.body.data,
+        });
+
+      expect(importResponse.status).toBe(201);
+      expect(importResponse.body.data.summary).toMatchObject({
+        mode: 'replace',
+        backupCreated: true,
+        dealCount: 1,
+        cardCount: 1,
+      });
+
+      const cardsResponse = await targetAgent.get('/api/cards');
+      expect(cardsResponse.body.data).toHaveLength(1);
+      expect(cardsResponse.body.data[0]).toMatchObject({
+        brand: 'Target',
+        cardNumberLast4: '1111',
+      });
+      expect(JSON.stringify(cardsResponse.body.data)).not.toContain('Amazon');
+
+      const auditRows = targetDb
+        .prepare("SELECT * FROM audit_log WHERE entityType = 'import' AND action = 'import.json_replace'")
+        .all();
+      expect(auditRows).toHaveLength(1);
+      expect(JSON.parse(auditRows[0].metadata)).toMatchObject({
+        mode: 'replace',
+        backupCreated: true,
+        cardCount: 1,
+      });
+    } finally {
+      targetDb.close();
+    }
+  }, 45_000);
 });

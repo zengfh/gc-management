@@ -8,7 +8,13 @@ import { insertAuditEvent } from '../audit/index.js';
 import { requireUnlockedSession } from '../auth/requireAuth.js';
 import { asyncHandler, badRequest, unauthorized } from '../http/errors.js';
 import { objectResponse } from '../http/response.js';
-import { decryptString } from '../security/crypto.js';
+import {
+  cardNumberHash as hashCardNumber,
+  cardNumberLast4 as computeCardNumberLast4,
+  decryptString,
+  encryptString,
+  normalizeCardNumber,
+} from '../security/crypto.js';
 
 const plaintextExportSchema = z
   .object({
@@ -23,6 +29,135 @@ const rawDatabaseExportSchema = z
     unlockSecret: z.string().min(1),
   })
   .strict();
+
+const nullableString = z.string().nullable().optional();
+const nullableInteger = z.number().int().nullable().optional();
+const positiveInteger = z.number().int().positive();
+const nonnegativeInteger = z.number().int().nonnegative();
+
+const importSettingSchema = z
+  .object({
+    key: z.string().trim().min(1).max(120),
+    value: nullableString,
+    createdAt: nullableString,
+    updatedAt: nullableString,
+  })
+  .passthrough();
+
+const importDealSchema = z
+  .object({
+    id: positiveInteger.optional(),
+    name: z.string().trim().min(1).max(120),
+    source: nullableString,
+    purchaseDate: nullableString,
+    inputTotalCostCents: nullableInteger,
+    notes: nullableString,
+    archivedAt: nullableString,
+    createdAt: nullableString,
+    updatedAt: nullableString,
+    rowVersion: positiveInteger.optional(),
+  })
+  .passthrough();
+
+const importCardSchema = z
+  .object({
+    id: positiveInteger.optional(),
+    dealId: nullableInteger,
+    brand: z.string().trim().min(1).max(120),
+    cardType: z.enum(['merchant', 'prepaid']),
+    network: z.enum(['visa', 'mastercard', 'amex', 'discover', 'other']).nullable().optional(),
+    faceValueCents: positiveInteger,
+    remainingBalanceCents: nonnegativeInteger,
+    purchaseCostCents: nonnegativeInteger.default(0),
+    cardNumber: nullableString,
+    cardNumberLast4: nullableString,
+    pin: nullableString,
+    billingZip: nullableString,
+    expirationDate: nullableString,
+    cardholderName: nullableString,
+    status: z.enum(['available', 'reserved', 'in_use', 'sold', 'used_up', 'void']),
+    format: z.enum(['digital', 'physical']).nullable().optional(),
+    source: nullableString,
+    notes: nullableString,
+    keyVersion: positiveInteger.optional(),
+    reservedFor: nullableString,
+    reservedUntil: nullableString,
+    reservedNotes: nullableString,
+    createdAt: nullableString,
+    updatedAt: nullableString,
+    rowVersion: positiveInteger.optional(),
+  })
+  .passthrough()
+  .refine((card) => card.remainingBalanceCents <= card.faceValueCents, {
+    path: ['remainingBalanceCents'],
+    message: 'Remaining balance cannot exceed face value.',
+  });
+
+const importTransactionSchema = z
+  .object({
+    cardId: positiveInteger,
+    type: z.enum(['sale', 'sale_reversal']),
+    buyerName: nullableString,
+    buyerType: z.enum(['dealer', 'group_chat', 'friend', 'self', 'other']).nullable().optional(),
+    salePriceCents: nullableInteger,
+    feesCents: nonnegativeInteger.default(0),
+    netProceedsCents: nullableInteger,
+    remainingBalanceAtSaleCents: nullableInteger,
+    statusAtSale: z.enum(['available', 'reserved', 'in_use']).nullable().optional(),
+    platform: nullableString,
+    reason: nullableString,
+    transactionDate: nullableString,
+    notes: nullableString,
+    idempotencyKey: nullableString,
+    createdAt: nullableString,
+  })
+  .passthrough();
+
+const importUsageSchema = z
+  .object({
+    cardId: positiveInteger,
+    amountCents: positiveInteger,
+    merchant: nullableString,
+    description: nullableString,
+    isReversed: z.boolean().optional(),
+    isWriteOff: z.boolean().optional(),
+    reversalReason: nullableString,
+    reversedAt: nullableString,
+    usageDate: nullableString,
+    idempotencyKey: nullableString,
+    createdAt: nullableString,
+  })
+  .passthrough();
+
+const plaintextImportPayloadSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    exportType: z.literal('plaintext_json'),
+    appSettings: z.array(importSettingSchema).default([]),
+    deals: z.array(importDealSchema).default([]),
+    cards: z.array(importCardSchema).default([]),
+    transactions: z.array(importTransactionSchema).default([]),
+    usages: z.array(importUsageSchema).default([]),
+  })
+  .passthrough();
+
+const backupImportSchema = z
+  .object({
+    unlockSecret: z.string().min(1),
+    mode: z.enum(['merge', 'replace']),
+    confirmation: z.string().optional(),
+    payload: plaintextImportPayloadSchema,
+  })
+  .strict()
+  .superRefine((body, context) => {
+    if (body.mode === 'replace' && body.confirmation !== 'REPLACE') {
+      context.addIssue({
+        code: 'custom',
+        path: ['confirmation'],
+        message: 'Type REPLACE to confirm destructive import.',
+      });
+    }
+  });
 
 function zodFieldErrors(error) {
   return error.issues.map((issue) => ({
@@ -64,6 +199,35 @@ async function verifyFreshUnlockSecret(db, auth, unlockSecret) {
 
 function decryptNullable(value, key) {
   return value ? decryptString(value, key) : null;
+}
+
+function encryptNullable(value, key) {
+  return value ? encryptString(String(value), key) : null;
+}
+
+function toSqlBoolean(value) {
+  return value ? 1 : 0;
+}
+
+function timestampOrNow(value, timestamp) {
+  return value || timestamp;
+}
+
+function rowVersionOrDefault(value) {
+  return value || 1;
+}
+
+function buildImportedCredentialFields(card, auth) {
+  const normalizedCardNumber = normalizeCardNumber(card.cardNumber);
+  return {
+    encryptedCardNumber: normalizedCardNumber ? encryptString(normalizedCardNumber, auth.dek) : null,
+    cardNumberHash: normalizedCardNumber ? hashCardNumber(normalizedCardNumber, auth.blindIndexKey) : null,
+    cardNumberLast4: normalizedCardNumber
+      ? computeCardNumberLast4(normalizedCardNumber)
+      : card.cardNumberLast4 ?? null,
+    pin: encryptNullable(card.pin, auth.dek),
+    billingZip: encryptNullable(card.billingZip, auth.dek),
+  };
 }
 
 function toExportDeal(row) {
@@ -201,6 +365,321 @@ function buildPlaintextExport(db, auth, exportedAt) {
   };
 }
 
+function insertImportedSettings(db, auth, settings, timestamp) {
+  const statement = db.prepare(
+    `INSERT INTO app_settings (accountId, key, value, createdAt, updatedAt)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(accountId, key) DO UPDATE SET
+       value = excluded.value,
+       updatedAt = excluded.updatedAt`,
+  );
+
+  for (const setting of settings) {
+    statement.run(
+      auth.accountId,
+      setting.key,
+      setting.value ?? null,
+      timestampOrNow(setting.createdAt, timestamp),
+      timestampOrNow(setting.updatedAt, timestamp),
+    );
+  }
+}
+
+function insertImportedDeals(db, auth, deals, timestamp) {
+  const dealIdMap = new Map();
+  const statement = db.prepare(
+    `INSERT INTO deals (
+      accountId, name, source, purchaseDate, inputTotalCostCents, notes, archivedAt,
+      createdByUserId, updatedByUserId, createdAt, updatedAt, rowVersion
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  );
+
+  for (const deal of deals) {
+    const info = statement.run(
+      auth.accountId,
+      deal.name,
+      deal.source ?? null,
+      deal.purchaseDate ?? null,
+      deal.inputTotalCostCents ?? null,
+      deal.notes ?? null,
+      deal.archivedAt ?? null,
+      auth.userId,
+      auth.userId,
+      timestampOrNow(deal.createdAt, timestamp),
+      timestampOrNow(deal.updatedAt, timestamp),
+      rowVersionOrDefault(deal.rowVersion),
+    );
+    if (deal.id) {
+      dealIdMap.set(deal.id, info.lastInsertRowid);
+    }
+  }
+
+  return dealIdMap;
+}
+
+function insertImportedCards(db, auth, cards, dealIdMap, timestamp) {
+  const cardIdMap = new Map();
+  const statement = db.prepare(
+    `INSERT INTO cards (
+      accountId, dealId, brand, cardType, network, faceValueCents, remainingBalanceCents,
+      purchaseCostCents, cardNumber, cardNumberHash, cardNumberLast4, pin, billingZip,
+      expirationDate, cardholderName, status, format, source, notes, keyVersion,
+      reservedFor, reservedUntil, reservedNotes, createdByUserId, updatedByUserId,
+      createdAt, updatedAt, rowVersion
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  );
+
+  for (const card of cards) {
+    if (card.dealId && !dealIdMap.has(card.dealId)) {
+      throw badRequest('IMPORT_REFERENCE_ERROR', 'Imported card references a missing deal.', [
+        {
+          field: 'cards.dealId',
+          code: 'missing_reference',
+          message: 'Imported card references a deal not present in the import payload.',
+        },
+      ]);
+    }
+
+    const credentials = buildImportedCredentialFields(card, auth);
+    const info = statement.run(
+      auth.accountId,
+      card.dealId ? dealIdMap.get(card.dealId) : null,
+      card.brand,
+      card.cardType,
+      card.network ?? null,
+      card.faceValueCents,
+      card.remainingBalanceCents,
+      card.purchaseCostCents,
+      credentials.encryptedCardNumber,
+      credentials.cardNumberHash,
+      credentials.cardNumberLast4,
+      credentials.pin,
+      credentials.billingZip,
+      card.expirationDate ?? null,
+      card.cardholderName ?? null,
+      card.status,
+      card.format ?? null,
+      card.source ?? null,
+      card.notes ?? null,
+      rowVersionOrDefault(card.keyVersion),
+      card.reservedFor ?? null,
+      card.reservedUntil ?? null,
+      card.reservedNotes ?? null,
+      auth.userId,
+      auth.userId,
+      timestampOrNow(card.createdAt, timestamp),
+      timestampOrNow(card.updatedAt, timestamp),
+      rowVersionOrDefault(card.rowVersion),
+    );
+    if (card.id) {
+      cardIdMap.set(card.id, info.lastInsertRowid);
+    }
+  }
+
+  return cardIdMap;
+}
+
+function insertImportedTransactions(db, auth, transactions, cardIdMap, timestamp) {
+  const statement = db.prepare(
+    `INSERT INTO transactions (
+      accountId, cardId, type, buyerName, buyerType, salePriceCents, feesCents,
+      netProceedsCents, remainingBalanceAtSaleCents, statusAtSale, platform,
+      reason, transactionDate, notes, idempotencyKey, createdByUserId, createdAt
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  );
+
+  for (const transaction of transactions) {
+    const cardId = cardIdMap.get(transaction.cardId);
+    if (!cardId) {
+      throw badRequest('IMPORT_REFERENCE_ERROR', 'Imported transaction references a missing card.', [
+        {
+          field: 'transactions.cardId',
+          code: 'missing_reference',
+          message: 'Imported transaction references a card not present in the import payload.',
+        },
+      ]);
+    }
+
+    statement.run(
+      auth.accountId,
+      cardId,
+      transaction.type,
+      transaction.buyerName ?? null,
+      transaction.buyerType ?? null,
+      transaction.salePriceCents ?? null,
+      transaction.feesCents,
+      transaction.netProceedsCents ?? null,
+      transaction.remainingBalanceAtSaleCents ?? null,
+      transaction.statusAtSale ?? null,
+      transaction.platform ?? null,
+      transaction.reason ?? null,
+      transaction.transactionDate ?? null,
+      transaction.notes ?? null,
+      transaction.idempotencyKey ?? null,
+      auth.userId,
+      timestampOrNow(transaction.createdAt, timestamp),
+    );
+  }
+}
+
+function insertImportedUsages(db, auth, usages, cardIdMap, timestamp) {
+  const statement = db.prepare(
+    `INSERT INTO usages (
+      accountId, cardId, amountCents, merchant, description, isReversed,
+      isWriteOff, reversalReason, reversedAt, usageDate, idempotencyKey,
+      createdByUserId, createdAt
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  );
+
+  for (const usage of usages) {
+    const cardId = cardIdMap.get(usage.cardId);
+    if (!cardId) {
+      throw badRequest('IMPORT_REFERENCE_ERROR', 'Imported usage references a missing card.', [
+        {
+          field: 'usages.cardId',
+          code: 'missing_reference',
+          message: 'Imported usage references a card not present in the import payload.',
+        },
+      ]);
+    }
+
+    statement.run(
+      auth.accountId,
+      cardId,
+      usage.amountCents,
+      usage.merchant ?? null,
+      usage.description ?? null,
+      toSqlBoolean(usage.isReversed),
+      toSqlBoolean(usage.isWriteOff),
+      usage.reversalReason ?? null,
+      usage.reversedAt ?? null,
+      usage.usageDate ?? null,
+      usage.idempotencyKey ?? null,
+      auth.userId,
+      timestampOrNow(usage.createdAt, timestamp),
+    );
+  }
+}
+
+function deleteCurrentImportScope(db, auth) {
+  db.prepare('DELETE FROM usages WHERE accountId = ?').run(auth.accountId);
+  db.prepare('DELETE FROM transactions WHERE accountId = ?').run(auth.accountId);
+  db.prepare('DELETE FROM cards WHERE accountId = ?').run(auth.accountId);
+  db.prepare('DELETE FROM deals WHERE accountId = ?').run(auth.accountId);
+  db.prepare('DELETE FROM app_settings WHERE accountId = ?').run(auth.accountId);
+}
+
+function foreignKeyViolations(db) {
+  return db.prepare('PRAGMA foreign_key_check').all();
+}
+
+function importSummary(mode, payload, backupInfo = null) {
+  return {
+    mode,
+    backupCreated: Boolean(backupInfo),
+    dealCount: payload.deals.length,
+    cardCount: payload.cards.length,
+    transactionCount: payload.transactions.length,
+    usageCount: payload.usages.length,
+    settingCount: payload.appSettings.length,
+  };
+}
+
+function importPayloadIntoDatabase(db, auth, payload, mode, timestamp, requestId, backupInfo = null) {
+  return db.transaction(() => {
+    if (mode === 'replace') {
+      deleteCurrentImportScope(db, auth);
+    }
+
+    insertImportedSettings(db, auth, payload.appSettings, timestamp);
+    const dealIdMap = insertImportedDeals(db, auth, payload.deals, timestamp);
+    const cardIdMap = insertImportedCards(db, auth, payload.cards, dealIdMap, timestamp);
+    insertImportedTransactions(db, auth, payload.transactions, cardIdMap, timestamp);
+    insertImportedUsages(db, auth, payload.usages, cardIdMap, timestamp);
+
+    const violations = foreignKeyViolations(db);
+    if (violations.length) {
+      throw badRequest('IMPORT_FOREIGN_KEY_FAILED', 'Imported data failed foreign key validation.', [
+        {
+          field: 'payload',
+          code: 'foreign_key_check_failed',
+          message: 'Imported data contains broken references.',
+        },
+      ]);
+    }
+
+    const summary = importSummary(mode, payload, backupInfo);
+    const rowCount =
+      summary.settingCount + summary.dealCount + summary.cardCount + summary.transactionCount + summary.usageCount;
+    const jobInfo = db
+      .prepare(
+        `INSERT INTO import_jobs (
+          accountId, userId, type, status, rowCount, validCount, invalidCount,
+          summaryJson, createdAt, updatedAt
+        ) VALUES (?, ?, ?, 'confirmed', ?, ?, 0, ?, ?, ?)`,
+      )
+      .run(
+        auth.accountId,
+        auth.userId,
+        mode === 'replace' ? 'json_replace' : 'json_merge',
+        rowCount,
+        rowCount,
+        JSON.stringify(summary),
+        timestamp,
+        timestamp,
+      );
+    const importJob = db.prepare('SELECT * FROM import_jobs WHERE id = ?').get(jobInfo.lastInsertRowid);
+
+    insertAuditEvent(db, {
+      accountId: auth.accountId,
+      userId: auth.userId,
+      requestId,
+      entityType: 'import',
+      entityId: importJob.id,
+      action: mode === 'replace' ? 'import.json_replace' : 'import.json_merge',
+      metadata: {
+        ...summary,
+        backupFilename: backupInfo?.filename,
+      },
+      timestamp,
+    });
+
+    return {
+      summary,
+      importJob: {
+        id: importJob.id,
+        type: importJob.type,
+        status: importJob.status,
+        rowCount: importJob.rowCount,
+        validCount: importJob.validCount,
+        invalidCount: importJob.invalidCount,
+        summary,
+        createdAt: importJob.createdAt,
+        updatedAt: importJob.updatedAt,
+      },
+    };
+  })();
+}
+
+function translateImportError(error) {
+  if (error.code?.startsWith('SQLITE_CONSTRAINT')) {
+    return badRequest('IMPORT_CONSTRAINT_FAILED', 'Imported data violates database constraints.');
+  }
+  return error;
+}
+
+async function createPreReplaceBackup(db, timestamp) {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'gc-json-replace-backup-'));
+  const filename = `gift-card-pre-import-${exportDate(timestamp)}.sqlite`;
+  const backupPath = path.join(tempDir, filename);
+  await db.backup(backupPath);
+  return {
+    tempDir,
+    filename,
+    path: backupPath,
+  };
+}
+
 export function createBackupRouter({ db }) {
   const router = Router();
 
@@ -236,6 +715,33 @@ export function createBackupRouter({ db }) {
         'Content-Disposition': `attachment; filename="gift-card-plaintext-export-${exportDate(timestamp)}.json"`,
       });
       res.json(objectResponse(payload));
+    }),
+  );
+
+  router.post(
+    '/import',
+    asyncHandler(async (req, res) => {
+      const body = validateBody(backupImportSchema, req.body || {});
+      await verifyFreshUnlockSecret(db, req.auth, body.unlockSecret);
+
+      const timestamp = new Date().toISOString();
+      const backupInfo = body.mode === 'replace' ? await createPreReplaceBackup(db, timestamp) : null;
+
+      try {
+        const result = importPayloadIntoDatabase(
+          db,
+          req.auth,
+          body.payload,
+          body.mode,
+          timestamp,
+          req.requestId,
+          backupInfo,
+        );
+
+        res.status(201).json(objectResponse(result));
+      } catch (error) {
+        throw translateImportError(error);
+      }
     }),
   );
 

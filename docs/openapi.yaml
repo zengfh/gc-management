@@ -583,6 +583,32 @@ paths:
             application/json:
               schema:
                 type: object
+  /api/backup/import:
+    post:
+      tags: [ImportExport]
+      summary: Import a plaintext JSON backup by merge or replace
+      operationId: importPlaintextBackup
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BackupImportRequest"
+      responses:
+        "201":
+          description: Backup import completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BackupImportResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
   /api/audit:
     get:
       tags: [Audit]
@@ -1038,6 +1064,95 @@ components:
               type: array
               items:
                 $ref: "#/components/schemas/AuditEvent"
+    PlaintextBackupPayload:
+      type: object
+      required: [schemaVersion, exportType, deals, cards, transactions, usages]
+      properties:
+        schemaVersion:
+          type: integer
+          enum: [1]
+        exportType:
+          type: string
+          enum: [plaintext_json]
+        appSettings:
+          type: array
+          items:
+            type: object
+        deals:
+          type: array
+          items:
+            type: object
+        cards:
+          type: array
+          items:
+            type: object
+        transactions:
+          type: array
+          items:
+            type: object
+        usages:
+          type: array
+          items:
+            type: object
+    BackupImportRequest:
+      type: object
+      required: [unlockSecret, mode, payload]
+      properties:
+        unlockSecret:
+          type: string
+        mode:
+          type: string
+          enum: [merge, replace]
+        confirmation:
+          type: string
+          description: Required as REPLACE for destructive replace imports.
+        payload:
+          $ref: "#/components/schemas/PlaintextBackupPayload"
+    BackupImportResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [summary, importJob]
+          properties:
+            summary:
+              type: object
+              required: [mode, backupCreated, dealCount, cardCount, transactionCount, usageCount]
+              properties:
+                mode:
+                  type: string
+                  enum: [merge, replace]
+                backupCreated:
+                  type: boolean
+                dealCount:
+                  type: integer
+                cardCount:
+                  type: integer
+                transactionCount:
+                  type: integer
+                usageCount:
+                  type: integer
+                settingCount:
+                  type: integer
+            importJob:
+              type: object
+              required: [id, type, status, rowCount, validCount, invalidCount]
+              properties:
+                id:
+                  type: integer
+                type:
+                  type: string
+                  enum: [json_merge, json_replace]
+                status:
+                  type: string
+                  enum: [confirmed]
+                rowCount:
+                  type: integer
+                validCount:
+                  type: integer
+                invalidCount:
+                  type: integer
     ListEnvelope:
       type: object
       required: [data, page]
