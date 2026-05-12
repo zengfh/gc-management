@@ -1613,7 +1613,7 @@ describe('App', () => {
     );
   });
 
-  it('creates a deal with a starter card from the dashboard', async () => {
+  it('creates a deal with a starter card from the dashboard without a deal name', async () => {
     globalThis.fetch
       .mockResolvedValueOnce(
         jsonResponse({
@@ -1630,14 +1630,14 @@ describe('App', () => {
       .mockResolvedValueOnce(
         jsonResponse(
           {
-            data: {
-              deal: {
-                id: 10,
-                name: 'Staples promo',
-                source: 'Staples',
-                inputTotalCostCents: 4500,
-                rowVersion: 1,
-              },
+              data: {
+                deal: {
+                  id: 10,
+                  name: 'Staples',
+                  source: 'Staples',
+                  inputTotalCostCents: 4500,
+                  rowVersion: 1,
+                },
               cards: [
                 {
                   id: 11,
@@ -1663,7 +1663,6 @@ describe('App', () => {
     await user.click(screen.getByRole('button', { name: /add deal/i }));
 
     expect(screen.getByRole('heading', { name: /^add deal$/i })).toBeInTheDocument();
-    await user.type(screen.getByLabelText(/^deal name$/i), 'Staples promo');
     await user.type(screen.getByLabelText(/^source$/i), 'Staples');
     await user.type(screen.getByLabelText(/^total cost$/i), '45.00');
     await user.type(screen.getByLabelText(/^card brand$/i), 'Target');
@@ -1671,14 +1670,13 @@ describe('App', () => {
     await user.type(screen.getByLabelText(/^card number$/i), '4111 1111 1111 1111');
     await user.click(screen.getByRole('button', { name: /^create deal$/i }));
 
-    await screen.findByText(/staples promo/i);
+    await screen.findByRole('button', { name: /open staples details/i });
     expect(screen.getByText(/target/i)).toBeInTheDocument();
     expect(globalThis.fetch).toHaveBeenLastCalledWith(
       '/api/deals',
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({
-          name: 'Staples promo',
           source: 'Staples',
           totalCostCents: 4500,
           cards: [

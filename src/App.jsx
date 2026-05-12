@@ -3135,15 +3135,15 @@ function AddDealPanel({ onClose, onCreateDeal }) {
     const totalCostCents = dollarsToCents(form.totalCost);
     const faceValueCents = dollarsToCents(form.faceValue);
 
-    if (!form.name.trim() || !form.cardBrand.trim() || !faceValueCents) {
-      setError('Deal name, card brand, and face value are required.');
+    if (!form.cardBrand.trim() || !faceValueCents) {
+      setError('Card brand and face value are required.');
       return;
     }
 
     setSubmitting(true);
     try {
       await onCreateDeal({
-        name: form.name.trim(),
+        ...(form.name.trim() ? { name: form.name.trim() } : {}),
         ...(form.source.trim() ? { source: form.source.trim() } : {}),
         ...(totalCostCents !== undefined ? { totalCostCents } : {}),
         cards: [
@@ -3177,8 +3177,12 @@ function AddDealPanel({ onClose, onCreateDeal }) {
         </div>
         <form className="panel-form" onSubmit={submitDeal}>
           <label>
-            <span>Deal name</span>
-            <input value={form.name} onChange={(event) => updateField('name', event.target.value)} required />
+            <span>Deal name (optional)</span>
+            <input
+              value={form.name}
+              onChange={(event) => updateField('name', event.target.value)}
+              placeholder="Optional"
+            />
           </label>
           <label>
             <span>Source</span>

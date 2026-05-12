@@ -1526,10 +1526,10 @@ components:
           type: integer
     CreateDealRequest:
       type: object
-      required: [name]
       properties:
         name:
           type: string
+          description: Optional title; if omitted the server falls back to source or a default title.
         source:
           type: string
         purchaseDate:

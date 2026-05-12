@@ -130,7 +130,7 @@ A redacted, append-only record of important actions.
 
 | ID | Requirement | Priority | Acceptance Criteria |
 |---|---|---:|---|
-| DEAL-01 | User can create a deal | P0 | Deal name is required; source, purchase date, notes are optional; audit event is recorded |
+| DEAL-01 | User can create a deal | P0 | Deal name is optional; source, purchase date, notes are optional; audit event is recorded |
 | DEAL-02 | User can add multiple cards during deal creation | P0 | Cards are validated as a batch; either all valid cards are saved or invalid rows are shown before commit |
 | DEAL-03 | System supports total-cost allocation across cards | P0 | Explicit costs plus proportional allocation sum exactly to total cost in cents; remainder is deterministic |
 | DEAL-04 | User can archive/unarchive deals | P1 | Archived deals are hidden by default; cards remain accessible |

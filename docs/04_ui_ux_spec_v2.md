@@ -347,6 +347,12 @@ Recommended flow:
 4. Validation review.
 5. Create deal and cards.
 
+Deal details:
+
+- Deal name is optional.
+- Source remains optional.
+- Total cost is optional.
+
 Batch grid columns:
 
 - Brand

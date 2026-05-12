@@ -30,7 +30,7 @@ const dealCardInputSchema = z
 
 const createDealSchema = z
   .object({
-    name: z.string().trim().min(1).max(160),
+    name: z.string().trim().min(1).max(160).optional(),
     source: z.string().trim().nullable().optional(),
     purchaseDate: z.string().trim().nullable().optional(),
     totalCostCents: z.number().int().nonnegative().optional(),
@@ -140,6 +140,20 @@ function pageResponse(data, { limit, offset, total }) {
 
 function objectResponse(data) {
   return { data };
+}
+
+function normalizeDealName(name, source) {
+  const trimmedName = name?.trim();
+  if (trimmedName) {
+    return trimmedName;
+  }
+
+  const trimmedSource = source?.trim();
+  if (trimmedSource) {
+    return trimmedSource;
+  }
+
+  return 'Untitled deal';
 }
 
 function encryptedOrNull(value, key) {
@@ -345,7 +359,7 @@ export function createDealsRouter({ db }) {
             )
             .run(
               req.auth.accountId,
-              body.name,
+              normalizeDealName(body.name, body.source),
               body.source ?? null,
               body.purchaseDate ?? null,
               body.totalCostCents ?? null,

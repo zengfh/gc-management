@@ -95,6 +95,24 @@ describe('deal routes', () => {
     ]);
   }, 45_000);
 
+  it('allows an optional deal name and falls back to a stored title', async () => {
+    const csrfToken = await setupOwner();
+
+    const response = await postWithCsrf('/api/deals', csrfToken).send({
+      source: 'Staples',
+      totalCostCents: 5_000,
+      cards: [card('4111 1111 1111 1111')],
+    });
+
+    expect(response.status).toBe(201);
+    expect(response.body.data.deal).toMatchObject({
+      name: 'Staples',
+      source: 'Staples',
+      inputTotalCostCents: 5_000,
+    });
+    expect(response.body.data.cards[0].dealId).toBe(response.body.data.deal.id);
+  }, 45_000);
+
   it('allocates mixed explicit and proportional costs exactly', async () => {
     const csrfToken = await setupOwner();
 
