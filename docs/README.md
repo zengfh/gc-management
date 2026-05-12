@@ -21,6 +21,7 @@ Files:
 13. `privacy_security_release_4.md` - Release 4 privacy/security operating notes for private hosted use.
 14. `runbooks/hosted_private_beta_runbook.md` - Single-node hosted private-beta deployment, backup, monitoring, and incident runbook.
 15. `10_release_4_status.md` - Release 4 implementation status and certification gate.
+16. `11_ui_modernization_research.md` - UI modernization research inputs, decisions, and remaining opportunities.
 
 Scope note:
 
