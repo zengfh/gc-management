@@ -1,5 +1,5 @@
 import request from 'supertest';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createApp } from './app.js';
 import { openDatabase } from './db/index.js';
 
@@ -62,6 +62,48 @@ describe('app', () => {
       db.close();
       process.env.NODE_ENV = originalNodeEnv;
       process.env.SESSION_SECRET = originalSessionSecret;
+    }
+  });
+
+  it('writes credential-safe structured request logs when enabled', async () => {
+    const originalRequestLogs = process.env.GC_REQUEST_LOGS;
+    process.env.GC_REQUEST_LOGS = 'true';
+    const logger = {
+      info: vi.fn(),
+      error: vi.fn(),
+    };
+    const db = openDatabase({ filename: ':memory:' });
+    try {
+      const app = createApp({ db, logger });
+
+      const response = await request(app)
+        .get('/api/health?cardNumber=4111111111111111&unlockSecret=a%20strong%20unlock%20phrase')
+        .set('x-request-id', 'req_logsafe');
+
+      expect(response.status).toBe(200);
+      expect(logger.info).toHaveBeenCalledTimes(1);
+      const logPayload = JSON.parse(logger.info.mock.calls[0][0]);
+      expect(logPayload).toMatchObject({
+        level: 'info',
+        event: 'http.request',
+        requestId: 'req_logsafe',
+        method: 'GET',
+        path: '/api/health',
+        status: 200,
+      });
+      expect(logPayload.durationMs).toEqual(expect.any(Number));
+      const rawLog = logger.info.mock.calls[0][0];
+      expect(rawLog).not.toContain('4111111111111111');
+      expect(rawLog).not.toContain('unlockSecret');
+      expect(rawLog).not.toContain('a strong unlock phrase');
+      expect(logger.error).not.toHaveBeenCalled();
+    } finally {
+      db.close();
+      if (originalRequestLogs === undefined) {
+        delete process.env.GC_REQUEST_LOGS;
+      } else {
+        process.env.GC_REQUEST_LOGS = originalRequestLogs;
+      }
     }
   });
 

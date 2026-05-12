@@ -23,7 +23,7 @@ Before hosted team use, the app must pass these gates:
 - SQLite-backed `web_sessions` is implemented for single-node hosted session metadata. DEK material intentionally remains process-memory-only; after a process restart, the session can remain valid but encrypted data requires unlocking again.
 - SQLite-backed `auth_login_attempts` is implemented for single-node persistent failed-login counters.
 - External shared session/rate-limit infrastructure is still required before multi-instance hosting.
-- Observability is still limited to request IDs, health checks, security headers, and audit rows. Production logging/metrics/error reporting remain future work.
+- Observability includes request IDs, health checks, security headers, audit rows, and credential-safe structured request/error logs. Production metrics, alerting, and external error reporting remain future work.
 
 ## Consequences
 

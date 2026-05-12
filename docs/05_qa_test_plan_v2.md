@@ -282,7 +282,7 @@ Example:
 | Error UX | 400/401/403/409/429/500 user messages |
 | Performance | `npm run test:perf` covers 20,000 card list, 1,000 row import preview, and high-frequency reads |
 | Security headers | CSP, frame-ancestors, nosniff, HSTS in production config |
-| Logging | Request IDs, redaction, no sensitive payloads |
+| Logging | Request IDs, redaction, no sensitive payloads, structured request logs without query strings |
 | Migration | Upgrade seeded old DB to latest schema |
 | Hosted auth state | Persistent session metadata, memory-only DEK reload behavior, persistent failed-login counters |
 

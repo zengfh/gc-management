@@ -6,6 +6,7 @@ import { createSqliteLoginAttemptStore } from './auth/loginAttempts.js';
 import { createSqliteSessionStore } from './auth/sqliteSessionStore.js';
 import { verifyDatabase } from './db/index.js';
 import { errorResponse } from './http/response.js';
+import { createRequestLogger, logRequestError } from './observability/requestLogging.js';
 import { createAuditRouter } from './routes/audit.js';
 import { createAuthRouter } from './routes/auth.js';
 import { createBackupRouter } from './routes/backup.js';
@@ -20,7 +21,7 @@ function assertProductionConfig() {
   }
 }
 
-export function createApp({ db } = {}) {
+export function createApp({ db, logger = console } = {}) {
   assertProductionConfig();
 
   const app = express();
@@ -79,6 +80,7 @@ export function createApp({ db } = {}) {
     res.set('x-request-id', requestId);
     next();
   });
+  app.use(createRequestLogger({ logger }));
   app.use(
     csrfProtection({
       exemptPaths: ['/api/auth/setup', '/api/auth/login'],
@@ -120,7 +122,7 @@ export function createApp({ db } = {}) {
       return;
     }
 
-    console.error({ requestId: req.requestId, err });
+    logRequestError({ logger, req, err });
     res
       .status(500)
       .json(errorResponse({ code: 'INTERNAL_ERROR', message: 'Unexpected server error.' }, req.requestId));

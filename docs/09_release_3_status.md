@@ -28,10 +28,28 @@ Verification:
 - Auth integration test verifies failed login counters survive app recreation.
 - Focused tests passed: `npm test -- server/db/db.test.js server/routes/auth.test.js server/app.test.js`.
 
+### Milestone 2: Credential-Safe Structured Logs
+
+Status: code complete; release gate passed on 2026-05-12.
+
+Delivered:
+
+- Added structured request logging middleware.
+- Request logs are enabled in production or when `GC_REQUEST_LOGS=true`.
+- Request logs include request ID, method, queryless path, status, duration, account ID, and user ID.
+- Logs intentionally exclude query strings, request bodies, cookies, authorization headers, card credentials, unlock secrets, and backup passphrases.
+- Internal server errors write structured error metadata without request payloads.
+- Engineering, QA, and roadmap docs have been updated for this milestone.
+
+Verification:
+
+- App test verifies request logging emits structured metadata and excludes a card number, `unlockSecret` query key, and unlock-secret query value.
+- Focused test passed: `npm test -- server/app.test.js`.
+
 ## Current Verification
 
 - `npm run lint` passed.
-- `npm test` passed: 12 files, 103 tests.
+- `npm test` passed: 12 files, 104 tests.
 - `npm run test:perf` passed.
 - `npm run test:e2e` passed: 8 Chromium tests.
 - `npm run build` passed.
@@ -41,7 +59,7 @@ Verification:
 
 ## Remaining Productization Scope
 
-- Production observability: structured logs, metrics, alerts, and error reporting.
+- Production observability: metrics, alerts, and external error reporting.
 - Real account/user admin if the app moves beyond single-owner use.
 - Role-based access controls.
 - Support/admin access policy implementation.

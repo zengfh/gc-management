@@ -562,7 +562,7 @@ Frontend rules:
 MVP should include:
 
 - Request ID for every request.
-- Structured server logs without sensitive fields.
+- Structured server logs without sensitive fields. Implemented in Release 3 milestone 2 with `GC_REQUEST_LOGS=true` or production mode.
 - Health endpoint.
 - Error boundary on frontend.
 - Client-visible requestId in error responses.
@@ -573,6 +573,12 @@ Product mode should add:
 - Metrics: request count, latency, error rate, DB busy count, import duration, export count.
 - Alerts for repeated failed login, export spikes, import failures, DB backup failures.
 - Centralized error reporting with redaction.
+
+Structured log safety rules:
+
+- Log request path without query string.
+- Do not log request bodies, cookies, authorization headers, full card numbers, PINs, billing ZIPs, unlock secrets, backup passphrases, or plaintext backup payloads.
+- Internal server error logs should include request ID, method, queryless path, status, error code, and error name.
 
 ## 11. Migrations
 
