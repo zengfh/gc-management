@@ -126,6 +126,67 @@ describe('backup routes', () => {
     expect(auditText).not.toContain(unlockSecret);
   }, 45_000);
 
+  it('omits network-card security codes from plaintext JSON exports', async () => {
+    const originalFlag = process.env.GC_FEATURE_NETWORK_SECURITY_CODE_STORAGE;
+    process.env.GC_FEATURE_NETWORK_SECURITY_CODE_STORAGE = 'true';
+    try {
+      const csrfToken = await setupOwner();
+      const createResponse = await postWithCsrf('/api/cards', csrfToken).send({
+        cards: [
+          {
+            brand: 'Visa',
+            cardType: 'prepaid',
+            network: 'visa',
+            credentialProfile: 'network_prepaid',
+            faceValueCents: 10_000,
+            credentials: {
+              profile: 'network_prepaid',
+              fields: [
+                {
+                  fieldKey: 'card_number',
+                  label: 'Card number',
+                  fieldKind: 'card_number',
+                  value: '4111111111111111',
+                },
+                {
+                  fieldKey: 'network_security_code',
+                  label: 'Security code',
+                  fieldKind: 'network_security_code',
+                  value: '123',
+                },
+              ],
+            },
+          },
+        ],
+      });
+      expect(createResponse.status).toBe(201);
+
+      const response = await postWithCsrf('/api/backup/export', csrfToken).send({
+        unlockSecret,
+        confirmation: 'EXPORT',
+        acknowledgePlaintext: true,
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.body.data.warning).toMatch(/security codes are omitted/i);
+      const exportedFields = response.body.data.cards[0].credentials.fields;
+      expect(exportedFields).toEqual([
+        expect.objectContaining({
+          fieldKey: 'card_number',
+          value: '4111111111111111',
+        }),
+      ]);
+      expect(JSON.stringify(response.body.data)).not.toContain('network_security_code');
+      expect(JSON.stringify(response.body.data)).not.toContain('"123"');
+    } finally {
+      if (originalFlag === undefined) {
+        delete process.env.GC_FEATURE_NETWORK_SECURITY_CODE_STORAGE;
+      } else {
+        process.env.GC_FEATURE_NETWORK_SECURITY_CODE_STORAGE = originalFlag;
+      }
+    }
+  }, 45_000);
+
   it('exports encrypted portable JSON without exposing credentials or passphrases', async () => {
     const csrfToken = await setupOwner();
     await createSampleCard(csrfToken);

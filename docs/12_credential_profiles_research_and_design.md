@@ -1,6 +1,6 @@
 # Gift Card Credential Profiles - Research and Design
 
-Status: Release 5 baseline implemented; remaining polish tracked in `13_release_5_status.md`
+Status: Release 5 implemented; follow-up opportunities tracked in `13_release_5_status.md`
 Date: 2026-05-12
 
 ## Problem
@@ -438,8 +438,8 @@ Network card helpers:
 1. Credential profile design and API contract. Completed 2026-05-12.
 2. Migration and backend credential-field service. Completed 2026-05-12.
 3. Add Deal profile UI and card-detail reveal UI. Completed 2026-05-12.
-4. CSV import/export/backup support. Baseline completed 2026-05-12; more templates remain.
-5. Tests, migration drill, and docs certification. Baseline completed 2026-05-12 with `npm test`, `npm run lint`, and `npm run build`.
+4. CSV import/export/backup support. Completed 2026-05-12.
+5. Tests, migration drill, and docs certification. Completed 2026-05-12 with `npm test`, `npm run lint`, and `npm run build`.
 
 ## Non-Goals
 

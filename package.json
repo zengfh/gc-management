@@ -20,6 +20,7 @@
     "@tanstack/react-query": "^5.90.12",
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^12.5.0",
+    "bwip-js": "^4.10.1",
     "compression": "^1.8.1",
     "cookie-parser": "^1.4.7",
     "csv-parse": "^6.1.0",

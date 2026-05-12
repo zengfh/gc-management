@@ -224,6 +224,22 @@ textarea {
   gap: 10px;
 }
 
+.custom-credential-list {
+  display: grid;
+  gap: 12px;
+}
+
+.custom-credential-row {
+  display: grid;
+  grid-template-columns: minmax(110px, 0.8fr) minmax(120px, 0.7fr) minmax(140px, 1fr) auto;
+  align-items: end;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-muted);
+}
+
 .check-row {
   grid-template-columns: 18px 1fr;
   align-items: start;
@@ -1174,6 +1190,11 @@ tbody tr:hover {
   gap: 8px;
 }
 
+.credential-field-block {
+  display: grid;
+  gap: 8px;
+}
+
 .credential-row {
   display: grid;
   grid-template-columns: minmax(92px, 0.72fr) minmax(0, 1fr) auto;
@@ -1198,6 +1219,21 @@ tbody tr:hover {
   align-items: center;
   gap: 6px;
   justify-content: center;
+}
+
+.barcode-preview {
+  display: grid;
+  place-items: center;
+  min-height: 92px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  padding: 12px;
+}
+
+.barcode-preview img {
+  max-width: 100%;
+  height: auto;
 }
 
 .detail-list {
@@ -1313,6 +1349,10 @@ tbody tr:hover {
   }
 
   .inline-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .custom-credential-row {
     grid-template-columns: 1fr;
   }
 }

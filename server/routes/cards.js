@@ -309,6 +309,29 @@ function csvValue(record, aliases) {
   return String(entry[1] ?? '').trim();
 }
 
+function csvCustomCredentialFields(record) {
+  return Object.entries(record)
+    .map(([key, rawValue], index) => {
+      const match = String(key).match(/^custom\s*[:_-]\s*(.+)$/i);
+      const value = String(rawValue ?? '').trim();
+      if (!match || !value) {
+        return null;
+      }
+      const label = match[1].trim();
+      if (!label) {
+        return null;
+      }
+      return {
+        fieldKey: label,
+        label,
+        fieldKind: 'primary_code',
+        value,
+        sortOrder: (index + 1) * 10,
+      };
+    })
+    .filter(Boolean);
+}
+
 function normalizeCsvCardType(value) {
   const normalized = String(value || '').trim().toLowerCase();
   if (!normalized) {
@@ -546,6 +569,7 @@ function buildCsvPreview(db, auth, csv) {
 
 function csvRecordToCardInput(record) {
   const credentialProfile = normalizeCsvCredentialProfile(csvValue(record, csvColumnAliases.credentialProfile));
+  const customFields = csvCustomCredentialFields(record);
   return {
     brand: csvValue(record, csvColumnAliases.brand),
     cardType: normalizeCsvCardType(csvValue(record, csvColumnAliases.cardType)),
@@ -576,6 +600,15 @@ function csvRecordToCardInput(record) {
     format: normalizeCsvFormat(csvValue(record, csvColumnAliases.format)),
     source: csvValue(record, csvColumnAliases.source) || null,
     notes: csvValue(record, csvColumnAliases.notes) || null,
+    ...(customFields.length > 0
+      ? {
+          credentialProfile: credentialProfiles.includes(credentialProfile) ? credentialProfile : 'custom',
+          credentials: {
+            profile: credentialProfiles.includes(credentialProfile) ? credentialProfile : 'custom',
+            fields: customFields,
+          },
+        }
+      : {}),
   };
 }
 

@@ -276,14 +276,14 @@ Frontend tasks:
 - [x] Render profile-specific fields instead of a single Card Number field. Completed 2026-05-12.
 - [x] Replace table "Last 4" with profile-aware credential summary. Completed 2026-05-12.
 - [x] Render structured credential reveal/copy UI. Completed 2026-05-12.
-- [ ] Render scannable barcode/QR display after reveal.
-- [ ] Add full custom-field authoring UI.
-- [ ] Add visible network-prepaid local-only security-code warning/confirmation when the feature flag is enabled.
+- [x] Render scannable barcode/QR display after reveal. Completed 2026-05-12.
+- [x] Add full custom-field authoring UI. Completed 2026-05-12.
+- [x] Add visible network-prepaid local-only security-code warning/confirmation when the feature flag is enabled. Completed 2026-05-12.
 
 QA tasks:
 
 - [x] Cover migration, encrypted backup/restore, CSV import baseline, exact credential search, duplicate detection, reveal/copy, audit redaction, and feature-flag rejection in automated regression. Completed 2026-05-12.
-- [ ] Add UI-level coverage for barcode rendering and custom-field authoring after those UI pieces land.
+- [x] Add UI-level coverage for barcode rendering and custom-field authoring after those UI pieces land. Completed 2026-05-12.
 
 Exit criteria:
 
@@ -317,7 +317,7 @@ Do not start Phase 6 until the product's target customer, compliance posture, an
 
 ### P0 Backlog
 
-- Credential profiles for mainstream card formats. Baseline completed 2026-05-12; barcode rendering/custom field UI remains P1 polish.
+- Credential profiles for mainstream card formats. Completed 2026-05-12.
 - PRD v2 approval.
 - OpenAPI contract.
 - Database migrations.
@@ -334,8 +334,7 @@ Do not start Phase 6 until the product's target customer, compliance posture, an
 
 ### P1 Backlog
 
-- Barcode rendering/scanning support for barcode profile.
-- Custom credential field authoring UI.
+- Barcode scanning support for barcode profile.
 - CSV import preview/confirm.
 - Backup/export/import.
 - Audit UI.

@@ -1305,7 +1305,12 @@ components:
               type: string
     PublicFeatureFlags:
       type: object
-      required: [plaintextJsonExport, rawDatabaseExport, csvImport, referenceValueHints]
+      required:
+        - plaintextJsonExport
+        - rawDatabaseExport
+        - csvImport
+        - referenceValueHints
+        - networkSecurityCodeStorage
       properties:
         plaintextJsonExport:
           type: boolean
@@ -1314,6 +1319,8 @@ components:
         csvImport:
           type: boolean
         referenceValueHints:
+          type: boolean
+        networkSecurityCodeStorage:
           type: boolean
     AuthUser:
       type: object

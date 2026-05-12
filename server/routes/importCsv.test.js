@@ -287,6 +287,45 @@ describe('CSV import preview route', () => {
     });
   }, 45_000);
 
+  it('confirms custom credential columns into encrypted credential fields', async () => {
+    const csrfToken = await setupOwner();
+    const csv = [
+      'brand,credentialProfile,faceValue,purchaseCost,custom:Member ID,custom:Security phrase,source,notes',
+      'Local Spa,custom,120.00,96.00,MEMBER-2345,frontdesk-only,Direct,Issuer-specific fields',
+    ].join('\n');
+
+    const response = await postWithCsrf('/api/cards/import-csv/confirm', csrfToken).send({ csv });
+
+    expect(response.status).toBe(201);
+    expect(response.body.data.cards[0]).toMatchObject({
+      brand: 'Local Spa',
+      credentialProfile: 'custom',
+      credentialSummary: expect.objectContaining({
+        fieldCount: 2,
+      }),
+    });
+    expect(JSON.stringify(response.body.data)).not.toContain('MEMBER-2345');
+    expect(JSON.stringify(response.body.data)).not.toContain('frontdesk-only');
+
+    const storedFields = db
+      .prepare('SELECT fieldKey, label, fieldKind, encryptedValue FROM card_credential_fields ORDER BY sortOrder')
+      .all();
+    expect(storedFields).toEqual([
+      expect.objectContaining({
+        fieldKey: 'member_id',
+        label: 'Member ID',
+        fieldKind: 'primary_code',
+      }),
+      expect.objectContaining({
+        fieldKey: 'security_phrase',
+        label: 'Security phrase',
+        fieldKind: 'primary_code',
+      }),
+    ]);
+    expect(storedFields[0].encryptedValue).not.toContain('MEMBER-2345');
+    expect(storedFields[1].encryptedValue).not.toContain('frontdesk-only');
+  }, 45_000);
+
   it('rejects CSV confirm when revalidation finds row errors or duplicate conflicts', async () => {
     const csrfToken = await setupOwner();
     const existing = await postWithCsrf('/api/cards', csrfToken).send({

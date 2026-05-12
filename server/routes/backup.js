@@ -367,7 +367,11 @@ function toExportDeal(row) {
   };
 }
 
-function toExportCredentialField(row, key) {
+function toExportCredentialField(row, key, options = {}) {
+  if (row.fieldKind === 'network_security_code' && !options.includeNetworkSecurityCodes) {
+    return null;
+  }
+
   return {
     fieldKey: row.fieldKey,
     label: row.label,
@@ -381,10 +385,10 @@ function toExportCredentialField(row, key) {
   };
 }
 
-function toExportCard(row, key, credentialRows = []) {
-  const credentialFields = credentialRows.map((credentialRow) =>
-    toExportCredentialField(credentialRow, key),
-  );
+function toExportCard(row, key, credentialRows = [], options = {}) {
+  const credentialFields = credentialRows
+    .map((credentialRow) => toExportCredentialField(credentialRow, key, options))
+    .filter(Boolean);
   return {
     id: row.id,
     accountId: row.accountId,
@@ -490,7 +494,7 @@ function toExportReferenceValue(row) {
   };
 }
 
-function buildPlaintextExport(db, auth, exportedAt) {
+function buildPlaintextExport(db, auth, exportedAt, options = {}) {
   const dealRows = db
     .prepare('SELECT * FROM deals WHERE accountId = ? ORDER BY id')
     .all(auth.accountId);
@@ -524,11 +528,15 @@ function buildPlaintextExport(db, auth, exportedAt) {
     exportType: 'plaintext_json',
     exportedAt,
     warning:
-      'This plaintext export contains spendable credentials. Store it carefully and delete it when no longer needed.',
+      options.includeNetworkSecurityCodes
+        ? 'This encrypted portable backup payload contains spendable credentials. Store it carefully.'
+        : 'This plaintext export contains spendable credentials. Network-card security codes are omitted. Store it carefully and delete it when no longer needed.',
     appSettings: settingRows.map(toExportSetting),
     referenceValues: referenceValueRows.map(toExportReferenceValue),
     deals: dealRows.map(toExportDeal),
-    cards: cardRows.map((row) => toExportCard(row, auth.dek, credentialRowsByCardId.get(row.id) || [])),
+    cards: cardRows.map((row) =>
+      toExportCard(row, auth.dek, credentialRowsByCardId.get(row.id) || [], options),
+    ),
     transactions: transactionRows.map(toExportTransaction),
     usages: usageRows.map(toExportUsage),
   };
@@ -1089,7 +1097,9 @@ export function createBackupRouter({ db }) {
       await verifyFreshUnlockSecret(db, req.auth, body.unlockSecret);
 
       const timestamp = new Date().toISOString();
-      const plaintextPayload = buildPlaintextExport(db, req.auth, timestamp);
+      const plaintextPayload = buildPlaintextExport(db, req.auth, timestamp, {
+        includeNetworkSecurityCodes: true,
+      });
       const payload = encryptPortableBackupPayload(plaintextPayload, body.backupPassphrase, timestamp);
       insertAuditEvent(db, {
         accountId: req.auth.accountId,

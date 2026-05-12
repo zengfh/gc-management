@@ -1646,6 +1646,100 @@ describe('App', () => {
     );
   });
 
+  it('renders a scannable barcode after credential reveal', async () => {
+    globalThis.fetch
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            setupComplete: true,
+            sessionValid: true,
+            dekLoaded: true,
+            csrfToken: 'csrf_ready',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            {
+              id: 1,
+              brand: 'Starbucks',
+              cardType: 'merchant',
+              credentialProfile: 'barcode',
+              credentialSummary: {
+                profile: 'barcode',
+                primaryLabel: 'Barcode',
+                primaryHint: '**** 9012',
+                primaryLast4: '9012',
+                hasBarcode: true,
+              },
+              status: 'available',
+              faceValueCents: 2500,
+              remainingBalanceCents: 2500,
+              purchaseCostCents: 2000,
+            },
+          ],
+          page: { total: 1, limit: 50, offset: 0, hasMore: false },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            card: {
+              id: 1,
+              brand: 'Starbucks',
+              cardType: 'merchant',
+              credentialProfile: 'barcode',
+              credentialSummary: {
+                profile: 'barcode',
+                primaryLabel: 'Barcode',
+                primaryHint: '**** 9012',
+                primaryLast4: '9012',
+                hasBarcode: true,
+              },
+              status: 'available',
+              faceValueCents: 2500,
+              remainingBalanceCents: 2500,
+              purchaseCostCents: 2000,
+            },
+            transactions: [],
+            usages: [],
+            audit: [],
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            credentials: {
+              profile: 'barcode',
+              fields: [
+                {
+                  fieldKey: 'barcode_value',
+                  label: 'Barcode',
+                  fieldKind: 'barcode_value',
+                  value: '123456789012',
+                  barcodeFormat: 'code128',
+                  copyable: true,
+                },
+              ],
+            },
+          },
+        }),
+      );
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByRole('heading', { name: /dashboard/i });
+    await user.click(screen.getByRole('button', { name: /open starbucks details/i }));
+    await user.click(await screen.findByRole('button', { name: /^reveal credentials$/i }));
+
+    expect(await screen.findByAltText(/scannable barcode/i)).toBeInTheDocument();
+    expect(screen.getByText('123456789012')).toBeInTheDocument();
+  });
+
   it('creates a deal with a starter card from the dashboard without a deal name', async () => {
     globalThis.fetch
       .mockResolvedValueOnce(
@@ -1755,6 +1849,112 @@ describe('App', () => {
         }),
       }),
     );
+  });
+
+  it('creates a custom credential deal from Add Deal', async () => {
+    globalThis.fetch
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            setupComplete: true,
+            sessionValid: true,
+            dekLoaded: true,
+            csrfToken: 'csrf_ready',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            deal_name: [],
+            source: [{ id: 1, type: 'source', value: 'Direct', usageCount: 1 }],
+            card_brand: [{ id: 2, type: 'card_brand', value: 'Local Spa', usageCount: 1 }],
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            { id: 1, type: 'source', value: 'Direct', usageCount: 2 },
+            { id: 2, type: 'card_brand', value: 'Local Spa', usageCount: 2 },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            data: {
+              deal: {
+                id: 20,
+                name: 'Direct',
+                source: 'Direct',
+                inputTotalCostCents: null,
+                rowVersion: 1,
+              },
+              cards: [
+                {
+                  id: 21,
+                  dealId: 20,
+                  brand: 'Local Spa',
+                  credentialProfile: 'custom',
+                  status: 'available',
+                  faceValueCents: 12000,
+                  remainingBalanceCents: 12000,
+                  purchaseCostCents: 0,
+                },
+              ],
+            },
+          },
+          201,
+        ),
+      );
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByRole('heading', { name: /dashboard/i });
+    await user.click(screen.getByRole('button', { name: /add deal/i }));
+    await user.type(screen.getByLabelText(/^source$/i), 'Direct');
+    await user.type(screen.getByLabelText(/^card brand$/i), 'Local Spa');
+    await user.type(screen.getByLabelText(/^face value$/i), '120.00');
+    await user.selectOptions(screen.getByLabelText(/^credential type$/i), 'custom');
+    await user.type(screen.getByLabelText(/^label$/i), 'Member ID');
+    await user.type(screen.getByLabelText(/^value$/i), 'MEMBER-2345');
+    await user.click(screen.getByRole('button', { name: /^create deal$/i }));
+
+    await waitFor(() => {
+      expect(globalThis.fetch).toHaveBeenLastCalledWith(
+        '/api/deals',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({
+            source: 'Direct',
+            cards: [
+              {
+                brand: 'Local Spa',
+                cardType: 'merchant',
+                credentialProfile: 'custom',
+                credentials: {
+                  profile: 'custom',
+                  fields: [
+                    {
+                      fieldKey: 'Member ID',
+                      label: 'Member ID',
+                      fieldKind: 'primary_code',
+                      value: 'MEMBER-2345',
+                      sortOrder: 10,
+                    },
+                  ],
+                },
+                faceValueCents: 12000,
+              },
+            ],
+          }),
+        }),
+      );
+    });
   });
 
   it('suggests indexed card brands when an add-deal value looks mistyped', async () => {

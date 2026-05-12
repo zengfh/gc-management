@@ -102,6 +102,33 @@ const csvImportTemplates = [
       'Vanilla,prepaid,visa,200.00,190.00,4111111111111111,1234,94105,2029-04-30,plastic,Giftcards.com,Activation batch',
     ].join('\n'),
   },
+  {
+    id: 'code-only',
+    label: 'Code only',
+    filename: 'code-only-import-template.csv',
+    csv: [
+      'brand,credentialProfile,faceValue,purchaseCost,redemptionCode,pin,format,source,notes',
+      'Amazon,claim_code,50.00,45.00,A1B2-C3D4-E5F6,,digital,Amazon Promo,Claim-code card',
+    ].join('\n'),
+  },
+  {
+    id: 'barcode',
+    label: 'Barcode',
+    filename: 'barcode-import-template.csv',
+    csv: [
+      'brand,credentialProfile,faceValue,purchaseCost,barcodeValue,barcodeFormat,pin,format,source,notes',
+      'Starbucks,barcode,25.00,20.00,123456789012,code128,,digital,Gift card mall,Scanner-first card',
+    ].join('\n'),
+  },
+  {
+    id: 'custom',
+    label: 'Custom',
+    filename: 'custom-import-template.csv',
+    csv: [
+      'brand,credentialProfile,faceValue,purchaseCost,custom:Member ID,custom:Security phrase,source,notes',
+      'Local Spa,custom,120.00,96.00,MEMBER-2345,frontdesk-only,Direct,Issuer-specific fields',
+    ].join('\n'),
+  },
 ];
 
 const statusLabels = {
@@ -128,6 +155,17 @@ const credentialProfileLabels = {
 const networkBrandPattern = /\b(visa|mastercard|master card|amex|american express|discover|vanilla|serve)\b/i;
 const claimCodeBrandPattern = /\b(amazon|apple|doordash|door dash|uber|ubereats|steam|google play|playstation|xbox)\b/i;
 const barcodeBrandPattern = /\b(starbucks|dunkin|chipotle|mcdonald|panera)\b/i;
+const customCredentialFieldKinds = [
+  { value: 'primary_code', label: 'Secret code' },
+  { value: 'card_number', label: 'Card number' },
+  { value: 'pin', label: 'PIN' },
+  { value: 'access_code', label: 'Access code' },
+  { value: 'barcode_value', label: 'Barcode' },
+  { value: 'billing_postal_code', label: 'Billing ZIP' },
+  { value: 'cardholder_name', label: 'Name' },
+  { value: 'billing_address', label: 'Address' },
+  { value: 'metadata', label: 'Note' },
+];
 
 function inferCredentialProfileForBrand(brand) {
   if (networkBrandPattern.test(brand)) {
@@ -171,6 +209,31 @@ function credentialSummaryText(card) {
     return `Card number: **** ${card.cardNumberLast4}`;
   }
   return 'Hidden';
+}
+
+const barcodeFormatToBcid = {
+  code128: 'code128',
+  qr: 'qrcode',
+  ean13: 'ean13',
+  upca: 'upca',
+  pdf417: 'pdf417',
+  aztec: 'azteccode',
+  data_matrix: 'datamatrix',
+  other: 'code128',
+};
+
+function barcodeSvgDataUri(value, format, toSvg) {
+  const bcid = barcodeFormatToBcid[format] || barcodeFormatToBcid.other;
+  const svg = toSvg({
+    bcid,
+    text: String(value || ''),
+    scale: bcid === 'qrcode' ? 4 : 3,
+    height: bcid === 'qrcode' ? undefined : 16,
+    paddingwidth: 10,
+    paddingheight: 10,
+    includetext: false,
+  });
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 
 function authRole(auth) {
@@ -730,6 +793,49 @@ function FieldError({ message }) {
     <p className="field-error" role="alert">
       {message}
     </p>
+  );
+}
+
+function BarcodePreview({ value, format }) {
+  const barcodeKey = `${format || 'code128'}:${value || ''}`;
+  const [barcodeImage, setBarcodeImage] = useState({ key: '', src: null });
+
+  useEffect(() => {
+    let canceled = false;
+    if (!value) {
+      return undefined;
+    }
+
+    import('bwip-js')
+      .then((module) => {
+        if (!canceled) {
+          setBarcodeImage({
+            key: barcodeKey,
+            src: barcodeSvgDataUri(value, format, module.toSVG),
+          });
+        }
+      })
+      .catch(() => {
+        if (!canceled) {
+          setBarcodeImage({ key: barcodeKey, src: null });
+        }
+      });
+
+    return () => {
+      canceled = true;
+    };
+  }, [barcodeKey, format, value]);
+
+  const src = barcodeImage.key === barcodeKey ? barcodeImage.src : null;
+
+  if (!value || !src) {
+    return null;
+  }
+
+  return (
+    <div className="barcode-preview" aria-label="Scannable barcode">
+      <img src={src} alt="Scannable barcode" />
+    </div>
   );
 }
 
@@ -3060,19 +3166,24 @@ function CardDetailPanel({ detailState, canManage, onClose, onLogout, onUndoUsag
             <div className="credential-grid">
               {revealedCredentialFields.length > 0 ? (
                 revealedCredentialFields.map((field) => (
-                  <div className="credential-row" key={field.fieldKey}>
-                    <span>{field.label}</span>
-                    <strong className="mono">{field.value || 'Not recorded'}</strong>
-                    {canManage && field.copyable ? (
-                      <button
-                        type="button"
-                        className="table-action"
-                        aria-label={`Copy ${field.label}`}
-                        onClick={() => copyCredential(field.fieldKey, field.label)}
-                      >
-                        <Copy aria-hidden="true" size={15} />
-                        {`Copy ${field.label.toLowerCase()}`}
-                      </button>
+                  <div className="credential-field-block" key={field.fieldKey}>
+                    <div className="credential-row">
+                      <span>{field.label}</span>
+                      <strong className="mono">{field.value || 'Not recorded'}</strong>
+                      {canManage && field.copyable ? (
+                        <button
+                          type="button"
+                          className="table-action"
+                          aria-label={`Copy ${field.label}`}
+                          onClick={() => copyCredential(field.fieldKey, field.label)}
+                        >
+                          <Copy aria-hidden="true" size={15} />
+                          {`Copy ${field.label.toLowerCase()}`}
+                        </button>
+                      ) : null}
+                    </div>
+                    {field.fieldKind === 'barcode_value' ? (
+                      <BarcodePreview value={field.value} format={field.barcodeFormat} />
                     ) : null}
                   </div>
                 ))
@@ -3637,9 +3748,18 @@ function AddDealPanel({
     expirationMonth: '',
     expirationYear: '',
     networkSecurityCode: '',
+    saveNetworkSecurityCode: false,
     billingZip: '',
     cardholderName: '',
     billingAddress: '',
+    customFields: [
+      {
+        id: 'custom-1',
+        label: '',
+        fieldKind: 'primary_code',
+        value: '',
+      },
+    ],
   });
   const [error, setError] = useState('');
   const [referenceError, setReferenceError] = useState('');
@@ -3685,6 +3805,40 @@ function AddDealPanel({
     }));
   }
 
+  function updateCustomField(id, patch) {
+    setForm((current) => ({
+      ...current,
+      customFields: current.customFields.map((field) =>
+        field.id === id ? { ...field, ...patch } : field,
+      ),
+    }));
+  }
+
+  function addCustomField() {
+    setForm((current) => ({
+      ...current,
+      customFields: [
+        ...current.customFields,
+        {
+          id: `custom-${current.customFields.length + 1}-${Date.now()}`,
+          label: '',
+          fieldKind: 'primary_code',
+          value: '',
+        },
+      ],
+    }));
+  }
+
+  function removeCustomField(id) {
+    setForm((current) => ({
+      ...current,
+      customFields:
+        current.customFields.length > 1
+          ? current.customFields.filter((field) => field.id !== id)
+          : current.customFields,
+    }));
+  }
+
   function credentialFields() {
     const fields = [];
     const push = (fieldKey, label, fieldKind, value, extra = {}) => {
@@ -3718,12 +3872,27 @@ function AddDealPanel({
       push('card_number', 'Card number', 'card_number', form.cardNumber);
       push('expiration_month', 'Exp. month', 'expiration_month', form.expirationMonth);
       push('expiration_year', 'Exp. year', 'expiration_year', form.expirationYear);
-      if (features.networkSecurityCodeStorage) {
+      if (features.networkSecurityCodeStorage && form.saveNetworkSecurityCode) {
         push('network_security_code', 'Security code', 'network_security_code', form.networkSecurityCode);
       }
       push('billing_postal_code', 'Billing ZIP', 'billing_postal_code', form.billingZip);
       push('cardholder_name', 'Cardholder name', 'cardholder_name', form.cardholderName);
       push('billing_address', 'Billing address', 'billing_address', form.billingAddress);
+      return fields;
+    }
+
+    if (form.credentialProfile === 'custom') {
+      form.customFields.forEach((field, index) => {
+        const label = field.label.trim();
+        const value = field.value.trim();
+        if (!label || !value) {
+          return;
+        }
+        push(label, label, field.fieldKind, value, {
+          sortOrder: (index + 1) * 10,
+          ...(field.fieldKind === 'barcode_value' ? { barcodeFormat: 'code128' } : {}),
+        });
+      });
       return fields;
     }
 
@@ -3907,17 +4076,36 @@ function AddDealPanel({
             </label>
           </div>
           {features.networkSecurityCodeStorage ? (
-            <label>
-              <span>Security code</span>
-              <input
-                className="mono"
-                inputMode="numeric"
-                autoComplete="cc-csc"
-                value={form.networkSecurityCode}
-                onChange={(event) => updateField('networkSecurityCode', event.target.value)}
-              />
-            </label>
-          ) : null}
+            <>
+              <p className="warning-copy">
+                Security-code storage is local-only and should stay disabled for hosted or commercial use.
+              </p>
+              <label className="check-row">
+                <input
+                  type="checkbox"
+                  checked={form.saveNetworkSecurityCode}
+                  onChange={(event) => updateField('saveNetworkSecurityCode', event.target.checked)}
+                />
+                <span>Save security code for this local vault</span>
+              </label>
+              {form.saveNetworkSecurityCode ? (
+                <label>
+                  <span>Security code</span>
+                  <input
+                    className="mono"
+                    inputMode="numeric"
+                    autoComplete="cc-csc"
+                    value={form.networkSecurityCode}
+                    onChange={(event) => updateField('networkSecurityCode', event.target.value)}
+                  />
+                </label>
+              ) : null}
+            </>
+          ) : (
+            <p className="muted-text">
+              Network-card security codes are not saved. Keep the physical card or original source available.
+            </p>
+          )}
           <label>
             <span>Billing ZIP</span>
             <input
@@ -3942,6 +4130,58 @@ function AddDealPanel({
             />
           </label>
         </>
+      );
+    }
+
+    if (form.credentialProfile === 'custom') {
+      return (
+        <div className="custom-credential-list">
+          {form.customFields.map((field, index) => (
+            <div className="custom-credential-row" key={field.id}>
+              <label>
+                <span>Label</span>
+                <input
+                  value={field.label}
+                  onChange={(event) => updateCustomField(field.id, { label: event.target.value })}
+                />
+              </label>
+              <label>
+                <span>Type</span>
+                <select
+                  value={field.fieldKind}
+                  onChange={(event) => updateCustomField(field.id, { fieldKind: event.target.value })}
+                >
+                  {customCredentialFieldKinds.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>Value</span>
+                <input
+                  className="mono"
+                  autoComplete="off"
+                  value={field.value}
+                  onChange={(event) => updateCustomField(field.id, { value: event.target.value })}
+                />
+              </label>
+              <button
+                type="button"
+                className="table-action"
+                disabled={form.customFields.length === 1}
+                onClick={() => removeCustomField(field.id)}
+              >
+                Remove field {index + 1}
+              </button>
+            </div>
+          ))}
+          <button type="button" className="secondary-action compact" onClick={addCustomField}>
+            <Plus aria-hidden="true" size={16} />
+            Add custom field
+          </button>
+        </div>
       );
     }
 

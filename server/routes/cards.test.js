@@ -113,6 +113,60 @@ describe('card routes', () => {
     expect(count).toBe(1);
   }, 45_000);
 
+  it('creates barcode credentials and finds them through exact credential search', async () => {
+    const csrfToken = await setupOwner();
+
+    const createResponse = await postWithCsrf('/api/cards', csrfToken).send({
+      cards: [
+        {
+          brand: 'Starbucks',
+          cardType: 'merchant',
+          credentialProfile: 'barcode',
+          faceValueCents: 2_500,
+          credentials: {
+            profile: 'barcode',
+            fields: [
+              {
+                fieldKey: 'barcode_value',
+                label: 'Barcode',
+                fieldKind: 'barcode_value',
+                value: '123456789012',
+                barcodeFormat: 'code128',
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    expect(createResponse.status).toBe(201);
+    expect(createResponse.body.data[0]).toMatchObject({
+      brand: 'Starbucks',
+      credentialProfile: 'barcode',
+      credentialSummary: expect.objectContaining({
+        hasBarcode: true,
+        primaryLast4: '9012',
+      }),
+    });
+
+    const searchResponse = await agent.get('/api/cards').query({
+      credential: '123456789012',
+    });
+    expect(searchResponse.status).toBe(200);
+    expect(searchResponse.body.data.map((card) => card.id)).toEqual([createResponse.body.data[0].id]);
+
+    const revealResponse = await postWithCsrf(`/api/cards/${createResponse.body.data[0].id}/reveal`, csrfToken).send({});
+    expect(revealResponse.status).toBe(200);
+    expect(revealResponse.body.data.credentials.fields).toEqual([
+      expect.objectContaining({
+        fieldKey: 'barcode_value',
+        fieldKind: 'barcode_value',
+        value: '123456789012',
+        barcodeFormat: 'code128',
+      }),
+    ]);
+  }, 45_000);
+
   it('filters card inventory by source deal expiration text and whitelisted sort fields', async () => {
     const csrfToken = await setupOwner();
 

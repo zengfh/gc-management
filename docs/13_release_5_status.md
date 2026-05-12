@@ -1,7 +1,7 @@
 # Release 5 Credential Profiles Status
 
 Date: 2026-05-12
-Status: Milestones 1-4 implemented; barcode rendering/custom-field polish remains
+Status: Release 5 complete
 
 ## Completed
 
@@ -12,19 +12,21 @@ Status: Milestones 1-4 implemented; barcode rendering/custom-field polish remain
 - Added supported profiles: `claim_code`, `merchant_number_pin`, `barcode`, `network_prepaid`, and `custom`.
 - Added Add Deal credential profile picker and profile-specific inputs.
 - Updated card tables, deal detail, delete preview, search, and card detail reveal/copy UX to use credential summaries and structured credential fields.
+- Added scannable barcode/QR rendering after explicit credential reveal.
+- Added custom credential field authoring in Add Deal.
+- Added CSV templates for code-only, barcode, and custom credential formats.
 - Added network security-code storage policy gate: `GC_FEATURE_NETWORK_SECURITY_CODE_STORAGE=false` by default.
+- Added local-only warning and explicit checkbox before storing network prepaid security codes when the flag is enabled.
+- Plaintext JSON exports now omit `network_security_code` fields and state the omission in the warning; encrypted portable backups keep stored fields.
 - Updated OpenAPI docs for credential profiles and exact credential search.
 
 ## Verification
 
-- `npm test` passed: 15 files, 130 tests.
+- `npm test` passed.
 - `npm run lint` passed.
 - `npm run build` passed.
 
-## Remaining Release 5 Polish
+## Follow-Up Opportunities
 
-- Render scannable barcode/QR output after reveal for `barcode` profile.
-- Add full custom-field UI for arbitrary issuer fields beyond the current backend support.
-- Add more CSV templates for code-only, barcode, and custom credentials.
-- Decide whether plaintext JSON export should omit `network_security_code` values even when local storage is enabled; current implementation exports credential fields according to stored data after explicit plaintext export confirmation.
-- Add a visible local-only risk warning/confirmation before enabling network security-code input in deployments that set `GC_FEATURE_NETWORK_SECURITY_CODE_STORAGE=true`.
+- Barcode scanning from camera/image import remains a future enhancement.
+- Brand-specific field label templates can be expanded as real usage identifies more issuer quirks.
