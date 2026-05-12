@@ -307,7 +307,7 @@ Do not log sensitive field values.
 - Settings page backup controls. Status: implemented in Release 2 milestone 2 on 2026-05-12.
 - Reservation metadata UX/API polish. Status: implemented in Release 2 milestone 3 on 2026-05-12.
 - Better P&L dashboard. Status: implemented in Release 2 milestone 4 on 2026-05-12.
-- Accessibility polish.
+- Accessibility polish. Status: modal focus/keyboard behavior implemented in Release 2 milestone 5 on 2026-05-12; formal WCAG audit remains future work.
 - More import templates.
 - Performance tests.
 

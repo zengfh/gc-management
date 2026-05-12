@@ -277,7 +277,7 @@ Example:
 | Dashboard | Counts and balances by status, active cost basis, active gross margin, sold proceeds, realized P&L, expiring soon, stale reservations |
 | Lookup | Brand/source/buyer/platform suggestions; no sensitive leakage |
 | Settings | Change unlock secret UX, backup settings update, plaintext export disablement, backup timestamp display |
-| Accessibility | Keyboard table actions, modal focus trap, form errors, color contrast |
+| Accessibility | Keyboard table actions, modal initial focus, Escape close, focus restoration, form errors, color contrast |
 | Import UX | Column mapping, paste behavior, row-level errors |
 | Error UX | 400/401/403/409/429/500 user messages |
 | Performance | 20,000 card list, 1,000 row import preview, high-frequency reads |

@@ -109,9 +109,33 @@ Verification:
 - `docs/openapi.yaml` parses successfully.
 - `git diff --check` passed.
 
+### Milestone 5: Modal Accessibility Polish
+
+Status: code complete; release gate passed on 2026-05-12.
+
+Delivered:
+
+- Shared slide-panel focus hook moves focus into newly opened dialogs.
+- Dialogs now support Escape-to-close.
+- Tab and Shift+Tab are trapped inside open dialogs.
+- Focus restores to the launching control when the dialog closes.
+- The behavior is applied across card detail, deal detail, add/edit/delete/reserve/sell/use/void/undo panels.
+- UI/UX, QA, PRD, and roadmap docs have been updated for this milestone.
+
+Verification:
+
+- React test verifies reserve dialog initial focus, Escape close, and focus restoration.
+- `npm run lint` passed.
+- `npm test` passed: 12 files, 96 tests.
+- `npm run test:e2e` passed: 7 Chromium tests.
+- `npm run build` passed.
+- `npm audit --audit-level=high` passed with 0 vulnerabilities.
+- `docs/openapi.yaml` parses successfully.
+- `git diff --check` passed.
+
 ## Remaining Release 2 Scope
 
-- Accessibility polish and formal WCAG-oriented checks.
+- Formal WCAG-oriented accessibility checks.
 - More import templates.
 - Performance smoke/load tests.
 - Hosted-use hardening decisions: persistent session store, persistent rate-limit store, observability, and plaintext export feature flag policy.

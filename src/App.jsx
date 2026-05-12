@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   CircleDollarSign,
@@ -59,6 +59,77 @@ const statusLabels = {
 };
 
 const terminalCardStatuses = new Set(['sold', 'used_up', 'void']);
+
+const dialogFocusableSelector = [
+  'button:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  'a[href]',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',');
+
+function useDialogFocus(onClose) {
+  const dialogRef = useRef(null);
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) {
+      return undefined;
+    }
+
+    const previousFocus = document.activeElement;
+    const focusableElements = () =>
+      [...dialog.querySelectorAll(dialogFocusableSelector)].filter(
+        (element) => !element.hasAttribute('aria-hidden'),
+      );
+    const initialFocus =
+      dialog.querySelector('[data-autofocus]')
+      || dialog.querySelector('input:not([disabled]), select:not([disabled]), textarea:not([disabled])')
+      || focusableElements()[0]
+      || dialog;
+
+    initialFocus.focus();
+
+    function handleKeyDown(event) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+
+      if (event.key !== 'Tab') {
+        return;
+      }
+
+      const elements = focusableElements();
+      if (!elements.length) {
+        event.preventDefault();
+        return;
+      }
+
+      const first = elements[0];
+      const last = elements[elements.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    dialog.addEventListener('keydown', handleKeyDown);
+    return () => {
+      dialog.removeEventListener('keydown', handleKeyDown);
+      if (previousFocus?.focus) {
+        previousFocus.focus();
+      }
+    };
+  }, [onClose]);
+
+  return dialogRef;
+}
 
 function createUiIdempotencyKey() {
   if (globalThis.crypto?.randomUUID) {
@@ -1824,6 +1895,7 @@ function CardDetailPanel({ detailState, onClose, onLogout, onUndoUsage, onReveal
   const [credentialError, setCredentialError] = useState('');
   const [credentialMessage, setCredentialMessage] = useState('');
   const [revealing, setRevealing] = useState(false);
+  const dialogRef = useDialogFocus(onClose);
 
   useEffect(() => {
     if (!credentials) {
@@ -1915,7 +1987,7 @@ function CardDetailPanel({ detailState, onClose, onLogout, onUndoUsage, onReveal
 
   return (
     <div className="modal-backdrop" role="presentation">
-      <section className="slide-panel" role="dialog" aria-modal="true" aria-labelledby="card-detail-title">
+      <section ref={dialogRef} className="slide-panel" role="dialog" aria-modal="true" aria-labelledby="card-detail-title">
         <div className="panel-heading">
           <div>
             <p className="eyebrow">{detailCard.brand}</p>
@@ -2119,10 +2191,11 @@ function DealDetailPanel({ detailState, onClose }) {
   const totalRemaining = dealCards.reduce((sum, card) => sum + card.remainingBalanceCents, 0);
   const totalCost = dealCards.reduce((sum, card) => sum + card.purchaseCostCents, 0);
   const cardCount = `${dealCards.length} ${dealCards.length === 1 ? 'card' : 'cards'}`;
+  const dialogRef = useDialogFocus(onClose);
 
   return (
     <div className="modal-backdrop" role="presentation">
-      <section className="slide-panel" role="dialog" aria-modal="true" aria-labelledby="deal-detail-title">
+      <section ref={dialogRef} className="slide-panel" role="dialog" aria-modal="true" aria-labelledby="deal-detail-title">
         <div className="panel-heading">
           <div>
             <p className="eyebrow">{detailDeal.name}</p>
@@ -2221,6 +2294,7 @@ function EditCardPanel({ card, onClose, onEditCard }) {
   });
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const dialogRef = useDialogFocus(onClose);
 
   function updateField(field, value) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -2259,7 +2333,7 @@ function EditCardPanel({ card, onClose, onEditCard }) {
 
   return (
     <div className="modal-backdrop" role="presentation">
-      <section className="slide-panel" role="dialog" aria-modal="true" aria-labelledby="edit-card-title">
+      <section ref={dialogRef} className="slide-panel" role="dialog" aria-modal="true" aria-labelledby="edit-card-title">
         <div className="panel-heading">
           <div>
             <p className="eyebrow">{card.brand}</p>
@@ -2315,6 +2389,7 @@ function EditCardPanel({ card, onClose, onEditCard }) {
 function DeleteCardPanel({ card, onClose, onDeleteCard }) {
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const dialogRef = useDialogFocus(onClose);
 
   async function submitDelete(event) {
     event.preventDefault();
@@ -2332,7 +2407,7 @@ function DeleteCardPanel({ card, onClose, onDeleteCard }) {
 
   return (
     <div className="modal-backdrop" role="presentation">
-      <section className="slide-panel" role="dialog" aria-modal="true" aria-labelledby="delete-card-title">
+      <section ref={dialogRef} className="slide-panel" role="dialog" aria-modal="true" aria-labelledby="delete-card-title">
         <div className="panel-heading">
           <div>
             <p className="eyebrow">{card.brand}</p>
@@ -2380,6 +2455,7 @@ function AddDealPanel({ onClose, onCreateDeal }) {
   });
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const dialogRef = useDialogFocus(onClose);
 
   function updateField(field, value) {
     setForm((current) => ({
@@ -2425,7 +2501,7 @@ function AddDealPanel({ onClose, onCreateDeal }) {
 
   return (
     <div className="modal-backdrop" role="presentation">
-      <section className="slide-panel" role="dialog" aria-modal="true" aria-labelledby="add-deal-title">
+      <section ref={dialogRef} className="slide-panel" role="dialog" aria-modal="true" aria-labelledby="add-deal-title">
         <div className="panel-heading">
           <div>
             <p className="eyebrow">Acquisition</p>
@@ -2502,6 +2578,7 @@ function EditDealPanel({ deal, onClose, onEditDeal }) {
   });
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const dialogRef = useDialogFocus(onClose);
 
   function updateField(field, value) {
     setForm((current) => ({
@@ -2539,7 +2616,7 @@ function EditDealPanel({ deal, onClose, onEditDeal }) {
 
   return (
     <div className="modal-backdrop" role="presentation">
-      <section className="slide-panel" role="dialog" aria-modal="true" aria-labelledby="edit-deal-title">
+      <section ref={dialogRef} className="slide-panel" role="dialog" aria-modal="true" aria-labelledby="edit-deal-title">
         <div className="panel-heading">
           <div>
             <p className="eyebrow">{deal.name}</p>
@@ -2591,6 +2668,7 @@ function ReserveCardPanel({ card, onClose, onReserveCard }) {
   const [reservedNotes, setReservedNotes] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const dialogRef = useDialogFocus(onClose);
 
   async function submitReserve(event) {
     event.preventDefault();
@@ -2613,7 +2691,7 @@ function ReserveCardPanel({ card, onClose, onReserveCard }) {
 
   return (
     <div className="modal-backdrop" role="presentation">
-      <section className="slide-panel" role="dialog" aria-modal="true" aria-labelledby="reserve-card-title">
+      <section ref={dialogRef} className="slide-panel" role="dialog" aria-modal="true" aria-labelledby="reserve-card-title">
         <div className="panel-heading">
           <div>
             <p className="eyebrow">{card.brand}</p>
@@ -2660,6 +2738,7 @@ function VoidCardPanel({ card, onClose, onVoidCard }) {
   const [reason, setReason] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const dialogRef = useDialogFocus(onClose);
 
   async function submitVoid(event) {
     event.preventDefault();
@@ -2683,7 +2762,7 @@ function VoidCardPanel({ card, onClose, onVoidCard }) {
 
   return (
     <div className="modal-backdrop" role="presentation">
-      <section className="slide-panel" role="dialog" aria-modal="true" aria-labelledby="void-card-title">
+      <section ref={dialogRef} className="slide-panel" role="dialog" aria-modal="true" aria-labelledby="void-card-title">
         <div className="panel-heading">
           <div>
             <p className="eyebrow">{card.brand}</p>
@@ -2725,6 +2804,7 @@ function UndoSalePanel({ card, onClose, onUndoSale }) {
   const [reason, setReason] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const dialogRef = useDialogFocus(onClose);
 
   async function submitUndoSale(event) {
     event.preventDefault();
@@ -2748,7 +2828,7 @@ function UndoSalePanel({ card, onClose, onUndoSale }) {
 
   return (
     <div className="modal-backdrop" role="presentation">
-      <section className="slide-panel" role="dialog" aria-modal="true" aria-labelledby="undo-sale-title">
+      <section ref={dialogRef} className="slide-panel" role="dialog" aria-modal="true" aria-labelledby="undo-sale-title">
         <div className="panel-heading">
           <div>
             <p className="eyebrow">{card.brand}</p>
@@ -2792,6 +2872,7 @@ function SellCardPanel({ card, onClose, onSellCard }) {
   const [buyerType, setBuyerType] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const dialogRef = useDialogFocus(onClose);
 
   async function submitSale(event) {
     event.preventDefault();
@@ -2820,7 +2901,7 @@ function SellCardPanel({ card, onClose, onSellCard }) {
 
   return (
     <div className="modal-backdrop" role="presentation">
-      <section className="slide-panel" role="dialog" aria-modal="true" aria-labelledby="sell-card-title">
+      <section ref={dialogRef} className="slide-panel" role="dialog" aria-modal="true" aria-labelledby="sell-card-title">
         <div className="panel-heading">
           <div>
             <p className="eyebrow">{card.brand}</p>
@@ -2886,6 +2967,7 @@ function UseCardPanel({ card, onClose, onUseCard }) {
   const [merchant, setMerchant] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const dialogRef = useDialogFocus(onClose);
 
   async function submitUsage(event) {
     event.preventDefault();
@@ -2913,7 +2995,7 @@ function UseCardPanel({ card, onClose, onUseCard }) {
 
   return (
     <div className="modal-backdrop" role="presentation">
-      <section className="slide-panel" role="dialog" aria-modal="true" aria-labelledby="use-card-title">
+      <section ref={dialogRef} className="slide-panel" role="dialog" aria-modal="true" aria-labelledby="use-card-title">
         <div className="panel-heading">
           <div>
             <p className="eyebrow">{card.brand}</p>

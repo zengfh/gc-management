@@ -563,7 +563,7 @@ When DEK is not loaded:
 
 - All interactive controls are keyboard reachable.
 - Focus order follows visual order.
-- Modals trap focus and restore focus on close.
+- Modals trap focus, support Escape close, and restore focus on close. Implemented for slide panels in Release 2 milestone 5.
 - Error messages are associated with fields.
 - Status color is paired with text or icon.
 - Text contrast meets WCAG AA.

@@ -2668,6 +2668,7 @@ describe('App', () => {
     await user.click(screen.getByRole('button', { name: /^cards$/i }));
     await user.click(screen.getByRole('button', { name: /reserve target/i }));
     const reserveDialog = await screen.findByRole('dialog', { name: /reserve card/i });
+    await waitFor(() => expect(within(reserveDialog).getByLabelText(/^reserved for$/i)).toHaveFocus());
     await user.type(within(reserveDialog).getByLabelText(/^reserved for$/i), 'Dealer A');
     await user.type(within(reserveDialog).getByLabelText(/^reserved until$/i), '2026-06-01');
     await user.type(within(reserveDialog).getByLabelText(/^reservation notes$/i), 'Awaiting payment');
@@ -2703,5 +2704,51 @@ describe('App', () => {
         }),
       }),
     );
+  });
+
+  it('closes reserve dialog with Escape and restores focus', async () => {
+    globalThis.fetch
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            setupComplete: true,
+            sessionValid: true,
+            dekLoaded: true,
+            csrfToken: 'csrf_ready',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            {
+              id: 1,
+              brand: 'Target',
+              status: 'available',
+              faceValueCents: 5000,
+              remainingBalanceCents: 5000,
+              purchaseCostCents: 4500,
+              cardNumberLast4: '1111',
+            },
+          ],
+          page: { total: 1, limit: 50, offset: 0, hasMore: false },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }));
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByRole('heading', { name: /dashboard/i });
+    await user.click(screen.getByRole('button', { name: /^cards$/i }));
+    const reserveButton = screen.getByRole('button', { name: /reserve target/i });
+    await user.click(reserveButton);
+    const reserveDialog = await screen.findByRole('dialog', { name: /reserve card/i });
+    await waitFor(() => expect(within(reserveDialog).getByLabelText(/^reserved for$/i)).toHaveFocus());
+
+    await user.keyboard('{Escape}');
+
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: /reserve card/i })).not.toBeInTheDocument());
+    expect(reserveButton).toHaveFocus();
   });
 });
