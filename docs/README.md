@@ -22,6 +22,7 @@ Files:
 14. `runbooks/hosted_private_beta_runbook.md` - Single-node hosted private-beta deployment, backup, monitoring, and incident runbook.
 15. `10_release_4_status.md` - Release 4 implementation status and certification gate.
 16. `11_ui_modernization_research.md` - UI modernization research inputs, decisions, and remaining opportunities.
+17. `12_credential_profiles_research_and_design.md` - Research and Release 5 design for multiple gift-card credential formats.
 
 Scope note:
 

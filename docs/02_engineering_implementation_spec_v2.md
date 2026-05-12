@@ -134,6 +134,8 @@ MVP can create one default account.
 
 #### cards
 
+Release 5 note: the legacy `cardNumber`/`cardNumberHash`/`cardNumberLast4`/`pin`/`billingZip` columns are not sufficient for mainstream gift-card formats. `docs/12_credential_profiles_research_and_design.md` supersedes them with a profile-based `card_credential_fields` table and a migration/backfill plan. Keep the legacy columns only for compatibility during that migration.
+
 | Field | Type | Notes |
 |---|---|---|
 | id | INTEGER PK | |
@@ -180,13 +182,13 @@ Recommended indexes:
 - (accountId, status)
 - (accountId, brand)
 - (accountId, dealId)
-- (accountId, cardNumberHash, brand)
+- (accountId, cardNumberHash, brand) during legacy compatibility; credential-profile search should use credential-field blind indexes.
 - (accountId, expirationDate)
 - (accountId, updatedAt)
 
 Duplicate rule:
 
-- On create/update/import, if cardNumberHash is not null, flag same accountId + brand + cardNumberHash as duplicate candidate.
+- On create/update/import, if an indexed primary credential exists, flag same accountId + brand + credential blind index as duplicate candidate.
 - Decide whether duplicates are hard-blocked or require explicit override. For MVP, hard-block active duplicate cards unless imported as conflict resolution.
 
 #### reference_values
@@ -533,10 +535,10 @@ Required:
 - Wrap DEK with KEK.
 - Store encrypted DEK and salt.
 - Keep DEK in memory only after login.
-- Encrypt cardNumber, merchant PIN, permitted sensitive fields, and billing ZIP.
+- Encrypt all credential-profile field values, including claim codes, card numbers, merchant PIN/access codes, barcode values, permitted prepaid fields, and billing ZIP/address.
 - Use authenticated encryption such as AES-256-GCM.
 - Derive blind-index HMAC key from DEK using HKDF with domain separation.
-- Normalize card number before encrypt/hash/search/redact.
+- Normalize profile fields before encrypt/hash/search/redact according to field kind, not only card number.
 - Add keyVersion to allow migration.
 
 Future:

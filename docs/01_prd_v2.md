@@ -96,7 +96,7 @@ MVP implementation should not claim Mode 3 readiness, but it should avoid decisi
 
 ### Card
 
-A gift card or prepaid card tracked by the system. Cards have face value, remaining inventory balance, purchase cost, brand, type, status, credentials, optional expiration date, and audit history.
+A gift card or prepaid card tracked by the system. Cards have face value, remaining inventory balance, purchase cost, brand, type, status, credential profile, optional expiration date, and audit history. Credential profiles cover code-only, number-plus-PIN, barcode, network prepaid, and custom issuer formats.
 
 ### Deal
 
@@ -140,13 +140,13 @@ A redacted, append-only record of important actions.
 
 | ID | Requirement | Priority | Acceptance Criteria |
 |---|---|---:|---|
-| CARD-01 | User can create merchant and prepaid cards | P0 | Required fields are validated; money is stored as integer cents; card number is normalized |
+| CARD-01 | User can create merchant and prepaid cards | P0 | Required fields are validated; money is stored as integer cents; credential profile fields are normalized/encrypted according to profile |
 | CARD-02 | User can list cards with pagination, filters, and sorting | P0 | Status, brand, source, deal, expiration, and text filters work; unsupported sort fields are rejected |
 | CARD-03 | User can view a card detail page | P0 | Detail shows card data, masked credentials, transactions, usages, and audit timeline |
 | CARD-04 | User can edit allowed fields | P0 | Disallowed edits are rejected based on status; changes are audited |
-| CARD-05 | System prevents duplicate active cards when card number and brand match | P0 | Normalized number variants match; conflict is surfaced clearly |
+| CARD-05 | System prevents duplicate active cards when indexed primary credential and brand match | P0 | Normalized code/number/barcode variants match; conflict is surfaced clearly |
 | CARD-06 | Terminal cards are protected | P0 | Sold, used-up, and void cards allow notes-only edits unless an explicit admin correction feature is later added |
-| CARD-07 | Card credentials are masked by default | P0 | Full card number, merchant PIN, permitted sensitive fields, and billing ZIP are never displayed by default |
+| CARD-07 | Card credentials are masked by default | P0 | Full codes, card numbers, merchant PIN/access codes, barcode values, permitted network prepaid fields, and billing ZIP/address are never displayed by default |
 
 ### 8.4 Card Lifecycle
 
@@ -221,7 +221,7 @@ Allowed statuses:
 ### 9.1 Security
 
 - Sensitive credentials are encrypted at rest using authenticated encryption.
-- Card-number lookup uses blind index; no plaintext card-number search column is stored.
+- Exact credential lookup uses blind indexes; no plaintext credential search column is stored.
 - Network-branded payment-card CVV/CID must not be persisted in product mode.
 - Authenticated state-changing requests require CSRF token and Origin/Referer validation.
 - Sessions use secure cookie settings in production.

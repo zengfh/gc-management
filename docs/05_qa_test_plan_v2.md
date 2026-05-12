@@ -163,6 +163,8 @@ Example:
 | ENC-006 | Integration | Audit create card | Audit shows masked card number and redacted PIN |
 | ENC-007 | Integration | Network-card CVV submitted in product mode | Rejected or not persisted according to policy |
 | ENC-008 | Integration | JSON export | Sensitive allowed fields plaintext by design; no network-card CVV |
+| ENC-009 | Integration | Create code-only, number-plus-PIN, barcode, network prepaid, and custom credential profiles | All credential values are encrypted and profile summaries contain no full secrets |
+| ENC-010 | Integration | Exact credential search | Finds matching cards by indexed claim code, card number, and barcode value without plaintext search columns |
 
 ### 7.4 Card Creation and Edit
 
@@ -178,6 +180,8 @@ Example:
 | CARD-008 | Integration | PUT sold card non-notes field | Rejected |
 | CARD-009 | Integration | PUT blocked faceValue/balance/status | Rejected |
 | CARD-010 | Integration | Stale rowVersion update | 409; no overwrite |
+| CARD-011 | Integration | duplicate normalized primary credential and brand across profiles | Conflict shown or hard-blocked |
+| CARD-012 | UI | Add Deal credential profile picker | Brand templates show the right fields and labels; user can override profile |
 
 ### 7.5 Lifecycle and Money Accuracy
 
@@ -231,6 +235,8 @@ Example:
 | IMP-010 | Integration | Replace import excludes users | Current unlock secret still works |
 | IMP-011 | Integration | Encrypted JSON import valid | Backup passphrase decrypts payload; imported credentials are re-encrypted for current vault |
 | IMP-012 | Integration | Encrypted JSON import wrong backup passphrase | Rejected; no cards/import jobs/audit side effects |
+| IMP-013 | Integration | CSV import for each credential profile | Preview masks values; confirm encrypts fields and rebuilds blind indexes |
+| IMP-014 | Integration | Encrypted backup/restore with credential profiles | Code-only, number-plus-PIN, barcode, network prepaid, and custom fields round-trip |
 | EXP-001 | E2E | Plaintext export happy path | Fresh secret + type EXPORT; file returned; no-store; audit |
 | EXP-002 | Integration | Plaintext export wrong secret | Rejected; no file |
 | EXP-003 | Integration | Raw DB export | Fresh secret required; no-store; audit |

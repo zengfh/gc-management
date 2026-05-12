@@ -147,6 +147,8 @@ Labels:
 
 ### 6.3 Credential Field
 
+Release 5 note: credential fields are profile-driven. The UI must support code-only, number-plus-PIN/access, barcode/QR, network prepaid, and custom credential profiles instead of always rendering "Card number".
+
 Default state:
 
 - Masked value such as **** 1234 or hidden placeholder.
@@ -162,7 +164,7 @@ Reveal behavior:
 Copy behavior:
 
 - User clicks explicit copy button.
-- Toast says "Copied" or "Card number copied".
+- Toast says "Copied" or names the copied field, e.g. "Gift card number copied".
 - Toast never includes the secret value.
 
 ### 6.4 Data Table
@@ -364,12 +366,18 @@ Batch grid columns:
 - Network if prepaid
 - Face value
 - Purchase cost override
-- Card number
-- PIN
-- Billing ZIP
+- Credential profile
+- Profile-specific credential fields, e.g. claim code, card number, PIN/access code, barcode value/format, valid-through date, cardholder name, billing ZIP/address
 - Expiration
 - Format
 - Notes
+
+Credential profile behavior:
+
+- Selecting a known brand applies a default profile and field labels.
+- The user can override the profile before submission.
+- Network prepaid cards show CVV/CVC/CID policy copy and do not save security codes in product mode.
+- Barcode profiles render a scannable barcode/QR after explicit reveal.
 
 Keyboard behavior:
 

@@ -252,7 +252,45 @@ Exit criteria:
 - Load tests meet targets.
 - Migration strategy is documented and tested on sample data.
 
-## 9. Phase 6 - Commercial Product Track
+## 9. Phase 5.5 / Release 5 - Credential Profiles
+
+Goal: replace the card-number-only credential model with profile-based storage and UI that covers mainstream gift-card formats.
+
+Design source:
+
+- `docs/12_credential_profiles_research_and_design.md`
+
+Backend tasks:
+
+- Add credential profile and credential-field migrations.
+- Backfill existing `cardNumber`/`pin`/`billingZip` rows into profile fields.
+- Add credential-field encryption, blind-index, masking, and reveal helpers.
+- Replace exact card-number search with exact credential search across indexed fields.
+- Add feature flag and server validation for network-card security-code storage.
+- Update create card, create deal, import CSV, backup import/export, sanitized export, and reveal endpoints.
+- Preserve legacy API compatibility for one release where practical.
+
+Frontend tasks:
+
+- Add credential profile picker and brand-template defaults in Add Deal/Add Card.
+- Render profile-specific fields instead of a single Card Number field.
+- Replace table "Last 4" with profile-aware credential summary.
+- Render structured credential reveal/copy UI, including barcode/QR display where applicable.
+- Add network-prepaid warnings and local-only security-code controls.
+
+QA tasks:
+
+- Cover code-only, number+PIN, barcode, network prepaid, and custom profiles.
+- Cover migration, encrypted backup/restore, CSV import, exact credential search, duplicate detection, reveal/copy, audit redaction, and feature-flag rejection.
+
+Exit criteria:
+
+- Mainstream gift-card credential profiles can be created, searched, revealed, imported, exported, backed up, and restored.
+- Product mode does not persist network-card CVV/CVC/CID/CSC.
+- Existing cards migrate without losing reveal or exact-search behavior.
+- Release 5 certification doc is added.
+
+## 10. Phase 6 - Commercial Product Track
 
 Start this phase only if the team decides to commercialize.
 
@@ -273,10 +311,11 @@ Major initiatives:
 
 Do not start Phase 6 until the product's target customer, compliance posture, and hosting model are clear.
 
-## 10. Suggested Backlog by Priority
+## 11. Suggested Backlog by Priority
 
 ### P0 Backlog
 
+- Credential profiles for mainstream card formats.
 - PRD v2 approval.
 - OpenAPI contract.
 - Database migrations.
@@ -293,6 +332,7 @@ Do not start Phase 6 until the product's target customer, compliance posture, an
 
 ### P1 Backlog
 
+- Barcode rendering/scanning support for barcode profile.
 - CSV import preview/confirm.
 - Backup/export/import.
 - Audit UI.
@@ -314,7 +354,7 @@ Do not start Phase 6 until the product's target customer, compliance posture, an
 - Feature flags.
 - Product analytics without sensitive data.
 
-## 11. Change Management Process
+## 12. Change Management Process
 
 Because the PRD is expected to change, use a lightweight change process.
 
