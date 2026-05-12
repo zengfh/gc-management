@@ -9,6 +9,7 @@ import {
   unwrapDEK,
   wrapDEK,
 } from '../security/crypto.js';
+import { getPublicFeatureFlags } from '../config/featureFlags.js';
 import { validateUnlockSecret } from '../security/unlockSecret.js';
 import {
   clearUnlockedSession,
@@ -120,6 +121,7 @@ function authStatus(db, req) {
     setupComplete: setupComplete(db),
     sessionValid,
     dekLoaded: Boolean(unlocked),
+    features: getPublicFeatureFlags(),
     ...(sessionValid
       ? {
           user: {
@@ -269,6 +271,7 @@ export function createAuthRouter({ db, loginAttempts = createLoginAttemptStore()
           setupComplete: setupComplete(db),
           sessionValid: false,
           dekLoaded: false,
+          features: getPublicFeatureFlags(),
         }),
       );
     }),

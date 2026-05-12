@@ -743,6 +743,39 @@ describe('App', () => {
     }
   });
 
+  it('hides backup workflows disabled by feature flags', async () => {
+    globalThis.fetch
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            setupComplete: true,
+            sessionValid: true,
+            dekLoaded: true,
+            csrfToken: 'csrf_ready',
+            features: {
+              plaintextJsonExport: false,
+              rawDatabaseExport: false,
+              csvImport: false,
+              referenceValueHints: false,
+            },
+          },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }));
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByRole('heading', { name: /dashboard/i });
+    await user.click(screen.getByRole('button', { name: /^backup$/i }));
+
+    expect(screen.queryByRole('heading', { name: /csv import preview/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /plaintext json export/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /raw encrypted database export/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /encrypted json export/i })).toBeInTheDocument();
+  });
+
   it('confirms a valid CSV import from the backup view', async () => {
     const csv = 'brand,cardType,faceValue,cardNumber\nTarget,merchant,50,4111111111111111';
     globalThis.fetch

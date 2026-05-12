@@ -1292,10 +1292,24 @@ components:
               type: boolean
             dekLoaded:
               type: boolean
+            features:
+              $ref: "#/components/schemas/PublicFeatureFlags"
             user:
               $ref: "#/components/schemas/AuthUser"
             csrfToken:
               type: string
+    PublicFeatureFlags:
+      type: object
+      required: [plaintextJsonExport, rawDatabaseExport, csvImport, referenceValueHints]
+      properties:
+        plaintextJsonExport:
+          type: boolean
+        rawDatabaseExport:
+          type: boolean
+        csvImport:
+          type: boolean
+        referenceValueHints:
+          type: boolean
     AuthUser:
       type: object
       required: [id, accountId, role]

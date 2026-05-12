@@ -8,6 +8,7 @@ import { insertAuditEvent } from '../audit/index.js';
 import { requireUnlockedSession } from '../auth/requireAuth.js';
 import { requireAdminRole } from '../auth/roles.js';
 import { verifyFreshUnlockSecret } from '../auth/verifyUnlockSecret.js';
+import { requireFeatureFlag } from '../config/featureFlags.js';
 import { asyncHandler, badRequest, forbidden } from '../http/errors.js';
 import { runIdempotentJsonAsync, sendIdempotentJson } from '../http/idempotency.js';
 import { objectResponse } from '../http/response.js';
@@ -1079,6 +1080,7 @@ export function createBackupRouter({ db }) {
 
   router.post(
     '/db-file',
+    requireFeatureFlag('rawDatabaseExport'),
     asyncHandler(async (req, res, next) => {
       const body = validateBody(rawDatabaseExportSchema, req.body || {});
       await verifyFreshUnlockSecret(db, req.auth, body.unlockSecret);

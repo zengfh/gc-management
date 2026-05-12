@@ -6,6 +6,12 @@ import { openDatabase } from '../db/index.js';
 
 describe('auth routes', () => {
   const appOrigin = 'http://localhost:5173';
+  const defaultFeatures = {
+    plaintextJsonExport: true,
+    rawDatabaseExport: true,
+    csvImport: true,
+    referenceValueHints: true,
+  };
   let app;
   let db;
   let agent;
@@ -37,8 +43,29 @@ describe('auth routes', () => {
         setupComplete: false,
         sessionValid: false,
         dekLoaded: false,
+        features: defaultFeatures,
       },
     });
+  });
+
+  it('reports public feature flags from deployment configuration', async () => {
+    const originalCsvImport = process.env.GC_FEATURE_CSV_IMPORT;
+    process.env.GC_FEATURE_CSV_IMPORT = 'false';
+    try {
+      const response = await agent.get('/api/auth/status');
+
+      expect(response.status).toBe(200);
+      expect(response.body.data.features).toMatchObject({
+        ...defaultFeatures,
+        csvImport: false,
+      });
+    } finally {
+      if (originalCsvImport === undefined) {
+        delete process.env.GC_FEATURE_CSV_IMPORT;
+      } else {
+        process.env.GC_FEATURE_CSV_IMPORT = originalCsvImport;
+      }
+    }
   });
 
   it('sets up the owner once and rejects weak or repeated setup attempts', async () => {
@@ -93,6 +120,7 @@ describe('auth routes', () => {
       setupComplete: true,
       sessionValid: false,
       dekLoaded: false,
+      features: defaultFeatures,
     });
   }, 30_000);
 

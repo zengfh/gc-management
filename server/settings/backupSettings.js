@@ -1,3 +1,5 @@
+import { featureEnabled } from '../config/featureFlags.js';
+
 const backupSettingKeys = {
   allowPlaintextExport: 'backup.allowPlaintextExport',
   backupReminderDays: 'backup.reminderDays',
@@ -12,7 +14,7 @@ const defaultBackupSettings = {
 };
 
 export function plaintextExportPolicyLocked() {
-  return process.env.GC_PLAINTEXT_EXPORT_ENABLED === 'false';
+  return !featureEnabled('plaintextJsonExport');
 }
 
 function parseBooleanSetting(value, fallback) {

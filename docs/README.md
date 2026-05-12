@@ -18,6 +18,9 @@ Files:
 10. `adr/0005-hosted-hardening-gates.md` - Hosted-use hardening decisions for session storage, rate limits, observability, and plaintext export policy.
 11. `adr/0006-postgres-migration-spike.md` - Postgres migration spike findings and multi-instance stop line.
 12. `09_release_3_status.md` - Release 3/productization implementation status.
+13. `privacy_security_release_4.md` - Release 4 privacy/security operating notes for private hosted use.
+14. `runbooks/hosted_private_beta_runbook.md` - Single-node hosted private-beta deployment, backup, monitoring, and incident runbook.
+15. `10_release_4_status.md` - Release 4 implementation status and certification gate.
 
 Scope note:
 

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { insertAuditEvent } from '../audit/index.js';
 import { requireUnlockedSession } from '../auth/requireAuth.js';
 import { requireOperatorRole, requireViewerRole } from '../auth/roles.js';
+import { requireFeatureFlag } from '../config/featureFlags.js';
 import { asyncHandler, badRequest } from '../http/errors.js';
 import { objectResponse } from '../http/response.js';
 
@@ -165,6 +166,7 @@ export function createReferenceValuesRouter({ db }) {
   const router = Router();
 
   router.use(requireUnlockedSession);
+  router.use(requireFeatureFlag('referenceValueHints'));
 
   router.get(
     '/',

@@ -35,6 +35,25 @@ describe('reference value routes', () => {
     expect(response.body.error.code).toBe('LOCKED');
   });
 
+  it('can be disabled by deployment feature flag', async () => {
+    const originalFlag = process.env.GC_FEATURE_REFERENCE_VALUE_HINTS;
+    process.env.GC_FEATURE_REFERENCE_VALUE_HINTS = 'false';
+    try {
+      await setupOwner();
+
+      const response = await agent.get('/api/reference-values');
+
+      expect(response.status).toBe(403);
+      expect(response.body.error.code).toBe('FEATURE_DISABLED');
+    } finally {
+      if (originalFlag === undefined) {
+        delete process.env.GC_FEATURE_REFERENCE_VALUE_HINTS;
+      } else {
+        process.env.GC_FEATURE_REFERENCE_VALUE_HINTS = originalFlag;
+      }
+    }
+  });
+
   it('upserts and searches reference values by substring', async () => {
     const csrfToken = await setupOwner();
 

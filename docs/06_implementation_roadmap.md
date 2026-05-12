@@ -239,11 +239,11 @@ Tasks:
 - [x] Real account/user admin if needed. Completed 2026-05-12 with admin user management and owner/admin/operator/viewer RBAC.
 - [x] Production metrics export and external error reporting. Completed 2026-05-12 with Prometheus metrics export, metrics bearer token support, and optional sanitized error-report webhook. Alert installation remains deployment work.
 - [x] Data retention policy. Completed 2026-05-12 with retention policy settings and guarded retention purge.
-- [ ] Privacy/security documentation.
-- [ ] Performance load tests.
+- [x] Privacy/security documentation. Completed 2026-05-12 in `docs/privacy_security_release_4.md`.
+- [x] Performance load tests. Completed 2026-05-12 with `npm run test:load`.
 - [x] Postgres migration spike. Completed 2026-05-12 in ADR 0006; multi-instance startup is blocked until shared stores and server DB support exist.
 - [x] Admin/support access policy. Completed 2026-05-12 with support-policy settings and audit trail.
-- [ ] Feature flags.
+- [x] Feature flags. Completed 2026-05-12 with centralized deployment flags and public feature availability.
 
 Exit criteria:
 

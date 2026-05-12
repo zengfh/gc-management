@@ -79,6 +79,26 @@ describe('CSV import preview route', () => {
     expect(responseText).not.toContain('94105');
   }, 45_000);
 
+  it('rejects CSV import when the feature is disabled by deployment policy', async () => {
+    const originalFlag = process.env.GC_FEATURE_CSV_IMPORT;
+    process.env.GC_FEATURE_CSV_IMPORT = 'false';
+    try {
+      const csrfToken = await setupOwner();
+      const response = await postWithCsrf('/api/cards/import-csv', csrfToken).send({
+        csv: 'brand,cardType,faceValue\nTarget,merchant,50.00',
+      });
+
+      expect(response.status).toBe(403);
+      expect(response.body.error.code).toBe('FEATURE_DISABLED');
+    } finally {
+      if (originalFlag === undefined) {
+        delete process.env.GC_FEATURE_CSV_IMPORT;
+      } else {
+        process.env.GC_FEATURE_CSV_IMPORT = originalFlag;
+      }
+    }
+  });
+
   it('previews marketplace template aliases and normalized delivery values', async () => {
     const csrfToken = await setupOwner();
     const csv = [

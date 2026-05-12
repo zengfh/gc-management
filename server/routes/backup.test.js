@@ -321,6 +321,27 @@ describe('backup routes', () => {
     expect(backupAuditCount).toBe(0);
   }, 45_000);
 
+  it('rejects raw database export when the feature is disabled by deployment policy', async () => {
+    const originalFlag = process.env.GC_FEATURE_RAW_DATABASE_EXPORT;
+    process.env.GC_FEATURE_RAW_DATABASE_EXPORT = 'false';
+    try {
+      const csrfToken = await setupOwner();
+
+      const response = await postWithCsrf('/api/backup/db-file', csrfToken).send({
+        unlockSecret,
+      });
+
+      expect(response.status).toBe(403);
+      expect(response.body.error.code).toBe('FEATURE_DISABLED');
+    } finally {
+      if (originalFlag === undefined) {
+        delete process.env.GC_FEATURE_RAW_DATABASE_EXPORT;
+      } else {
+        process.env.GC_FEATURE_RAW_DATABASE_EXPORT = originalFlag;
+      }
+    }
+  }, 45_000);
+
   it('merges a plaintext JSON export into an unlocked vault with encrypted imported credentials', async () => {
     const csrfToken = await setupOwner();
     await createSampleCard(csrfToken);

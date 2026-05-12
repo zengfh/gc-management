@@ -66,6 +66,13 @@ const defaultDataPolicy = {
   loginAttemptRetentionDays: 30,
 };
 
+const defaultFeatureFlags = {
+  plaintextJsonExport: true,
+  rawDatabaseExport: true,
+  csvImport: true,
+  referenceValueHints: true,
+};
+
 const csvImportTemplates = [
   {
     id: 'gc-manager',
@@ -119,6 +126,13 @@ function canAdmin(auth) {
 
 function canManageInventory(auth) {
   return operatorRoleSet.has(authRole(auth));
+}
+
+function authFeatures(auth) {
+  return {
+    ...defaultFeatureFlags,
+    ...(auth?.features || {}),
+  };
 }
 
 const referenceValueTypes = {
@@ -3508,6 +3522,7 @@ function AddDealPanel({
   referenceValues = defaultReferenceValues,
   onLoadReferenceValues = async () => {},
   onUpsertReferenceValues = async () => {},
+  referenceValueHintsEnabled = true,
 }) {
   const [form, setForm] = useState({
     name: '',
@@ -3530,6 +3545,9 @@ function AddDealPanel({
 
   useEffect(() => {
     let canceled = false;
+    if (!referenceValueHintsEnabled) {
+      return undefined;
+    }
     loadReferenceValuesRef.current().catch((caught) => {
       if (!canceled) {
         setReferenceError(caught.message);
@@ -3538,7 +3556,7 @@ function AddDealPanel({
     return () => {
       canceled = true;
     };
-  }, []);
+  }, [referenceValueHintsEnabled]);
 
   function updateField(field, value) {
     setForm((current) => ({
@@ -3574,7 +3592,9 @@ function AddDealPanel({
       return;
     }
 
-    const missingReferenceItems = buildReferenceReviewItems(form, referenceValues);
+    const missingReferenceItems = referenceValueHintsEnabled
+      ? buildReferenceReviewItems(form, referenceValues)
+      : [];
     if (!skipReview && missingReferenceItems.length > 0) {
       setReviewItems(missingReferenceItems);
       return;
@@ -3582,7 +3602,9 @@ function AddDealPanel({
 
     setSubmitting(true);
     try {
-      const referenceTouches = buildReferenceTouchValues(form, referenceValues, approvedReferenceItems);
+      const referenceTouches = referenceValueHintsEnabled
+        ? buildReferenceTouchValues(form, referenceValues, approvedReferenceItems)
+        : [];
       if (referenceTouches.length > 0) {
         await onUpsertReferenceValues(referenceTouches);
       }
@@ -4192,6 +4214,7 @@ function WorkSurface({
   dataPolicyLoading,
   dataPolicyLoaded,
   dataPolicyError,
+  features = defaultFeatureFlags,
   referenceValues,
   loading,
   onRefresh,
@@ -4253,6 +4276,10 @@ function WorkSurface({
   const [dealError, setDealError] = useState('');
   const userCanAdmin = canAdmin(auth);
   const userCanManageInventory = canManageInventory(auth);
+  const enabledFeatures = {
+    ...defaultFeatureFlags,
+    ...(features || {}),
+  };
   const activeCards = cards.filter((card) => ['available', 'reserved', 'in_use'].includes(card.status));
   const soldCards = cards.filter((card) => card.status === 'sold');
   const activeRemaining = activeCards.reduce((sum, card) => sum + card.remainingBalanceCents, 0);
@@ -4577,10 +4604,12 @@ function WorkSurface({
               <span>{cards.length} cards tracked</span>
             </div>
             <div className="backup-stack">
-              <section className="backup-block">
-                <h3>CSV Import Preview</h3>
-                <CsvImportPreviewForm onPreviewCsv={onPreviewCsv} onConfirmCsv={onConfirmCsv} />
-              </section>
+              {enabledFeatures.csvImport ? (
+                <section className="backup-block">
+                  <h3>CSV Import Preview</h3>
+                  <CsvImportPreviewForm onPreviewCsv={onPreviewCsv} onConfirmCsv={onConfirmCsv} />
+                </section>
+              ) : null}
               {userCanAdmin ? (
                 <>
                   <section className="backup-block">
@@ -4595,14 +4624,18 @@ function WorkSurface({
                     <h3>Encrypted JSON Export</h3>
                     <EncryptedBackupExportForm onExportEncrypted={onExportEncrypted} />
                   </section>
-                  <section className="backup-block">
-                    <h3>Plaintext JSON Export</h3>
-                    <BackupExportForm onExportPlaintext={onExportPlaintext} />
-                  </section>
-                  <section className="backup-block">
-                    <h3>Raw Encrypted Database Export</h3>
-                    <RawDatabaseExportForm onExportRawDatabase={onExportRawDatabase} />
-                  </section>
+                  {enabledFeatures.plaintextJsonExport ? (
+                    <section className="backup-block">
+                      <h3>Plaintext JSON Export</h3>
+                      <BackupExportForm onExportPlaintext={onExportPlaintext} />
+                    </section>
+                  ) : null}
+                  {enabledFeatures.rawDatabaseExport ? (
+                    <section className="backup-block">
+                      <h3>Raw Encrypted Database Export</h3>
+                      <RawDatabaseExportForm onExportRawDatabase={onExportRawDatabase} />
+                    </section>
+                  ) : null}
                 </>
               ) : null}
             </div>
@@ -4692,6 +4725,7 @@ function WorkSurface({
           referenceValues={referenceValues}
           onLoadReferenceValues={onLoadReferenceValues}
           onUpsertReferenceValues={onUpsertReferenceValues}
+          referenceValueHintsEnabled={enabledFeatures.referenceValueHints}
         />
       ) : null}
       {editDeal ? (
@@ -4796,6 +4830,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [inventoryLoading, setInventoryLoading] = useState(false);
   const [error, setError] = useState('');
+  const features = authFeatures(auth);
 
   async function loadInventory() {
     setInventoryLoading(true);
@@ -5234,6 +5269,10 @@ export default function App() {
   }
 
   async function handleLoadReferenceValues() {
+    if (!features.referenceValueHints) {
+      setReferenceValues(defaultReferenceValues);
+      return defaultReferenceValues;
+    }
     const response = await apiFetch('/api/reference-values?types=deal_name,source,card_brand&limit=200');
     const nextValues = normalizeReferenceValuePayload(response.data);
     setReferenceValues(nextValues);
@@ -5241,7 +5280,7 @@ export default function App() {
   }
 
   async function handleUpsertReferenceValues(values) {
-    if (!values.length) {
+    if (!features.referenceValueHints || !values.length) {
       return [];
     }
     const response = await apiFetch('/api/reference-values', {
@@ -5451,6 +5490,7 @@ export default function App() {
       dataPolicyLoading={dataPolicyLoading}
       dataPolicyLoaded={dataPolicyLoaded}
       dataPolicyError={dataPolicyError}
+      features={features}
       referenceValues={referenceValues}
       loading={inventoryLoading}
       onRefresh={loadInventory}

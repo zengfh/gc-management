@@ -11,6 +11,7 @@
     "preview": "vite preview --host 0.0.0.0",
     "lint": "eslint .",
     "test": "vitest run",
+    "test:load": "node scripts/performance-load.mjs",
     "test:perf": "node scripts/performance-smoke.mjs",
     "test:watch": "vitest",
     "test:e2e": "playwright test"

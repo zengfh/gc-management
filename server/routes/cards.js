@@ -5,6 +5,7 @@ import { insertAuditEvent } from '../audit/index.js';
 import { requireUnlockedSession } from '../auth/requireAuth.js';
 import { requireOperatorRole } from '../auth/roles.js';
 import { transitionFor } from '../cards/stateMachine.js';
+import { requireFeatureFlag } from '../config/featureFlags.js';
 import { asyncHandler, badRequest, conflict, notFound } from '../http/errors.js';
 import { runIdempotentJson, sendIdempotentJson } from '../http/idempotency.js';
 import { objectResponse } from '../http/response.js';
@@ -810,6 +811,7 @@ export function createCardsRouter({ db }) {
   router.post(
     '/import-csv',
     requireOperatorRole,
+    requireFeatureFlag('csvImport'),
     asyncHandler(async (req, res) => {
       const body = validateBody(importCsvPreviewSchema, req.body || {});
       res.json(objectResponse(buildCsvPreview(db, req.auth, body.csv)));
@@ -819,6 +821,7 @@ export function createCardsRouter({ db }) {
   router.post(
     '/import-csv/confirm',
     requireOperatorRole,
+    requireFeatureFlag('csvImport'),
     asyncHandler(async (req, res) => {
       const body = validateBody(importCsvPreviewSchema, req.body || {});
       const preview = buildCsvPreview(db, req.auth, body.csv);

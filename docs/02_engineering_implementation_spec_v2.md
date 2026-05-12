@@ -436,7 +436,7 @@ Error response:
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | /api/auth/status | Returns setupComplete, sessionValid, dekLoaded, csrfToken if session valid |
+| GET | /api/auth/status | Returns setupComplete, sessionValid, dekLoaded, public feature flags, csrfToken if session valid |
 | POST | /api/auth/setup | Creates first user/account; 409 if already setup |
 | POST | /api/auth/login | Unlocks DEK; regenerates session; rate limited |
 | POST | /api/auth/logout | Clears session and user unlock state |
@@ -622,6 +622,7 @@ Structured log safety rules:
 - `GET /api/observability/summary` returns authenticated in-process request metrics: uptime, total requests, 5xx count, average/max duration, counts by status class, and counts by method.
 - `GET /api/observability/metrics` returns Prometheus text metrics for admin sessions or scrapers with `GC_METRICS_TOKEN`.
 - `GC_DEPLOYMENT_MODE=multi-instance` is intentionally blocked until external shared sessions/rate limits and a server database are implemented.
+- Release 4 centralizes deployment feature flags. Current flags are `GC_PLAINTEXT_EXPORT_ENABLED`, `GC_FEATURE_RAW_DATABASE_EXPORT`, `GC_FEATURE_CSV_IMPORT`, and `GC_FEATURE_REFERENCE_VALUE_HINTS`; set each to `false` to disable the corresponding feature.
 
 ## 11. Migrations
 
