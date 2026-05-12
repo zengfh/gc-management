@@ -961,6 +961,20 @@ describe('App', () => {
       )
       .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
       .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            allowPlaintextExport: true,
+            backupReminderDays: 30,
+            backupReminderDue: true,
+            lastBackupAt: null,
+            nextBackupDueAt: null,
+            lastPlaintextExportAt: null,
+            lastEncryptedExportAt: null,
+            lastRawDatabaseExportAt: null,
+          },
+        }),
+      )
       .mockResolvedValueOnce(jsonResponse({ data: { changed: true } }));
 
     const user = userEvent.setup();
@@ -981,6 +995,78 @@ describe('App', () => {
         body: JSON.stringify({
           oldUnlockSecret: 'a strong unlock phrase',
           newUnlockSecret: 'a better unlock phrase',
+        }),
+        headers: expect.objectContaining({
+          'X-CSRF-Token': 'csrf_ready',
+        }),
+      }),
+    );
+  });
+
+  it('updates backup settings from settings', async () => {
+    globalThis.fetch
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            setupComplete: true,
+            sessionValid: true,
+            dekLoaded: true,
+            csrfToken: 'csrf_ready',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            allowPlaintextExport: true,
+            backupReminderDays: 30,
+            backupReminderDue: true,
+            lastBackupAt: null,
+            nextBackupDueAt: null,
+            lastPlaintextExportAt: null,
+            lastEncryptedExportAt: null,
+            lastRawDatabaseExportAt: null,
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            allowPlaintextExport: false,
+            backupReminderDays: 14,
+            backupReminderDue: true,
+            lastBackupAt: null,
+            nextBackupDueAt: null,
+            lastPlaintextExportAt: null,
+            lastEncryptedExportAt: null,
+            lastRawDatabaseExportAt: null,
+          },
+        }),
+      );
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByRole('heading', { name: /dashboard/i });
+    await user.click(screen.getByRole('button', { name: /^settings$/i }));
+    await screen.findByText(/^last backup$/i);
+    await user.click(screen.getByRole('checkbox', { name: /^allow plaintext json export$/i }));
+    await user.clear(screen.getByLabelText(/^backup reminder days$/i));
+    await user.type(screen.getByLabelText(/^backup reminder days$/i), '14');
+    await user.type(screen.getByLabelText(/^settings unlock secret$/i), 'a strong unlock phrase');
+    await user.click(screen.getByRole('button', { name: /^save backup settings$/i }));
+
+    expect(await screen.findByText(/backup settings saved/i)).toBeInTheDocument();
+    expect(globalThis.fetch).toHaveBeenLastCalledWith(
+      '/api/settings/backup',
+      expect.objectContaining({
+        method: 'PUT',
+        body: JSON.stringify({
+          unlockSecret: 'a strong unlock phrase',
+          allowPlaintextExport: false,
+          backupReminderDays: 14,
         }),
         headers: expect.objectContaining({
           'X-CSRF-Token': 'csrf_ready',

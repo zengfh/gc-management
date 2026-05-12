@@ -2,14 +2,15 @@ import fs from 'node:fs/promises';
 import crypto from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
-import bcrypt from 'bcryptjs';
 import { Router } from 'express';
 import { z } from 'zod';
 import { insertAuditEvent } from '../audit/index.js';
 import { requireUnlockedSession } from '../auth/requireAuth.js';
-import { asyncHandler, badRequest, unauthorized } from '../http/errors.js';
+import { verifyFreshUnlockSecret } from '../auth/verifyUnlockSecret.js';
+import { asyncHandler, badRequest, forbidden } from '../http/errors.js';
 import { runIdempotentJsonAsync, sendIdempotentJson } from '../http/idempotency.js';
 import { objectResponse } from '../http/response.js';
+import { readBackupSettings, recordBackupExport } from '../settings/backupSettings.js';
 import {
   cardNumberHash as hashCardNumber,
   cardNumberLast4 as computeCardNumberLast4,
@@ -263,24 +264,6 @@ function validateBody(schema, body) {
 
 function exportDate(timestamp) {
   return timestamp.slice(0, 10);
-}
-
-function loadPrimaryUser(db, userId, accountId) {
-  return db
-    .prepare(
-      `SELECT id, accountId, unlockSecretHash
-       FROM users
-       WHERE id = ? AND accountId = ?`,
-    )
-    .get(userId, accountId);
-}
-
-async function verifyFreshUnlockSecret(db, auth, unlockSecret) {
-  const user = loadPrimaryUser(db, auth.userId, auth.accountId);
-  const passwordMatches = await bcrypt.compare(unlockSecret, user?.unlockSecretHash || '');
-  if (!passwordMatches) {
-    throw unauthorized('INVALID_UNLOCK_SECRET', 'Invalid unlock secret.');
-  }
 }
 
 function decryptNullable(value, key) {
@@ -912,6 +895,10 @@ export function createBackupRouter({ db }) {
     asyncHandler(async (req, res) => {
       const body = validateBody(plaintextExportSchema, req.body || {});
       await verifyFreshUnlockSecret(db, req.auth, body.unlockSecret);
+      const backupSettings = readBackupSettings(db, req.auth.accountId);
+      if (!backupSettings.allowPlaintextExport) {
+        throw forbidden('PLAINTEXT_EXPORT_DISABLED', 'Plaintext JSON export is disabled in settings.');
+      }
 
       const timestamp = new Date().toISOString();
       const payload = buildPlaintextExport(db, req.auth, timestamp);
@@ -930,6 +917,7 @@ export function createBackupRouter({ db }) {
         },
         timestamp,
       });
+      recordBackupExport(db, req.auth.accountId, 'plaintext_json', timestamp);
 
       res.set({
         'Cache-Control': 'no-store',
@@ -965,6 +953,7 @@ export function createBackupRouter({ db }) {
         },
         timestamp,
       });
+      recordBackupExport(db, req.auth.accountId, 'encrypted_portable_json', timestamp);
 
       res.set({
         'Cache-Control': 'no-store',
@@ -1035,6 +1024,7 @@ export function createBackupRouter({ db }) {
         },
         timestamp,
       });
+      recordBackupExport(db, req.auth.accountId, 'raw_sqlite', timestamp);
 
       res.set({
         'Cache-Control': 'no-store',

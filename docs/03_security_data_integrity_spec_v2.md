@@ -256,6 +256,7 @@ Required controls:
 - Audit event without payload.
 - File name includes date.
 - No network-card CVV/CID values.
+- Account setting can disable plaintext export; disabled export returns 403 and writes no export audit event.
 
 ### 10.2 Raw Database Export
 
@@ -415,8 +416,9 @@ Future product:
 | CVV | network-card CVV rejected/not persisted/not exported |
 | XSS | notes, buyer, merchant, brand, CSV fields render as text |
 | Audit | sensitive fields redacted in old/new values |
-| Export | fresh secret, confirmation, no-store, audit, no CVV, encrypted export redaction |
+| Export | fresh secret, confirmation, no-store, audit, no CVV, encrypted export redaction, plaintext export disablement |
 | Import | malformed JSON/CSV rejected, revalidation, encrypted restore, backup before replace |
+| Settings | fresh secret for backup setting updates, no secrets in settings audit |
 | Concurrency | double sell, rapid use, stale PUT |
 | Access control | future account isolation tests before product mode |
 

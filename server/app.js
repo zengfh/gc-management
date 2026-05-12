@@ -9,6 +9,7 @@ import { createAuthRouter } from './routes/auth.js';
 import { createBackupRouter } from './routes/backup.js';
 import { createCardsRouter } from './routes/cards.js';
 import { createDealsRouter } from './routes/deals.js';
+import { createSettingsRouter } from './routes/settings.js';
 import { csrfProtection } from './security/csrf.js';
 
 function assertProductionConfig() {
@@ -96,6 +97,7 @@ export function createApp({ db } = {}) {
     app.use('/api/backup', createBackupRouter({ db }));
     app.use('/api/cards', createCardsRouter({ db }));
     app.use('/api/deals', createDealsRouter({ db }));
+    app.use('/api/settings', createSettingsRouter({ db }));
   }
 
   app.use((req, res) => {

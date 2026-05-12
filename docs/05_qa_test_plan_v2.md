@@ -276,7 +276,7 @@ Example:
 |---|---|
 | Dashboard | Counts and balances by status, expiring soon, recent activity |
 | Lookup | Brand/source/buyer/platform suggestions; no sensitive leakage |
-| Settings | Change unlock secret UX, backup settings |
+| Settings | Change unlock secret UX, backup settings update, plaintext export disablement, backup timestamp display |
 | Accessibility | Keyboard table actions, modal focus trap, form errors, color contrast |
 | Import UX | Column mapping, paste behavior, row-level errors |
 | Error UX | 400/401/403/409/429/500 user messages |

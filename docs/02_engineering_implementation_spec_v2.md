@@ -461,6 +461,13 @@ Error response:
 | POST | /api/backup/db-file | Raw database export; fresh secret required |
 | POST | /api/backup/import | Plaintext or encrypted JSON restore; replace or merge; backup before replace |
 
+### 6.7 Settings Endpoints
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | /api/settings/backup | Returns plaintext-export toggle, reminder interval, last backup timestamps, and due status |
+| PUT | /api/settings/backup | Requires current unlock secret; updates backup reminder and plaintext-export toggle; writes redacted audit |
+
 ## 7. Validation Rules
 
 Centralize validation in backend modules. Do not duplicate business logic only in route handlers.

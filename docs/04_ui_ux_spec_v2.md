@@ -507,6 +507,22 @@ Detail:
 - Request ID.
 - Related entity link.
 
+### 7.14 Settings
+
+Implemented Release 2 backup settings:
+
+- Backup status summary: last backup, next due, and plaintext export status.
+- Backup reminder interval in days; `0` disables reminder due state.
+- Plaintext JSON export toggle.
+- Current unlock secret required before saving backup settings.
+- Backup history timestamps for encrypted JSON, plaintext JSON, and raw database exports.
+
+Rules:
+
+- Do not show the unlock secret or backup passphrase in settings status, toasts, or audit summaries.
+- If plaintext export is disabled, the backend must reject plaintext export even if a stale UI still shows the export button.
+- Keep unlock-secret rotation in the same Settings area, but visually separated from backup settings.
+
 ## 8. Global States
 
 ### Loading
@@ -598,4 +614,3 @@ A screen or flow is done when:
 - E2E selectors exist for critical actions.
 - Accessibility checks pass for the flow.
 - No sensitive data appears in URLs, toasts, console logs, or analytics.
-

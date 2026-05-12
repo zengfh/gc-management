@@ -728,6 +728,56 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
+  /api/settings/backup:
+    get:
+      tags: [Settings]
+      summary: Get backup settings and backup status
+      operationId: getBackupSettings
+      responses:
+        "200":
+          description: Backup settings
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ObjectResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/BackupSettings"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    put:
+      tags: [Settings]
+      summary: Update backup settings
+      operationId: updateBackupSettings
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BackupSettingsUpdateRequest"
+      responses:
+        "200":
+          description: Backup settings updated
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ObjectResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/BackupSettings"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
   /api/audit:
     get:
       tags: [Audit]
@@ -1324,6 +1374,59 @@ components:
         confirmation:
           type: string
           enum: [ENCRYPT]
+    BackupSettings:
+      type: object
+      required:
+        - allowPlaintextExport
+        - backupReminderDays
+        - backupReminderDue
+        - lastBackupAt
+        - nextBackupDueAt
+        - lastPlaintextExportAt
+        - lastEncryptedExportAt
+        - lastRawDatabaseExportAt
+      properties:
+        allowPlaintextExport:
+          type: boolean
+        backupReminderDays:
+          type: integer
+          minimum: 0
+          maximum: 365
+          description: 0 disables the reminder.
+        backupReminderDue:
+          type: boolean
+        lastBackupAt:
+          type: string
+          format: date-time
+          nullable: true
+        nextBackupDueAt:
+          type: string
+          format: date-time
+          nullable: true
+        lastPlaintextExportAt:
+          type: string
+          format: date-time
+          nullable: true
+        lastEncryptedExportAt:
+          type: string
+          format: date-time
+          nullable: true
+        lastRawDatabaseExportAt:
+          type: string
+          format: date-time
+          nullable: true
+    BackupSettingsUpdateRequest:
+      type: object
+      required: [unlockSecret, allowPlaintextExport, backupReminderDays]
+      properties:
+        unlockSecret:
+          type: string
+        allowPlaintextExport:
+          type: boolean
+        backupReminderDays:
+          type: integer
+          minimum: 0
+          maximum: 365
     BackupImportRequest:
       type: object
       required: [unlockSecret, mode, payload]

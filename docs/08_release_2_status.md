@@ -35,9 +35,34 @@ Verification:
 - `docs/openapi.yaml` parses successfully.
 - `git diff --check` passed.
 
+### Milestone 2: Backup Settings Controls
+
+Status: code complete; release gate passed on 2026-05-12.
+
+Delivered:
+
+- `GET /api/settings/backup` returns plaintext-export status, backup reminder interval, backup due state, and last backup timestamps.
+- `PUT /api/settings/backup` updates backup reminder days and the plaintext export toggle after validating the current unlock secret.
+- Settings updates write redacted audit metadata and never store unlock secrets in audit rows.
+- Plaintext JSON export is now server-enforced by the `allowPlaintextExport` setting; disabled exports return 403 and write no export audit event.
+- Successful plaintext, encrypted, and raw database exports record last-export timestamps in `app_settings`.
+- Settings UI now includes backup status, plaintext export toggle, backup reminder interval, and backup export history.
+- OpenAPI, security, UX, PRD, and roadmap docs have been updated for this milestone.
+
+Verification:
+
+- Backend tests for backup settings defaults, secure updates, wrong-secret rejection, plaintext-export disablement, and encrypted backup timestamp recording.
+- React tests for backup settings update UX.
+- `npm run lint` passed.
+- `npm test` passed: 12 files, 94 tests.
+- `npm run test:e2e` passed: 7 Chromium tests.
+- `npm run build` passed.
+- `npm audit --audit-level=high` passed with 0 vulnerabilities.
+- `docs/openapi.yaml` parses successfully.
+- `git diff --check` passed.
+
 ## Remaining Release 2 Scope
 
-- Settings page expansion beyond unlock-secret rotation.
 - Reservation metadata UX and API polish.
 - Better P&L dashboard.
 - Accessibility polish and formal WCAG-oriented checks.

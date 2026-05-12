@@ -38,6 +38,17 @@ const defaultPage = {
   hasMore: false,
 };
 
+const defaultBackupSettings = {
+  allowPlaintextExport: true,
+  backupReminderDays: 30,
+  backupReminderDue: true,
+  lastBackupAt: null,
+  nextBackupDueAt: null,
+  lastPlaintextExportAt: null,
+  lastEncryptedExportAt: null,
+  lastRawDatabaseExportAt: null,
+};
+
 const statusLabels = {
   available: 'Available',
   reserved: 'Reserved',
@@ -1378,6 +1389,106 @@ function EncryptedJsonImportForm({ onImportBackup }) {
       {fileName ? <p className="muted-text import-file-name">{fileName}</p> : null}
       <FieldError message={error} />
       {success ? <p className="success-copy">{success}</p> : null}
+    </form>
+  );
+}
+
+function BackupSettingsForm({ settings, onUpdateBackupSettings }) {
+  const effectiveSettings = settings || defaultBackupSettings;
+  const [allowPlaintextExport, setAllowPlaintextExport] = useState(effectiveSettings.allowPlaintextExport);
+  const [backupReminderDays, setBackupReminderDays] = useState(String(effectiveSettings.backupReminderDays));
+  const [unlockSecret, setUnlockSecret] = useState('');
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  async function submitSettings(event) {
+    event.preventDefault();
+    setError('');
+    setSuccess('');
+    const reminderDays = Number(backupReminderDays);
+    if (!Number.isInteger(reminderDays) || reminderDays < 0 || reminderDays > 365) {
+      setError('Backup reminder days must be between 0 and 365.');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await onUpdateBackupSettings({
+        unlockSecret,
+        allowPlaintextExport,
+        backupReminderDays: reminderDays,
+      });
+      setUnlockSecret('');
+      setSuccess('Backup settings saved.');
+    } catch (caught) {
+      setError(caught.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <form className="settings-form backup-settings-form" onSubmit={submitSettings}>
+      <div className="settings-summary-grid" aria-label="Backup status">
+        <div className="settings-summary-item">
+          <span>Last backup</span>
+          <strong>{formatDateTime(effectiveSettings.lastBackupAt)}</strong>
+        </div>
+        <div className="settings-summary-item">
+          <span>Next due</span>
+          <strong>
+            {effectiveSettings.backupReminderDue
+              ? 'Due now'
+              : formatDateTime(effectiveSettings.nextBackupDueAt)}
+          </strong>
+        </div>
+        <div className="settings-summary-item">
+          <span>Plaintext export</span>
+          <strong>{allowPlaintextExport ? 'Enabled' : 'Disabled'}</strong>
+        </div>
+      </div>
+      <label className="check-row settings-check">
+        <input
+          type="checkbox"
+          checked={allowPlaintextExport}
+          onChange={(event) => setAllowPlaintextExport(event.target.checked)}
+        />
+        <span>Allow plaintext JSON export</span>
+      </label>
+      <label>
+        <span>Backup reminder days</span>
+        <input
+          type="number"
+          min="0"
+          max="365"
+          step="1"
+          value={backupReminderDays}
+          onChange={(event) => setBackupReminderDays(event.target.value)}
+        />
+      </label>
+      <label>
+        <span>Settings unlock secret</span>
+        <input
+          type="password"
+          value={unlockSecret}
+          autoComplete="current-password"
+          onChange={(event) => setUnlockSecret(event.target.value)}
+        />
+      </label>
+      <div className="backup-actions">
+        <button type="submit" className="primary-action" disabled={submitting}>
+          <DatabaseBackup aria-hidden="true" size={17} />
+          {submitting ? 'Saving...' : 'Save backup settings'}
+        </button>
+      </div>
+      <FieldError message={error} />
+      {success ? <p className="success-copy">{success}</p> : null}
+      <div className="backup-settings-history" aria-label="Backup history">
+        <span>Encrypted: {formatDateTime(effectiveSettings.lastEncryptedExportAt)}</span>
+        <span>Plaintext: {formatDateTime(effectiveSettings.lastPlaintextExportAt)}</span>
+        <span>Raw DB: {formatDateTime(effectiveSettings.lastRawDatabaseExportAt)}</span>
+      </div>
     </form>
   );
 }
@@ -2730,10 +2841,16 @@ function WorkSurface({
   auditEvents,
   auditLoading,
   auditError,
+  backupSettings,
+  backupSettingsLoading,
+  backupSettingsLoaded,
+  backupSettingsError,
   loading,
   onRefresh,
   onLogout,
   onLoadAudit,
+  onLoadBackupSettings,
+  onUpdateBackupSettings,
   onExportPlaintext,
   onExportEncrypted,
   onExportRawDatabase,
@@ -2795,6 +2912,9 @@ function WorkSurface({
     setActiveView(view);
     if (view === 'audit') {
       await onLoadAudit({});
+    }
+    if (view === 'settings') {
+      await onLoadBackupSettings();
     }
   }
 
@@ -3068,6 +3188,19 @@ function WorkSurface({
             </div>
             <div className="settings-stack">
               <section className="backup-block">
+                <h3>Backup Settings</h3>
+                {backupSettingsLoading ? (
+                  <div className="loading-strip inline-loading">Loading backup settings...</div>
+                ) : null}
+                <FieldError message={backupSettingsError} />
+                {backupSettingsLoaded ? (
+                  <BackupSettingsForm
+                    settings={backupSettings}
+                    onUpdateBackupSettings={onUpdateBackupSettings}
+                  />
+                ) : null}
+              </section>
+              <section className="backup-block">
                 <h3>Unlock Secret</h3>
                 <ChangeUnlockSecretForm onChangeUnlockSecret={onChangeUnlockSecret} />
               </section>
@@ -3158,6 +3291,10 @@ export default function App() {
   const [auditEvents, setAuditEvents] = useState([]);
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditError, setAuditError] = useState('');
+  const [backupSettings, setBackupSettings] = useState(defaultBackupSettings);
+  const [backupSettingsLoading, setBackupSettingsLoading] = useState(false);
+  const [backupSettingsLoaded, setBackupSettingsLoaded] = useState(false);
+  const [backupSettingsError, setBackupSettingsError] = useState('');
   const [loading, setLoading] = useState(true);
   const [inventoryLoading, setInventoryLoading] = useState(false);
   const [error, setError] = useState('');
@@ -3291,6 +3428,33 @@ export default function App() {
     } finally {
       setAuditLoading(false);
     }
+  }
+
+  async function handleLoadBackupSettings() {
+    setBackupSettingsLoading(true);
+    setBackupSettingsError('');
+    try {
+      const response = await apiFetch('/api/settings/backup');
+      setBackupSettings(response.data || defaultBackupSettings);
+      setBackupSettingsLoaded(true);
+      return response;
+    } catch (caught) {
+      setBackupSettingsError(caught.message);
+      return null;
+    } finally {
+      setBackupSettingsLoading(false);
+    }
+  }
+
+  async function handleUpdateBackupSettings(payload) {
+    const response = await apiFetch('/api/settings/backup', {
+      method: 'PUT',
+      body: payload,
+      csrfToken: auth.csrfToken,
+    });
+    setBackupSettings(response.data || defaultBackupSettings);
+    setBackupSettingsLoaded(true);
+    return response;
   }
 
   async function handleExportPlaintext(payload) {
@@ -3436,6 +3600,9 @@ export default function App() {
     setDeals([]);
     setAuditEvents([]);
     setAuditError('');
+    setBackupSettings(defaultBackupSettings);
+    setBackupSettingsLoaded(false);
+    setBackupSettingsError('');
   }
 
   async function handleCreateDeal(payload) {
@@ -3613,10 +3780,16 @@ export default function App() {
       auditEvents={auditEvents}
       auditLoading={auditLoading}
       auditError={auditError}
+      backupSettings={backupSettings}
+      backupSettingsLoading={backupSettingsLoading}
+      backupSettingsLoaded={backupSettingsLoaded}
+      backupSettingsError={backupSettingsError}
       loading={inventoryLoading}
       onRefresh={loadInventory}
       onLogout={handleLogout}
       onLoadAudit={handleLoadAudit}
+      onLoadBackupSettings={handleLoadBackupSettings}
+      onUpdateBackupSettings={handleUpdateBackupSettings}
       onExportPlaintext={handleExportPlaintext}
       onExportEncrypted={handleExportEncrypted}
       onExportRawDatabase={handleExportRawDatabase}
