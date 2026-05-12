@@ -5,7 +5,11 @@ import { requireUnlockedSession } from '../auth/requireAuth.js';
 import { verifyFreshUnlockSecret } from '../auth/verifyUnlockSecret.js';
 import { asyncHandler, badRequest } from '../http/errors.js';
 import { objectResponse } from '../http/response.js';
-import { readBackupSettings, updateBackupSettings } from '../settings/backupSettings.js';
+import {
+  plaintextExportPolicyLocked,
+  readBackupSettings,
+  updateBackupSettings,
+} from '../settings/backupSettings.js';
 
 const backupSettingsUpdateSchema = z
   .object({
@@ -47,6 +51,13 @@ export function createSettingsRouter({ db }) {
     '/backup',
     asyncHandler(async (req, res) => {
       const body = validateBody(backupSettingsUpdateSchema, req.body || {});
+      if (plaintextExportPolicyLocked() && body.allowPlaintextExport) {
+        throw badRequest(
+          'PLAINTEXT_EXPORT_POLICY_LOCKED',
+          'Plaintext JSON export is disabled by deployment policy.',
+        );
+      }
+
       await verifyFreshUnlockSecret(db, req.auth, body.unlockSecret);
 
       const timestamp = new Date().toISOString();

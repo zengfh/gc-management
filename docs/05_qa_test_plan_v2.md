@@ -277,10 +277,10 @@ Example:
 | Dashboard | Counts and balances by status, active cost basis, active gross margin, sold proceeds, realized P&L, expiring soon, stale reservations |
 | Lookup | Brand/source/buyer/platform suggestions; no sensitive leakage |
 | Settings | Change unlock secret UX, backup settings update, plaintext export disablement, backup timestamp display |
-| Accessibility | Keyboard table actions, modal initial focus, Escape close, focus restoration, form errors, color contrast |
-| Import UX | Column mapping, paste behavior, row-level errors |
+| Accessibility | Keyboard table actions, modal initial focus, Escape close, focus restoration, form errors, color contrast, automated axe WCAG A/AA smoke via `npm run test:e2e -- e2e/accessibility.spec.js` |
+| Import UX | Downloadable templates, marketplace/prepaid header aliases, paste behavior, row-level errors |
 | Error UX | 400/401/403/409/429/500 user messages |
-| Performance | 20,000 card list, 1,000 row import preview, high-frequency reads |
+| Performance | `npm run test:perf` covers 20,000 card list, 1,000 row import preview, and high-frequency reads |
 | Security headers | CSP, frame-ancestors, nosniff, HSTS in production config |
 | Logging | Request IDs, redaction, no sensitive payloads |
 | Migration | Upgrade seeded old DB to latest schema |

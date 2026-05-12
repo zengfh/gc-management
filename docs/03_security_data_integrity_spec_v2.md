@@ -287,6 +287,7 @@ Implemented controls:
 Remaining product hardening:
 
 - Add customer-facing backup passphrase recovery/rotation guidance before hosted use.
+- Hosted deployments can set `GC_PLAINTEXT_EXPORT_ENABLED=false` to policy-lock plaintext JSON export off regardless of account settings. Implemented in Release 2 milestone 9.
 - Decide whether plaintext export should be disabled or feature-flagged in product/SaaS mode.
 
 ## 11. Import Security

@@ -897,7 +897,12 @@ export function createBackupRouter({ db }) {
       await verifyFreshUnlockSecret(db, req.auth, body.unlockSecret);
       const backupSettings = readBackupSettings(db, req.auth.accountId);
       if (!backupSettings.allowPlaintextExport) {
-        throw forbidden('PLAINTEXT_EXPORT_DISABLED', 'Plaintext JSON export is disabled in settings.');
+        throw forbidden(
+          'PLAINTEXT_EXPORT_DISABLED',
+          backupSettings.plaintextExportPolicyLocked
+            ? 'Plaintext JSON export is disabled by deployment policy.'
+            : 'Plaintext JSON export is disabled in settings.',
+        );
       }
 
       const timestamp = new Date().toISOString();

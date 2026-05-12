@@ -307,9 +307,10 @@ Do not log sensitive field values.
 - Settings page backup controls. Status: implemented in Release 2 milestone 2 on 2026-05-12.
 - Reservation metadata UX/API polish. Status: implemented in Release 2 milestone 3 on 2026-05-12.
 - Better P&L dashboard. Status: implemented in Release 2 milestone 4 on 2026-05-12.
-- Accessibility polish. Status: modal focus/keyboard behavior implemented in Release 2 milestone 5 on 2026-05-12; formal WCAG audit remains future work.
-- More import templates.
-- Performance tests.
+- Accessibility polish. Status: modal focus/keyboard behavior implemented in Release 2 milestone 5 and automated WCAG A/AA axe smoke checks implemented in Release 2 milestone 8 on 2026-05-12.
+- More import templates. Status: marketplace and prepaid CSV templates/aliases implemented in Release 2 milestone 7 on 2026-05-12.
+- Performance tests. Status: explicit 20,000-card/1,000-row CSV smoke script implemented in Release 2 milestone 6 on 2026-05-12.
+- Hosted-use hardening decisions. Status: plaintext export deployment flag implemented and hosted infrastructure gates documented in ADR 0005 on 2026-05-12.
 
 ### Release 3
 

@@ -24,6 +24,7 @@ Run these commands from the repository root before tagging or deploying:
 ```bash
 npm run lint
 npm test
+npm run test:perf
 npm run test:e2e
 npm run build
 npm audit --audit-level=high

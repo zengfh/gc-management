@@ -11,6 +11,10 @@ const defaultBackupSettings = {
   backupReminderDays: 30,
 };
 
+export function plaintextExportPolicyLocked() {
+  return process.env.GC_PLAINTEXT_EXPORT_ENABLED === 'false';
+}
+
 function parseBooleanSetting(value, fallback) {
   if (value === 'true') {
     return true;
@@ -65,6 +69,7 @@ function settingMap(db, accountId) {
 
 export function readBackupSettings(db, accountId, now = new Date().toISOString()) {
   const settings = settingMap(db, accountId);
+  const policyLocked = plaintextExportPolicyLocked();
   const lastPlaintextExportAt = validTimestamp(settings.get(backupSettingKeys.lastPlaintextExportAt));
   const lastEncryptedExportAt = validTimestamp(settings.get(backupSettingKeys.lastEncryptedExportAt));
   const lastRawDatabaseExportAt = validTimestamp(settings.get(backupSettingKeys.lastRawDatabaseExportAt));
@@ -79,10 +84,13 @@ export function readBackupSettings(db, accountId, now = new Date().toISOString()
   );
 
   return {
-    allowPlaintextExport: parseBooleanSetting(
-      settings.get(backupSettingKeys.allowPlaintextExport),
-      defaultBackupSettings.allowPlaintextExport,
-    ),
+    allowPlaintextExport: policyLocked
+      ? false
+      : parseBooleanSetting(
+          settings.get(backupSettingKeys.allowPlaintextExport),
+          defaultBackupSettings.allowPlaintextExport,
+        ),
+    plaintextExportPolicyLocked: policyLocked,
     backupReminderDays,
     backupReminderDue: backupDue(lastBackupAt, backupReminderDays, now),
     lastBackupAt,

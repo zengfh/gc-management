@@ -35,6 +35,7 @@ describe('settings routes', () => {
     expect(response.status).toBe(200);
     expect(response.body.data).toMatchObject({
       allowPlaintextExport: true,
+      plaintextExportPolicyLocked: false,
       backupReminderDays: 30,
       backupReminderDue: true,
       lastBackupAt: null,
@@ -92,6 +93,45 @@ describe('settings routes', () => {
     expect(
       db.prepare("SELECT COUNT(*) AS count FROM audit_log WHERE action = 'settings.backup_update'").get().count,
     ).toBe(0);
+  }, 45_000);
+
+  it('locks plaintext export off when deployment policy disables it', async () => {
+    const originalFlag = process.env.GC_PLAINTEXT_EXPORT_ENABLED;
+    process.env.GC_PLAINTEXT_EXPORT_ENABLED = 'false';
+
+    try {
+      const csrfToken = await setupOwner();
+
+      const settings = await agent.get('/api/settings/backup');
+      expect(settings.status).toBe(200);
+      expect(settings.body.data).toMatchObject({
+        allowPlaintextExport: false,
+        plaintextExportPolicyLocked: true,
+      });
+
+      const enableAttempt = await withCsrf(agent.put('/api/settings/backup'), csrfToken).send({
+        unlockSecret,
+        allowPlaintextExport: true,
+        backupReminderDays: 30,
+      });
+      expect(enableAttempt.status).toBe(400);
+      expect(enableAttempt.body.error.code).toBe('PLAINTEXT_EXPORT_POLICY_LOCKED');
+      expect(db.prepare('SELECT COUNT(*) AS count FROM app_settings').get().count).toBe(0);
+
+      const plaintextExport = await withCsrf(agent.post('/api/backup/export'), csrfToken).send({
+        unlockSecret,
+        confirmation: 'EXPORT',
+        acknowledgePlaintext: true,
+      });
+      expect(plaintextExport.status).toBe(403);
+      expect(plaintextExport.body.error.message).toMatch(/deployment policy/i);
+    } finally {
+      if (originalFlag === undefined) {
+        delete process.env.GC_PLAINTEXT_EXPORT_ENABLED;
+      } else {
+        process.env.GC_PLAINTEXT_EXPORT_ENABLED = originalFlag;
+      }
+    }
   }, 45_000);
 
   it('enforces disabled plaintext export and still records encrypted backup timestamps', async () => {

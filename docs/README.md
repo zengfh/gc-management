@@ -15,6 +15,7 @@ Files:
 7. `06_implementation_roadmap.md` - Suggested phased roadmap and team operating model.
 8. `07_mvp_release_1_readiness.md` - MVP Release 1 readiness, release gate, backup drill, and rollback plan.
 9. `08_release_2_status.md` - Release 2 implementation status, completed milestones, remaining scope, and productization notes.
+10. `adr/0005-hosted-hardening-gates.md` - Hosted-use hardening decisions for session storage, rate limits, observability, and plaintext export policy.
 
 Scope note:
 

@@ -677,6 +677,46 @@ describe('App', () => {
     );
   });
 
+  it('downloads CSV import templates from the backup view', async () => {
+    const originalCreateObjectURL = globalThis.URL.createObjectURL;
+    const originalRevokeObjectURL = globalThis.URL.revokeObjectURL;
+    const originalAnchorClick = globalThis.HTMLAnchorElement.prototype.click;
+    globalThis.URL.createObjectURL = vi.fn(() => 'blob:csv-template');
+    globalThis.URL.revokeObjectURL = vi.fn();
+    globalThis.HTMLAnchorElement.prototype.click = vi.fn();
+    globalThis.fetch
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            setupComplete: true,
+            sessionValid: true,
+            dekLoaded: true,
+            csrfToken: 'csrf_ready',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }));
+
+    try {
+      const user = userEvent.setup();
+      render(<App />);
+
+      await screen.findByRole('heading', { name: /dashboard/i });
+      await user.click(screen.getByRole('button', { name: /^backup$/i }));
+      await user.selectOptions(screen.getByLabelText(/^csv template$/i), 'marketplace');
+      await user.click(screen.getByRole('button', { name: /^download template$/i }));
+
+      expect(globalThis.URL.createObjectURL).toHaveBeenCalledWith(expect.any(Blob));
+      expect(globalThis.URL.createObjectURL.mock.calls[0][0].type).toBe('text/csv');
+      expect(globalThis.URL.revokeObjectURL).toHaveBeenCalledWith('blob:csv-template');
+    } finally {
+      globalThis.URL.createObjectURL = originalCreateObjectURL;
+      globalThis.URL.revokeObjectURL = originalRevokeObjectURL;
+      globalThis.HTMLAnchorElement.prototype.click = originalAnchorClick;
+    }
+  });
+
   it('confirms a valid CSV import from the backup view', async () => {
     const csv = 'brand,cardType,faceValue,cardNumber\nTarget,merchant,50,4111111111111111';
     globalThis.fetch
@@ -1145,6 +1185,46 @@ describe('App', () => {
         }),
       }),
     );
+  });
+
+  it('shows plaintext export as policy locked in settings', async () => {
+    globalThis.fetch
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            setupComplete: true,
+            sessionValid: true,
+            dekLoaded: true,
+            csrfToken: 'csrf_ready',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            allowPlaintextExport: false,
+            plaintextExportPolicyLocked: true,
+            backupReminderDays: 30,
+            backupReminderDue: true,
+            lastBackupAt: null,
+            nextBackupDueAt: null,
+            lastPlaintextExportAt: null,
+            lastEncryptedExportAt: null,
+            lastRawDatabaseExportAt: null,
+          },
+        }),
+      );
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByRole('heading', { name: /dashboard/i });
+    await user.click(screen.getByRole('button', { name: /^settings$/i }));
+
+    expect(await screen.findByText(/^policy locked$/i)).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: /^allow plaintext json export$/i })).toBeDisabled();
   });
 
   it('reveals and copies card credentials from card detail without putting secrets in status text', async () => {

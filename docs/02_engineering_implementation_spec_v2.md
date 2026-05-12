@@ -454,9 +454,9 @@ Error response:
 
 | Method | Path | Notes |
 |---|---|---|
-| POST | /api/cards/import-csv | Preview only; no commit |
-| POST | /api/cards/import-csv/confirm | Revalidates and commits |
-| POST | /api/backup/export | Plaintext JSON; fresh secret and confirmation required |
+| POST | /api/cards/import-csv | Preview only; no commit; accepts GC Manager, marketplace, and prepaid template aliases |
+| POST | /api/cards/import-csv/confirm | Revalidates and commits; prepaid imports preserve network metadata |
+| POST | /api/backup/export | Plaintext JSON; fresh secret and confirmation required; blocked when `GC_PLAINTEXT_EXPORT_ENABLED=false` |
 | POST | /api/backup/export-encrypted | Implemented Release 2 milestone; encrypted portable JSON with separate backup passphrase |
 | POST | /api/backup/db-file | Raw database export; fresh secret required |
 | POST | /api/backup/import | Plaintext or encrypted JSON restore; replace or merge; backup before replace |
@@ -465,8 +465,8 @@ Error response:
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | /api/settings/backup | Returns plaintext-export toggle, reminder interval, last backup timestamps, and due status |
-| PUT | /api/settings/backup | Requires current unlock secret; updates backup reminder and plaintext-export toggle; writes redacted audit |
+| GET | /api/settings/backup | Returns plaintext-export toggle, deployment policy lock state, reminder interval, last backup timestamps, and due status |
+| PUT | /api/settings/backup | Requires current unlock secret; updates backup reminder and plaintext-export toggle; rejects enabling plaintext export when deployment policy locks it; writes redacted audit |
 
 ## 7. Validation Rules
 

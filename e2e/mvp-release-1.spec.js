@@ -16,17 +16,28 @@ async function unlockExistingVault(page) {
   await expect(dashboardHeading).toBeVisible();
 }
 
-test.describe.serial('MVP Release 1 critical flows', () => {
-  test('setup, add a deal, and search by exact card number', async ({ page }) => {
-    await page.goto('/');
+async function setupOrUnlockVault(page) {
+  await page.goto('/');
+  const setupHeading = page.getByRole('heading', { name: /create unlock secret/i });
+  const unlockHeading = page.getByRole('heading', { name: /unlock card data/i });
+  const dashboardHeading = page.getByRole('heading', { name: /dashboard/i });
 
-    await expect(page.getByRole('heading', { name: /create unlock secret/i })).toBeVisible();
+  await expect(setupHeading.or(unlockHeading).or(dashboardHeading)).toBeVisible();
+  if (await setupHeading.isVisible()) {
     await page.getByLabel(/^unlock secret$/i).fill(unlockSecret);
     await page.getByLabel(/confirm unlock secret/i).fill(unlockSecret);
     await page.getByRole('checkbox', { name: /required to unlock encrypted card data/i }).check();
     await page.getByRole('button', { name: /create secure vault/i }).click();
+  } else if (await unlockHeading.isVisible()) {
+    await page.getByLabel(/^unlock secret$/i).fill(unlockSecret);
+    await page.getByRole('button', { name: /^unlock$/i }).click();
+  }
+  await expect(dashboardHeading).toBeVisible();
+}
 
-    await expect(page.getByRole('heading', { name: /dashboard/i })).toBeVisible();
+test.describe.serial('MVP Release 1 critical flows', () => {
+  test('setup, add a deal, and search by exact card number', async ({ page }) => {
+    await setupOrUnlockVault(page);
     await page.getByRole('button', { name: /add deal/i }).click();
     await page.getByLabel(/^deal name$/i).fill('Staples May promo');
     await page.getByLabel(/^source$/i).fill('Staples');

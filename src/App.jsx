@@ -40,6 +40,7 @@ const defaultPage = {
 
 const defaultBackupSettings = {
   allowPlaintextExport: true,
+  plaintextExportPolicyLocked: false,
   backupReminderDays: 30,
   backupReminderDue: true,
   lastBackupAt: null,
@@ -48,6 +49,36 @@ const defaultBackupSettings = {
   lastEncryptedExportAt: null,
   lastRawDatabaseExportAt: null,
 };
+
+const csvImportTemplates = [
+  {
+    id: 'gc-manager',
+    label: 'GC Manager',
+    filename: 'gc-manager-import-template.csv',
+    csv: [
+      'brand,cardType,network,faceValue,purchaseCost,cardNumber,pin,billingZip,expirationDate,format,source,notes',
+      'Target,merchant,,50.00,45.00,4111111111111111,1234,94105,2028-12-31,digital,Costco,Holiday balance',
+    ].join('\n'),
+  },
+  {
+    id: 'marketplace',
+    label: 'Marketplace',
+    filename: 'marketplace-import-template.csv',
+    csv: [
+      'Merchant,Value,Cost,Number,Claim Code,Postal Code,Expires,Delivery,Seller,Memo',
+      'Best Buy,100.00,86.25,5555444433332222,7788,94105,2028-08-31,eGift,Raise,Marketplace order',
+    ].join('\n'),
+  },
+  {
+    id: 'prepaid',
+    label: 'Prepaid',
+    filename: 'prepaid-import-template.csv',
+    csv: [
+      'Issuer,Card Category,Payment Network,Face Amount,Cost Basis,Account Number,PIN,Billing Postal Code,Exp Date,Medium,Purchase Source,Description',
+      'Vanilla,prepaid,visa,200.00,190.00,4111111111111111,1234,94105,2029-04-30,plastic,Giftcards.com,Activation batch',
+    ].join('\n'),
+  },
+];
 
 const statusLabels = {
   available: 'Available',
@@ -342,6 +373,15 @@ function downloadJsonFile(filename, payload) {
     filename,
     new Blob([JSON.stringify(payload, null, 2)], {
       type: 'application/json',
+    }),
+  );
+}
+
+function downloadCsvFile(filename, csv) {
+  downloadBlobFile(
+    filename,
+    new Blob([csv], {
+      type: 'text/csv',
     }),
   );
 }
@@ -1164,6 +1204,7 @@ function CsvPreviewTable({ rows }) {
 function CsvImportPreviewForm({ onPreviewCsv, onConfirmCsv }) {
   const [csvText, setCsvText] = useState('');
   const [fileName, setFileName] = useState('');
+  const [selectedTemplateId, setSelectedTemplateId] = useState(csvImportTemplates[0].id);
   const [preview, setPreview] = useState(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -1225,8 +1266,33 @@ function CsvImportPreviewForm({ onPreviewCsv, onConfirmCsv }) {
     }
   }
 
+  function downloadSelectedTemplate() {
+    const template =
+      csvImportTemplates.find((candidate) => candidate.id === selectedTemplateId) || csvImportTemplates[0];
+    downloadCsvFile(template.filename, template.csv);
+  }
+
   return (
     <form className="backup-export-form csv-preview-form" onSubmit={submitPreview}>
+      <div className="import-template-row">
+        <label>
+          <span>CSV template</span>
+          <select
+            value={selectedTemplateId}
+            onChange={(event) => setSelectedTemplateId(event.target.value)}
+          >
+            {csvImportTemplates.map((template) => (
+              <option key={template.id} value={template.id}>
+                {template.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button type="button" className="secondary-action" onClick={downloadSelectedTemplate}>
+          <Download aria-hidden="true" size={17} />
+          Download template
+        </button>
+      </div>
       <label>
         <span>CSV file</span>
         <input type="file" accept=".csv,text/csv" onChange={updateFile} />
@@ -1528,7 +1594,7 @@ function BackupSettingsForm({ settings, onUpdateBackupSettings }) {
     try {
       await onUpdateBackupSettings({
         unlockSecret,
-        allowPlaintextExport,
+        allowPlaintextExport: effectiveSettings.plaintextExportPolicyLocked ? false : allowPlaintextExport,
         backupReminderDays: reminderDays,
       });
       setUnlockSecret('');
@@ -1557,13 +1623,20 @@ function BackupSettingsForm({ settings, onUpdateBackupSettings }) {
         </div>
         <div className="settings-summary-item">
           <span>Plaintext export</span>
-          <strong>{allowPlaintextExport ? 'Enabled' : 'Disabled'}</strong>
+          <strong>
+            {effectiveSettings.plaintextExportPolicyLocked
+              ? 'Policy locked'
+              : allowPlaintextExport
+                ? 'Enabled'
+                : 'Disabled'}
+          </strong>
         </div>
       </div>
       <label className="check-row settings-check">
         <input
           type="checkbox"
           checked={allowPlaintextExport}
+          disabled={effectiveSettings.plaintextExportPolicyLocked}
           onChange={(event) => setAllowPlaintextExport(event.target.checked)}
         />
         <span>Allow plaintext JSON export</span>

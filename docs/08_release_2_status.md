@@ -1,6 +1,6 @@
 # Release 2 Status
 
-Status: In progress
+Status: Release 2 foundation complete
 Review date: 2026-05-12
 Primary audience: engineering, QA, operator
 
@@ -133,14 +133,93 @@ Verification:
 - `docs/openapi.yaml` parses successfully.
 - `git diff --check` passed.
 
-## Remaining Release 2 Scope
+### Milestone 6: Performance Smoke Tests
 
-- Formal WCAG-oriented accessibility checks.
-- More import templates.
-- Performance smoke/load tests.
-- Hosted-use hardening decisions: persistent session store, persistent rate-limit store, observability, and plaintext export feature flag policy.
+Status: code complete; release gate passed on 2026-05-12.
+
+Delivered:
+
+- Added `npm run test:perf`.
+- Performance smoke seeds 20,000 cards in an in-memory migrated database.
+- Smoke coverage exercises first page list, status filtering, text search, 25 high-frequency list reads, and 1,000-row CSV preview through the real Express routes.
+- Thresholds are configurable by environment variables and default to smoke-test tolerances suitable for a VPS.
+- QA, PRD, and roadmap docs have been updated for this milestone.
+
+Verification:
+
+- `npm run test:perf` passed locally with all measured operations under configured thresholds.
+
+### Milestone 7: CSV Import Templates
+
+Status: code complete; release gate passed on 2026-05-12.
+
+Delivered:
+
+- Backup UI can download GC Manager, marketplace, and prepaid CSV templates.
+- CSV import preview/confirm now accept common marketplace/prepaid aliases including merchant/issuer, value/face amount, cost/cost basis, number/account number, claim code, postal code, expires/exp date, delivery/medium, seller/purchase source, and memo/description.
+- CSV import normalizes common digital/physical delivery values and prepaid network values.
+- Confirmed prepaid imports persist network metadata.
+- UI/UX, QA, PRD, and roadmap docs have been updated for this milestone.
+
+Verification:
+
+- Backend tests cover marketplace alias preview and prepaid alias confirm.
+- React test covers template download controls.
+
+### Milestone 8: Automated Accessibility Checks
+
+Status: code complete; release gate passed on 2026-05-12.
+
+Delivered:
+
+- Added `@axe-core/playwright` dev dependency.
+- Added `e2e/accessibility.spec.js`.
+- Automated WCAG A/AA axe checks cover Dashboard, Cards, Add Deal dialog, Backup, and Settings.
+- UI/UX, QA, PRD, and roadmap docs have been updated for this milestone.
+
+Verification:
+
+- `npm run test:e2e -- e2e/accessibility.spec.js` passed in Chromium.
+
+### Milestone 9: Hosted Hardening Policy
+
+Status: code complete; release gate passed on 2026-05-12.
+
+Delivered:
+
+- Added deployment-level plaintext export policy lock with `GC_PLAINTEXT_EXPORT_ENABLED=false`.
+- Backup settings responses now include `plaintextExportPolicyLocked`.
+- Settings updates reject attempts to enable plaintext export when deployment policy locks it off.
+- Plaintext export returns 403 when deployment policy disables it, regardless of account-level settings.
+- Settings UI shows plaintext export as policy locked and disables the toggle.
+- Added ADR 0005 for hosted hardening gates covering persistent session store, persistent rate-limit store, observability, plaintext export policy, and support access policy.
+- OpenAPI, security, PRD, and roadmap docs have been updated for this milestone.
+
+Verification:
+
+- Backend tests cover policy-locked settings, enable rejection, and plaintext export block.
+- React test covers the policy-locked settings UI.
+
+## Current Verification
+
+- `npm run lint` passed.
+- `npm test` passed: 12 files, 101 tests.
+- `npm run test:perf` passed.
+- `npm run test:e2e` passed: 8 Chromium tests.
+- `npm run build` passed.
+- `npm audit --audit-level=high` passed with 0 vulnerabilities.
+- `docs/openapi.yaml` parses successfully.
+- `git diff --check` passed.
+
+## Remaining Productization Scope
+
+- Persistent session store for hosted/team deployment.
+- Persistent rate-limit store for hosted/team deployment.
+- Production observability: structured logs, metrics, alerts, and error reporting.
+- Real account/user admin if the app moves beyond single-owner use.
+- Postgres migration spike if concurrent hosted usage outgrows SQLite deployment assumptions.
 
 ## Notes
 
 - Backup passphrases are intentionally not recoverable in the current local MVP architecture. A hosted or multi-user product still needs real authentication, account recovery, and documented secret recovery/support policy.
-- Plaintext JSON export remains available for local MVP use, but should be disabled or gated before broader product/SaaS usage unless there is a clear operational need.
+- Plaintext JSON export remains available for local MVP use, but hosted deployments can and should policy-lock it off with `GC_PLAINTEXT_EXPORT_ENABLED=false` unless there is a documented operational need.

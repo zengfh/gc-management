@@ -84,6 +84,50 @@ const cardSortColumns = {
   status: 'status',
   updatedAt: 'updatedAt',
 };
+const csvColumnAliases = {
+  brand: ['brand', 'merchant', 'store', 'retailer', 'issuer'],
+  cardType: ['cardType', 'card type', 'type', 'card category'],
+  network: ['network', 'card network', 'payment network'],
+  faceValue: [
+    'faceValue',
+    'face value',
+    'faceValueCents',
+    'face value cents',
+    'face amount',
+    'value',
+    'amount',
+    'balance',
+    'denomination',
+  ],
+  purchaseCost: [
+    'purchaseCost',
+    'purchase cost',
+    'purchaseCostCents',
+    'purchase cost cents',
+    'cost',
+    'cost basis',
+    'paid',
+    'paid amount',
+    'purchase price',
+  ],
+  cardNumber: [
+    'cardNumber',
+    'card number',
+    'gift card number',
+    'number',
+    'account number',
+    'code number',
+  ],
+  pin: ['pin', 'claim code', 'redemption code', 'security code'],
+  billingZip: ['billingZip', 'billing zip', 'zip', 'postal code', 'billing postal code'],
+  expirationDate: ['expirationDate', 'expiration date', 'expires', 'expiry', 'exp date'],
+  format: ['format', 'delivery', 'delivery method', 'medium'],
+  source: ['source', 'purchase source', 'seller', 'platform', 'marketplace'],
+  notes: ['notes', 'memo', 'description', 'comments'],
+};
+const csvNetworkValues = new Set(['visa', 'mastercard', 'amex', 'discover', 'other']);
+const csvDigitalFormats = new Set(['digital', 'email', 'e-gift', 'egift', 'online']);
+const csvPhysicalFormats = new Set(['physical', 'plastic', 'mail', 'shipped', 'in-store', 'instore']);
 
 const undoSaleSchema = z
   .object({
@@ -214,6 +258,39 @@ function csvValue(record, aliases) {
   return String(entry[1] ?? '').trim();
 }
 
+function normalizeCsvCardType(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (!normalized) {
+    return 'merchant';
+  }
+  if (['merchant', 'store', 'giftcard', 'gift card'].includes(normalized)) {
+    return 'merchant';
+  }
+  if (['prepaid', 'visa', 'mastercard', 'amex', 'discover'].includes(normalized)) {
+    return 'prepaid';
+  }
+  return normalized;
+}
+
+function normalizeCsvNetwork(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  return csvNetworkValues.has(normalized) ? normalized : normalized || null;
+}
+
+function normalizeCsvFormat(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+  if (csvDigitalFormats.has(normalized)) {
+    return 'digital';
+  }
+  if (csvPhysicalFormats.has(normalized)) {
+    return 'physical';
+  }
+  return normalized;
+}
+
 function rowError(field, code, message) {
   return { field, code, message };
 }
@@ -263,28 +340,32 @@ function parseCsvRecords(csv) {
 
 function previewCsvRow(record, rowNumber, auth, importHashes) {
   const errors = [];
-  const brand = csvValue(record, ['brand']);
-  const cardType = csvValue(record, ['cardType', 'card type', 'type']) || 'merchant';
+  const brand = csvValue(record, csvColumnAliases.brand);
+  const cardType = normalizeCsvCardType(csvValue(record, csvColumnAliases.cardType));
+  const network = normalizeCsvNetwork(csvValue(record, csvColumnAliases.network));
   const faceValue = parseMoneyInput(
-    csvValue(record, ['faceValue', 'face value', 'faceValueCents', 'face value cents']),
+    csvValue(record, csvColumnAliases.faceValue),
     'faceValue',
     { required: true, positive: true },
   );
   const purchaseCost = parseMoneyInput(
-    csvValue(record, ['purchaseCost', 'purchase cost', 'purchaseCostCents', 'purchase cost cents']),
+    csvValue(record, csvColumnAliases.purchaseCost),
     'purchaseCost',
   );
-  const normalizedCardNumber = normalizeCardNumber(csvValue(record, ['cardNumber', 'card number']));
-  const pin = csvValue(record, ['pin']);
-  const billingZip = csvValue(record, ['billingZip', 'billing zip', 'zip']);
-  const expirationDate = csvValue(record, ['expirationDate', 'expiration date', 'expires']);
-  const format = csvValue(record, ['format']);
+  const normalizedCardNumber = normalizeCardNumber(csvValue(record, csvColumnAliases.cardNumber));
+  const pin = csvValue(record, csvColumnAliases.pin);
+  const billingZip = csvValue(record, csvColumnAliases.billingZip);
+  const expirationDate = csvValue(record, csvColumnAliases.expirationDate);
+  const format = normalizeCsvFormat(csvValue(record, csvColumnAliases.format));
 
   if (!brand) {
     errors.push(rowError('brand', 'required', 'Brand is required.'));
   }
   if (!['merchant', 'prepaid'].includes(cardType)) {
     errors.push(rowError('cardType', 'invalid_enum', 'Card type must be merchant or prepaid.'));
+  }
+  if (network && !csvNetworkValues.has(network)) {
+    errors.push(rowError('network', 'invalid_enum', 'Network must be visa, mastercard, amex, discover, or other.'));
   }
   if (faceValue.error) {
     errors.push(faceValue.error);
@@ -315,6 +396,7 @@ function previewCsvRow(record, rowNumber, auth, importHashes) {
     parsed: {
       brand: brand || null,
       cardType: ['merchant', 'prepaid'].includes(cardType) ? cardType : null,
+      network: csvNetworkValues.has(network) ? network : null,
       faceValueCents: faceValue.cents,
       purchaseCostCents: purchaseCost.cents,
       cardNumberLast4: normalizedCardNumber ? cardNumberLast4(normalizedCardNumber) : null,
@@ -322,8 +404,8 @@ function previewCsvRow(record, rowNumber, auth, importHashes) {
       hasBillingZip: Boolean(billingZip),
       expirationDate: expirationDate || null,
       format: ['digital', 'physical'].includes(format) ? format : null,
-      source: csvValue(record, ['source']) || null,
-      notes: csvValue(record, ['notes']) || null,
+      source: csvValue(record, csvColumnAliases.source) || null,
+      notes: csvValue(record, csvColumnAliases.notes) || null,
     },
     cardNumberHash,
     errors,
@@ -387,24 +469,25 @@ function buildCsvPreview(db, auth, csv) {
 
 function csvRecordToCardInput(record) {
   return {
-    brand: csvValue(record, ['brand']),
-    cardType: csvValue(record, ['cardType', 'card type', 'type']) || 'merchant',
+    brand: csvValue(record, csvColumnAliases.brand),
+    cardType: normalizeCsvCardType(csvValue(record, csvColumnAliases.cardType)),
+    network: normalizeCsvNetwork(csvValue(record, csvColumnAliases.network)),
     faceValueCents: parseMoneyInput(
-      csvValue(record, ['faceValue', 'face value', 'faceValueCents', 'face value cents']),
+      csvValue(record, csvColumnAliases.faceValue),
       'faceValue',
       { required: true, positive: true },
     ).cents,
     purchaseCostCents: parseMoneyInput(
-      csvValue(record, ['purchaseCost', 'purchase cost', 'purchaseCostCents', 'purchase cost cents']),
+      csvValue(record, csvColumnAliases.purchaseCost),
       'purchaseCost',
     ).cents,
-    cardNumber: normalizeCardNumber(csvValue(record, ['cardNumber', 'card number'])),
-    pin: csvValue(record, ['pin']) || null,
-    billingZip: csvValue(record, ['billingZip', 'billing zip', 'zip']) || null,
-    expirationDate: csvValue(record, ['expirationDate', 'expiration date', 'expires']) || null,
-    format: csvValue(record, ['format']) || null,
-    source: csvValue(record, ['source']) || null,
-    notes: csvValue(record, ['notes']) || null,
+    cardNumber: normalizeCardNumber(csvValue(record, csvColumnAliases.cardNumber)),
+    pin: csvValue(record, csvColumnAliases.pin) || null,
+    billingZip: csvValue(record, csvColumnAliases.billingZip) || null,
+    expirationDate: csvValue(record, csvColumnAliases.expirationDate) || null,
+    format: normalizeCsvFormat(csvValue(record, csvColumnAliases.format)),
+    source: csvValue(record, csvColumnAliases.source) || null,
+    notes: csvValue(record, csvColumnAliases.notes) || null,
   };
 }
 
@@ -788,7 +871,7 @@ export function createCardsRouter({ db }) {
                   null,
                   card.brand,
                   card.cardType,
-                  null,
+                  card.network ?? null,
                   card.faceValueCents,
                   card.faceValueCents,
                   card.purchaseCostCents,

@@ -1393,6 +1393,7 @@ components:
       type: object
       required:
         - allowPlaintextExport
+        - plaintextExportPolicyLocked
         - backupReminderDays
         - backupReminderDue
         - lastBackupAt
@@ -1403,6 +1404,10 @@ components:
       properties:
         allowPlaintextExport:
           type: boolean
+          description: Effective plaintext export availability after account settings and deployment policy are applied.
+        plaintextExportPolicyLocked:
+          type: boolean
+          description: True when `GC_PLAINTEXT_EXPORT_ENABLED=false` prevents plaintext JSON export from being enabled.
         backupReminderDays:
           type: integer
           minimum: 0
@@ -1466,6 +1471,7 @@ components:
     CsvImportRequest:
       type: object
       required: [csv]
+      description: Accepts the GC Manager template plus marketplace/prepaid aliases such as Merchant, Value, Cost, Number, Claim Code, Issuer, Payment Network, and Account Number.
       properties:
         csv:
           type: string

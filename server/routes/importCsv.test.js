@@ -79,6 +79,47 @@ describe('CSV import preview route', () => {
     expect(responseText).not.toContain('94105');
   }, 45_000);
 
+  it('previews marketplace template aliases and normalized delivery values', async () => {
+    const csrfToken = await setupOwner();
+    const csv = [
+      'Merchant,Value,Cost,Number,Claim Code,Postal Code,Expires,Delivery,Seller,Memo',
+      'Best Buy,100.00,86.25,5555444433332222,7788,94105,2028-08-31,eGift,Raise,Marketplace order',
+    ].join('\n');
+
+    const response = await postWithCsrf('/api/cards/import-csv', csrfToken).send({ csv });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.summary).toEqual({
+      rowCount: 1,
+      validCount: 1,
+      invalidCount: 0,
+    });
+    expect(response.body.data.rows[0]).toMatchObject({
+      rowNumber: 2,
+      valid: true,
+      parsed: {
+        brand: 'Best Buy',
+        cardType: 'merchant',
+        network: null,
+        faceValueCents: 10000,
+        purchaseCostCents: 8625,
+        cardNumberLast4: '2222',
+        hasPin: true,
+        hasBillingZip: true,
+        expirationDate: '2028-08-31',
+        format: 'digital',
+        source: 'Raise',
+        notes: 'Marketplace order',
+      },
+      errors: [],
+    });
+
+    const responseText = JSON.stringify(response.body);
+    expect(responseText).not.toContain('5555444433332222');
+    expect(responseText).not.toContain('7788');
+    expect(responseText).not.toContain('94105');
+  }, 45_000);
+
   it('returns row errors and duplicate conflicts without committing invalid CSV rows', async () => {
     const csrfToken = await setupOwner();
     const existing = await postWithCsrf('/api/cards', csrfToken).send({
@@ -190,6 +231,40 @@ describe('CSV import preview route', () => {
     expect(auditText).not.toContain('4111111111111111');
     expect(auditText).not.toContain('1234');
     expect(auditText).not.toContain('94105');
+  }, 45_000);
+
+  it('confirms prepaid template aliases with network metadata', async () => {
+    const csrfToken = await setupOwner();
+    const csv = [
+      'Issuer,Card Category,Payment Network,Face Amount,Cost Basis,Account Number,PIN,Billing Postal Code,Exp Date,Medium,Purchase Source,Description',
+      'Vanilla,prepaid,visa,200.00,190.00,4111111111111111,1234,94105,2029-04-30,plastic,Giftcards.com,Activation batch',
+    ].join('\n');
+
+    const response = await postWithCsrf('/api/cards/import-csv/confirm', csrfToken).send({ csv });
+
+    expect(response.status).toBe(201);
+    expect(response.body.data.cards[0]).toMatchObject({
+      brand: 'Vanilla',
+      cardType: 'prepaid',
+      network: 'visa',
+      faceValueCents: 20000,
+      purchaseCostCents: 19000,
+      cardNumberLast4: '1111',
+      expirationDate: '2029-04-30',
+      format: 'physical',
+      source: 'Giftcards.com',
+      notes: 'Activation batch',
+    });
+
+    const stored = db.prepare('SELECT brand, cardType, network, format, source, notes FROM cards').get();
+    expect(stored).toMatchObject({
+      brand: 'Vanilla',
+      cardType: 'prepaid',
+      network: 'visa',
+      format: 'physical',
+      source: 'Giftcards.com',
+      notes: 'Activation batch',
+    });
   }, 45_000);
 
   it('rejects CSV confirm when revalidation finds row errors or duplicate conflicts', async () => {

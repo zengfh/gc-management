@@ -758,6 +758,7 @@ td {
 .backup-export-form .backup-actions,
 .backup-export-form .field-error,
 .backup-export-form .success-copy,
+.backup-export-form .import-template-row,
 .backup-export-form .import-file-name,
 .backup-export-form .import-preview-result {
   grid-column: 1 / -1;
@@ -784,6 +785,13 @@ td {
 
 .import-preview-result {
   display: grid;
+  gap: 12px;
+}
+
+.import-template-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 320px) max-content;
+  align-items: end;
   gap: 12px;
 }
 
@@ -1024,6 +1032,10 @@ td {
   }
 
   .backup-export-form {
+    grid-template-columns: 1fr;
+  }
+
+  .import-template-row {
     grid-template-columns: 1fr;
   }
 

@@ -447,6 +447,12 @@ Flow:
 4. Fix or download error report.
 5. Confirm import.
 
+Implemented Release 2 import templates:
+
+- GC Manager template with canonical headers.
+- Marketplace template with `Merchant`, `Value`, `Cost`, `Number`, `Claim Code`, `Postal Code`, `Expires`, `Delivery`, `Seller`, and `Memo` aliases.
+- Prepaid template with `Issuer`, `Card Category`, `Payment Network`, `Face Amount`, `Cost Basis`, `Account Number`, `PIN`, `Billing Postal Code`, `Exp Date`, `Medium`, `Purchase Source`, and `Description` aliases.
+
 Preview table:
 
 - Row number.
@@ -564,6 +570,7 @@ When DEK is not loaded:
 - All interactive controls are keyboard reachable.
 - Focus order follows visual order.
 - Modals trap focus, support Escape close, and restore focus on close. Implemented for slide panels in Release 2 milestone 5.
+- Automated Playwright + axe checks cover Dashboard, Cards, Add Deal, Backup, and Settings with WCAG A/AA tags. Implemented in Release 2 milestone 8.
 - Error messages are associated with fields.
 - Status color is paired with text or icon.
 - Text contrast meets WCAG AA.

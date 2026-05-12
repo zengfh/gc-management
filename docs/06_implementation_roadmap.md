@@ -228,6 +228,10 @@ Tasks:
 - [x] Reservation metadata UX/API polish. Completed 2026-05-12.
 - [x] Better P&L dashboard. Completed 2026-05-12.
 - [x] Modal accessibility polish. Completed 2026-05-12.
+- [x] Performance smoke tests. Completed 2026-05-12 with `npm run test:perf`.
+- [x] Additional CSV import templates. Completed 2026-05-12 for GC Manager, marketplace, and prepaid templates.
+- [x] Automated accessibility smoke checks. Completed 2026-05-12 with Playwright + axe WCAG A/AA checks.
+- [x] Plaintext export deployment feature flag. Completed 2026-05-12 with `GC_PLAINTEXT_EXPORT_ENABLED=false`.
 - [ ] Real account/user admin if needed.
 - [ ] Persistent session store for hosted deployment.
 - [ ] Persistent rate limit store.
