@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   CircleDollarSign,
@@ -119,6 +119,227 @@ function canAdmin(auth) {
 
 function canManageInventory(auth) {
   return operatorRoleSet.has(authRole(auth));
+}
+
+const referenceValueTypes = {
+  dealName: 'deal_name',
+  source: 'source',
+  cardBrand: 'card_brand',
+};
+
+const defaultReferenceValues = {
+  [referenceValueTypes.dealName]: [],
+  [referenceValueTypes.source]: [],
+  [referenceValueTypes.cardBrand]: [],
+};
+
+const addDealReferenceFields = [
+  { field: 'name', type: referenceValueTypes.dealName, label: 'Deal name' },
+  { field: 'source', type: referenceValueTypes.source, label: 'Source' },
+  { field: 'cardBrand', type: referenceValueTypes.cardBrand, label: 'Card brand' },
+];
+
+function normalizeReferenceText(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function sortReferenceValues(values) {
+  return [...values].sort((a, b) => {
+    const usageDelta = (b.usageCount || 0) - (a.usageCount || 0);
+    if (usageDelta) {
+      return usageDelta;
+    }
+    const updatedDelta = String(b.lastUsedAt || '').localeCompare(String(a.lastUsedAt || ''));
+    if (updatedDelta) {
+      return updatedDelta;
+    }
+    return String(a.value || '').localeCompare(String(b.value || ''), undefined, { sensitivity: 'base' });
+  });
+}
+
+function mergeReferenceValueState(current, incomingRows) {
+  const next = {
+    [referenceValueTypes.dealName]: [...(current?.[referenceValueTypes.dealName] || [])],
+    [referenceValueTypes.source]: [...(current?.[referenceValueTypes.source] || [])],
+    [referenceValueTypes.cardBrand]: [...(current?.[referenceValueTypes.cardBrand] || [])],
+  };
+
+  for (const row of incomingRows || []) {
+    if (!row?.type || !next[row.type]) {
+      continue;
+    }
+    const normalized = normalizeReferenceText(row.value);
+    const existingIndex = next[row.type].findIndex(
+      (value) => normalizeReferenceText(value.value) === normalized,
+    );
+    if (existingIndex >= 0) {
+      next[row.type][existingIndex] = row;
+    } else {
+      next[row.type].push(row);
+    }
+  }
+
+  return Object.fromEntries(
+    Object.entries(next).map(([type, values]) => [type, sortReferenceValues(values)]),
+  );
+}
+
+function normalizeReferenceValuePayload(data) {
+  return {
+    [referenceValueTypes.dealName]: Array.isArray(data?.[referenceValueTypes.dealName])
+      ? sortReferenceValues(data[referenceValueTypes.dealName])
+      : [],
+    [referenceValueTypes.source]: Array.isArray(data?.[referenceValueTypes.source])
+      ? sortReferenceValues(data[referenceValueTypes.source])
+      : [],
+    [referenceValueTypes.cardBrand]: Array.isArray(data?.[referenceValueTypes.cardBrand])
+      ? sortReferenceValues(data[referenceValueTypes.cardBrand])
+      : [],
+  };
+}
+
+function filterReferenceOptions(options, query, limit = 8) {
+  const normalizedQuery = normalizeReferenceText(query);
+  const ranked = (options || [])
+    .filter((option) => {
+      if (!option?.value) {
+        return false;
+      }
+      if (!normalizedQuery) {
+        return true;
+      }
+      return normalizeReferenceText(option.value).includes(normalizedQuery);
+    })
+    .map((option) => {
+      const normalizedValue = normalizeReferenceText(option.value);
+      let rank = 3;
+      if (normalizedValue === normalizedQuery) {
+        rank = 0;
+      } else if (normalizedValue.startsWith(normalizedQuery)) {
+        rank = 1;
+      } else if (normalizedValue.includes(normalizedQuery)) {
+        rank = 2;
+      }
+      return { option, rank };
+    })
+    .sort((a, b) => {
+      if (a.rank !== b.rank) {
+        return a.rank - b.rank;
+      }
+      const usageDelta = (b.option.usageCount || 0) - (a.option.usageCount || 0);
+      if (usageDelta) {
+        return usageDelta;
+      }
+      return String(a.option.value).localeCompare(String(b.option.value), undefined, { sensitivity: 'base' });
+    });
+
+  return ranked.slice(0, limit).map(({ option }) => option);
+}
+
+function hasIndexedReferenceValue(options, value) {
+  const normalized = normalizeReferenceText(value);
+  return Boolean(normalized)
+    && (options || []).some((option) => normalizeReferenceText(option.value) === normalized);
+}
+
+function levenshteinDistance(left, right) {
+  if (left === right) {
+    return 0;
+  }
+  if (!left.length) {
+    return right.length;
+  }
+  if (!right.length) {
+    return left.length;
+  }
+
+  const previous = Array.from({ length: right.length + 1 }, (_unused, index) => index);
+  const current = Array(right.length + 1).fill(0);
+
+  for (let leftIndex = 1; leftIndex <= left.length; leftIndex += 1) {
+    current[0] = leftIndex;
+    for (let rightIndex = 1; rightIndex <= right.length; rightIndex += 1) {
+      const substitutionCost = left[leftIndex - 1] === right[rightIndex - 1] ? 0 : 1;
+      current[rightIndex] = Math.min(
+        previous[rightIndex] + 1,
+        current[rightIndex - 1] + 1,
+        previous[rightIndex - 1] + substitutionCost,
+      );
+    }
+    previous.splice(0, previous.length, ...current);
+  }
+
+  return previous[right.length];
+}
+
+function typoSuggestions(options, value) {
+  const normalizedValue = normalizeReferenceText(value);
+  if (normalizedValue.length < 3) {
+    return [];
+  }
+  const maxDistance = normalizedValue.length >= 6 ? 2 : 1;
+
+  return (options || [])
+    .map((option) => ({
+      option,
+      distance: levenshteinDistance(normalizedValue, normalizeReferenceText(option.value)),
+    }))
+    .filter(({ distance }) => distance > 0 && distance <= maxDistance)
+    .sort((a, b) => {
+      if (a.distance !== b.distance) {
+        return a.distance - b.distance;
+      }
+      return (b.option.usageCount || 0) - (a.option.usageCount || 0);
+    })
+    .slice(0, 3)
+    .map(({ option }) => option);
+}
+
+function buildReferenceReviewItems(form, referenceValues) {
+  return addDealReferenceFields
+    .map((config) => {
+      const value = String(form[config.field] || '').trim();
+      if (!value) {
+        return null;
+      }
+      const options = referenceValues?.[config.type] || [];
+      if (hasIndexedReferenceValue(options, value)) {
+        return null;
+      }
+      return {
+        key: `${config.type}:${normalizeReferenceText(value)}`,
+        ...config,
+        value,
+        suggestions: typoSuggestions(options, value),
+      };
+    })
+    .filter(Boolean);
+}
+
+function buildReferenceTouchValues(form, referenceValues, approvedItems) {
+  const approvedKeys = new Set(
+    (approvedItems || []).map((item) => `${item.type}:${normalizeReferenceText(item.value)}`),
+  );
+  const touched = [];
+  const seen = new Set();
+
+  for (const config of addDealReferenceFields) {
+    const value = String(form[config.field] || '').trim();
+    if (!value) {
+      continue;
+    }
+    const key = `${config.type}:${normalizeReferenceText(value)}`;
+    const indexed = hasIndexedReferenceValue(referenceValues?.[config.type] || [], value);
+    if (!indexed && !approvedKeys.has(key)) {
+      continue;
+    }
+    if (!seen.has(key)) {
+      seen.add(key);
+      touched.push({ type: config.type, value });
+    }
+  }
+
+  return touched;
 }
 
 const dialogFocusableSelector = [
@@ -3108,7 +3329,186 @@ function DeleteCardPanel({ card, onClose, onDeleteCard }) {
   );
 }
 
-function AddDealPanel({ onClose, onCreateDeal }) {
+function ReferenceCombobox({ label, value, onChange, options, required = false, placeholder = '' }) {
+  const generatedId = useId();
+  const inputId = `reference-combobox-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${generatedId}`;
+  const listboxId = `${inputId}-listbox`;
+  const [open, setOpen] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
+  const matches = useMemo(() => filterReferenceOptions(options, value), [options, value]);
+
+  function selectOption(option) {
+    onChange(option.value);
+    setOpen(false);
+    setHighlightedIndex(0);
+  }
+
+  function handleKeyDown(event) {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      setOpen(true);
+      setHighlightedIndex((current) => Math.min(current + 1, Math.max(matches.length - 1, 0)));
+      return;
+    }
+    if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      setOpen(true);
+      setHighlightedIndex((current) => Math.max(current - 1, 0));
+      return;
+    }
+    if (event.key === 'Enter' && open && matches[highlightedIndex]) {
+      event.preventDefault();
+      selectOption(matches[highlightedIndex]);
+      return;
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      setOpen(false);
+    }
+  }
+
+  return (
+    <div
+      className="combobox-field"
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) {
+          setOpen(false);
+        }
+      }}
+    >
+      <label htmlFor={inputId}>
+        <span>{label}</span>
+      </label>
+      <input
+        id={inputId}
+        role="combobox"
+        aria-autocomplete="list"
+        aria-expanded={open && matches.length > 0}
+        aria-controls={listboxId}
+        aria-activedescendant={open && matches[highlightedIndex] ? `${listboxId}-${highlightedIndex}` : undefined}
+        value={value}
+        placeholder={placeholder}
+        required={required}
+        onFocus={() => setOpen(true)}
+        onKeyDown={handleKeyDown}
+        onChange={(event) => {
+          onChange(event.target.value);
+          setOpen(true);
+          setHighlightedIndex(0);
+        }}
+      />
+      {open && matches.length > 0 ? (
+        <ul id={listboxId} className="combobox-menu" role="listbox">
+          {matches.map((option, index) => (
+            <li
+              id={`${listboxId}-${index}`}
+              key={`${option.type}-${option.id || option.value}`}
+              className={index === highlightedIndex ? 'combobox-option highlighted' : 'combobox-option'}
+              role="option"
+              aria-selected={index === highlightedIndex}
+              onMouseDown={(event) => event.preventDefault()}
+              onMouseEnter={() => setHighlightedIndex(index)}
+              onClick={() => selectOption(option)}
+            >
+              <span>{option.value}</span>
+              {option.usageCount ? <small>{option.usageCount} uses</small> : null}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
+function ReferenceReviewModal({ items, onClose, onConfirm, onUseSuggestion, submitting }) {
+  const [checked, setChecked] = useState(() =>
+    Object.fromEntries(items.map((item) => [item.key, true])),
+  );
+  const dialogRef = useDialogFocus(onClose);
+
+  function toggleItem(key, value) {
+    setChecked((current) => ({
+      ...current,
+      [key]: value,
+    }));
+  }
+
+  return (
+    <div className="modal-backdrop review-backdrop" role="presentation">
+      <section
+        ref={dialogRef}
+        className="review-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="reference-review-title"
+      >
+        <div className="panel-heading">
+          <div>
+            <p className="eyebrow">Index review</p>
+            <h2 id="reference-review-title">Review new entries</h2>
+          </div>
+          <button type="button" className="icon-button" aria-label="Close index review" onClick={onClose}>
+            <X aria-hidden="true" size={18} />
+          </button>
+        </div>
+        <div className="reference-review-body">
+          {items.map((item) => (
+            <article className="reference-review-item" key={item.key}>
+              <div className="reference-review-heading">
+                <span>{item.label}</span>
+                <strong>{item.value}</strong>
+              </div>
+              {item.suggestions.length > 0 ? (
+                <div className="reference-suggestions">
+                  <span>Possible typo</span>
+                  {item.suggestions.map((suggestion) => (
+                    <button
+                      key={`${item.key}-${suggestion.id || suggestion.value}`}
+                      type="button"
+                      className="reference-suggestion"
+                      onClick={() => onUseSuggestion(item, suggestion)}
+                    >
+                      Use {suggestion.value}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              <label className="check-row">
+                <input
+                  type="checkbox"
+                  checked={Boolean(checked[item.key])}
+                  onChange={(event) => toggleItem(item.key, event.target.checked)}
+                />
+                <span>Add to index</span>
+              </label>
+            </article>
+          ))}
+          <div className="panel-actions">
+            <button type="button" className="secondary-action" onClick={onClose}>
+              Back
+            </button>
+            <button
+              type="button"
+              className="primary-action"
+              disabled={submitting}
+              onClick={() => onConfirm(items.filter((item) => checked[item.key]))}
+            >
+              {submitting ? 'Creating...' : 'Create deal'}
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function AddDealPanel({
+  onClose,
+  onCreateDeal,
+  referenceValues = defaultReferenceValues,
+  onLoadReferenceValues = async () => {},
+  onUpsertReferenceValues = async () => {},
+}) {
   const [form, setForm] = useState({
     name: '',
     source: '',
@@ -3118,8 +3518,27 @@ function AddDealPanel({ onClose, onCreateDeal }) {
     cardNumber: '',
   });
   const [error, setError] = useState('');
+  const [referenceError, setReferenceError] = useState('');
+  const [reviewItems, setReviewItems] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const dialogRef = useDialogFocus(onClose);
+  const loadReferenceValuesRef = useRef(onLoadReferenceValues);
+
+  useEffect(() => {
+    loadReferenceValuesRef.current = onLoadReferenceValues;
+  }, [onLoadReferenceValues]);
+
+  useEffect(() => {
+    let canceled = false;
+    loadReferenceValuesRef.current().catch((caught) => {
+      if (!canceled) {
+        setReferenceError(caught.message);
+      }
+    });
+    return () => {
+      canceled = true;
+    };
+  }, []);
 
   function updateField(field, value) {
     setForm((current) => ({
@@ -3128,8 +3547,23 @@ function AddDealPanel({ onClose, onCreateDeal }) {
     }));
   }
 
-  async function submitDeal(event) {
-    event.preventDefault();
+  function dealPayload(totalCostCents, faceValueCents) {
+    return {
+      ...(form.name.trim() ? { name: form.name.trim() } : {}),
+      ...(form.source.trim() ? { source: form.source.trim() } : {}),
+      ...(totalCostCents !== undefined ? { totalCostCents } : {}),
+      cards: [
+        {
+          brand: form.cardBrand.trim(),
+          cardType: 'merchant',
+          faceValueCents,
+          ...(form.cardNumber.trim() ? { cardNumber: form.cardNumber.trim() } : {}),
+        },
+      ],
+    };
+  }
+
+  async function createDeal({ skipReview = false, approvedReferenceItems = [] } = {}) {
     setError('');
 
     const totalCostCents = dollarsToCents(form.totalCost);
@@ -3140,27 +3574,36 @@ function AddDealPanel({ onClose, onCreateDeal }) {
       return;
     }
 
+    const missingReferenceItems = buildReferenceReviewItems(form, referenceValues);
+    if (!skipReview && missingReferenceItems.length > 0) {
+      setReviewItems(missingReferenceItems);
+      return;
+    }
+
     setSubmitting(true);
     try {
-      await onCreateDeal({
-        ...(form.name.trim() ? { name: form.name.trim() } : {}),
-        ...(form.source.trim() ? { source: form.source.trim() } : {}),
-        ...(totalCostCents !== undefined ? { totalCostCents } : {}),
-        cards: [
-          {
-            brand: form.cardBrand.trim(),
-            cardType: 'merchant',
-            faceValueCents,
-            ...(form.cardNumber.trim() ? { cardNumber: form.cardNumber.trim() } : {}),
-          },
-        ],
-      });
+      const referenceTouches = buildReferenceTouchValues(form, referenceValues, approvedReferenceItems);
+      if (referenceTouches.length > 0) {
+        await onUpsertReferenceValues(referenceTouches);
+      }
+      await onCreateDeal(dealPayload(totalCostCents, faceValueCents));
       onClose();
     } catch (caught) {
       setError(caught.message);
     } finally {
       setSubmitting(false);
     }
+  }
+
+  async function submitDeal(event) {
+    event.preventDefault();
+    await createDeal();
+  }
+
+  function useSuggestion(item, suggestion) {
+    updateField(item.field, suggestion.value);
+    setReviewItems([]);
+    setError('');
   }
 
   return (
@@ -3176,18 +3619,19 @@ function AddDealPanel({ onClose, onCreateDeal }) {
           </button>
         </div>
         <form className="panel-form" onSubmit={submitDeal}>
-          <label>
-            <span>Deal name (optional)</span>
-            <input
-              value={form.name}
-              onChange={(event) => updateField('name', event.target.value)}
-              placeholder="Optional"
-            />
-          </label>
-          <label>
-            <span>Source</span>
-            <input value={form.source} onChange={(event) => updateField('source', event.target.value)} />
-          </label>
+          <ReferenceCombobox
+            label="Deal name (optional)"
+            value={form.name}
+            options={referenceValues[referenceValueTypes.dealName]}
+            placeholder="Optional"
+            onChange={(value) => updateField('name', value)}
+          />
+          <ReferenceCombobox
+            label="Source"
+            value={form.source}
+            options={referenceValues[referenceValueTypes.source]}
+            onChange={(value) => updateField('source', value)}
+          />
           <label>
             <span>Total cost</span>
             <input
@@ -3198,10 +3642,13 @@ function AddDealPanel({ onClose, onCreateDeal }) {
             />
           </label>
           <div className="form-divider" />
-          <label>
-            <span>Card brand</span>
-            <input value={form.cardBrand} onChange={(event) => updateField('cardBrand', event.target.value)} required />
-          </label>
+          <ReferenceCombobox
+            label="Card brand"
+            value={form.cardBrand}
+            options={referenceValues[referenceValueTypes.cardBrand]}
+            required
+            onChange={(value) => updateField('cardBrand', value)}
+          />
           <label>
             <span>Face value</span>
             <input
@@ -3221,6 +3668,7 @@ function AddDealPanel({ onClose, onCreateDeal }) {
               onChange={(event) => updateField('cardNumber', event.target.value)}
             />
           </label>
+          {referenceError ? <FieldError message={`Suggestions unavailable: ${referenceError}`} /> : null}
           <FieldError message={error} />
           <div className="panel-actions">
             <button type="button" className="secondary-action" onClick={onClose}>
@@ -3233,6 +3681,18 @@ function AddDealPanel({ onClose, onCreateDeal }) {
           </div>
         </form>
       </section>
+      {reviewItems.length > 0 ? (
+        <ReferenceReviewModal
+          items={reviewItems}
+          submitting={submitting}
+          onClose={() => setReviewItems([])}
+          onUseSuggestion={useSuggestion}
+          onConfirm={(approvedReferenceItems) => {
+            setReviewItems([]);
+            void createDeal({ skipReview: true, approvedReferenceItems });
+          }}
+        />
+      ) : null}
     </div>
   );
 }
@@ -3732,6 +4192,7 @@ function WorkSurface({
   dataPolicyLoading,
   dataPolicyLoaded,
   dataPolicyError,
+  referenceValues,
   loading,
   onRefresh,
   onLogout,
@@ -3755,6 +4216,8 @@ function WorkSurface({
   onConfirmCsv,
   onImportBackup,
   onChangeUnlockSecret,
+  onLoadReferenceValues,
+  onUpsertReferenceValues,
   onCreateDeal,
   onLoadDeals,
   onEditDeal,
@@ -4226,6 +4689,9 @@ function WorkSurface({
             await onCreateDeal(payload);
             setActiveView('dashboard');
           }}
+          referenceValues={referenceValues}
+          onLoadReferenceValues={onLoadReferenceValues}
+          onUpsertReferenceValues={onUpsertReferenceValues}
         />
       ) : null}
       {editDeal ? (
@@ -4326,6 +4792,7 @@ export default function App() {
   const [dataPolicyLoading, setDataPolicyLoading] = useState(false);
   const [dataPolicyLoaded, setDataPolicyLoaded] = useState(false);
   const [dataPolicyError, setDataPolicyError] = useState('');
+  const [referenceValues, setReferenceValues] = useState(defaultReferenceValues);
   const [loading, setLoading] = useState(true);
   const [inventoryLoading, setInventoryLoading] = useState(false);
   const [error, setError] = useState('');
@@ -4763,6 +5230,27 @@ export default function App() {
     setDataPolicy(defaultDataPolicy);
     setDataPolicyLoaded(false);
     setDataPolicyError('');
+    setReferenceValues(defaultReferenceValues);
+  }
+
+  async function handleLoadReferenceValues() {
+    const response = await apiFetch('/api/reference-values?types=deal_name,source,card_brand&limit=200');
+    const nextValues = normalizeReferenceValuePayload(response.data);
+    setReferenceValues(nextValues);
+    return nextValues;
+  }
+
+  async function handleUpsertReferenceValues(values) {
+    if (!values.length) {
+      return [];
+    }
+    const response = await apiFetch('/api/reference-values', {
+      method: 'POST',
+      body: { values },
+      csrfToken: auth.csrfToken,
+    });
+    setReferenceValues((current) => mergeReferenceValueState(current, response.data || []));
+    return response.data || [];
   }
 
   async function handleCreateDeal(payload) {
@@ -4963,6 +5451,7 @@ export default function App() {
       dataPolicyLoading={dataPolicyLoading}
       dataPolicyLoaded={dataPolicyLoaded}
       dataPolicyError={dataPolicyError}
+      referenceValues={referenceValues}
       loading={inventoryLoading}
       onRefresh={loadInventory}
       onLogout={handleLogout}
@@ -4986,6 +5475,8 @@ export default function App() {
       onConfirmCsv={handleConfirmCsv}
       onImportBackup={handleImportBackup}
       onChangeUnlockSecret={handleChangeUnlockSecret}
+      onLoadReferenceValues={handleLoadReferenceValues}
+      onUpsertReferenceValues={handleUpsertReferenceValues}
       onCreateDeal={handleCreateDeal}
       onLoadDeals={(includeArchived) => loadDeals({ includeArchived })}
       onEditDeal={handleEditDeal}

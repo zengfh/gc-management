@@ -39,13 +39,17 @@ test.describe.serial('MVP Release 1 critical flows', () => {
   test('setup, add a deal, and search by exact card number', async ({ page }) => {
     await setupOrUnlockVault(page);
     await page.getByRole('button', { name: /add deal/i }).click();
-    await page.getByLabel(/^deal name$/i).fill('Staples May promo');
+    await page.getByLabel(/^deal name/i).fill('Staples May promo');
     await page.getByLabel(/^source$/i).fill('Staples');
     await page.getByLabel(/^total cost$/i).fill('45.00');
     await page.getByLabel(/^card brand$/i).fill('Target');
     await page.getByLabel(/^face value$/i).fill('50.00');
     await page.getByLabel(/^card number$/i).fill('4111 1111 1111 1111');
     await page.getByRole('button', { name: /^create deal$/i }).click();
+    await page
+      .getByRole('dialog', { name: /review new entries/i })
+      .getByRole('button', { name: /^create deal$/i })
+      .click();
 
     await expect(page.getByText(/^staples may promo$/i)).toBeVisible();
     await page.getByRole('button', { name: /^cards$/i }).click();

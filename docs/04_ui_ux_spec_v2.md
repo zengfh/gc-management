@@ -352,6 +352,10 @@ Deal details:
 - Deal name is optional.
 - Source remains optional.
 - Total cost is optional.
+- Deal name, Source, and Brand use typeahead dropdowns backed by the local reference index.
+- Typeahead matching is case-insensitive substring matching, so `Amazon` can be found with `A`, `Am`, `maz`, or `zon`.
+- On create, new deal/source/brand values open an index review modal before submission.
+- The review modal shows close typo matches, for example `Amazin` suggests `Amazon`, and lets the user either use the indexed value or add the new value.
 
 Batch grid columns:
 

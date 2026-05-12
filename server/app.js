@@ -16,6 +16,7 @@ import { createCardsRouter } from './routes/cards.js';
 import { createAdminRouter } from './routes/admin.js';
 import { createDealsRouter } from './routes/deals.js';
 import { createObservabilityRouter } from './routes/observability.js';
+import { createReferenceValuesRouter } from './routes/referenceValues.js';
 import { createSettingsRouter } from './routes/settings.js';
 import { createUsersRouter } from './routes/users.js';
 import { csrfProtection } from './security/csrf.js';
@@ -118,6 +119,7 @@ export function createApp({ db, logger = console } = {}) {
     app.use('/api/cards', createCardsRouter({ db }));
     app.use('/api/deals', createDealsRouter({ db }));
     app.use('/api/observability', createObservabilityRouter({ metrics }));
+    app.use('/api/reference-values', createReferenceValuesRouter({ db }));
     app.use('/api/settings', createSettingsRouter({ db }));
     app.use('/api/users', createUsersRouter({ db }));
   }

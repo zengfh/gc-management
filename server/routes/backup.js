@@ -90,6 +90,18 @@ const importSettingSchema = z
   })
   .passthrough();
 
+const importReferenceValueSchema = z
+  .object({
+    type: z.enum(['deal_name', 'source', 'card_brand']),
+    value: z.string().trim().min(1).max(160),
+    normalizedValue: z.string().trim().min(1).max(160).optional(),
+    usageCount: nonnegativeInteger.default(0),
+    lastUsedAt: nullableString,
+    createdAt: nullableString,
+    updatedAt: nullableString,
+  })
+  .passthrough();
+
 const importDealSchema = z
   .object({
     id: positiveInteger.optional(),
@@ -180,6 +192,7 @@ const plaintextImportPayloadSchema = z
     schemaVersion: z.literal(1),
     exportType: z.literal('plaintext_json'),
     appSettings: z.array(importSettingSchema).default([]),
+    referenceValues: z.array(importReferenceValueSchema).default([]),
     deals: z.array(importDealSchema).default([]),
     cards: z.array(importCardSchema).default([]),
     transactions: z.array(importTransactionSchema).default([]),
@@ -404,6 +417,20 @@ function toExportSetting(row) {
   };
 }
 
+function toExportReferenceValue(row) {
+  return {
+    id: row.id,
+    accountId: row.accountId,
+    type: row.type,
+    value: row.value,
+    normalizedValue: row.normalizedValue,
+    usageCount: row.usageCount,
+    lastUsedAt: row.lastUsedAt,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
 function buildPlaintextExport(db, auth, exportedAt) {
   const dealRows = db
     .prepare('SELECT * FROM deals WHERE accountId = ? ORDER BY id')
@@ -420,6 +447,9 @@ function buildPlaintextExport(db, auth, exportedAt) {
   const settingRows = db
     .prepare('SELECT * FROM app_settings WHERE accountId = ? ORDER BY id')
     .all(auth.accountId);
+  const referenceValueRows = db
+    .prepare('SELECT * FROM reference_values WHERE accountId = ? ORDER BY id')
+    .all(auth.accountId);
 
   return {
     schemaVersion: 1,
@@ -428,6 +458,7 @@ function buildPlaintextExport(db, auth, exportedAt) {
     warning:
       'This plaintext export contains spendable credentials. Store it carefully and delete it when no longer needed.',
     appSettings: settingRows.map(toExportSetting),
+    referenceValues: referenceValueRows.map(toExportReferenceValue),
     deals: dealRows.map(toExportDeal),
     cards: cardRows.map((row) => toExportCard(row, auth.dek)),
     transactions: transactionRows.map(toExportTransaction),
@@ -587,6 +618,36 @@ function insertImportedSettings(db, auth, settings, timestamp) {
       setting.value ?? null,
       timestampOrNow(setting.createdAt, timestamp),
       timestampOrNow(setting.updatedAt, timestamp),
+    );
+  }
+}
+
+function normalizedReferenceValue(value) {
+  return value.trim().toLowerCase();
+}
+
+function insertImportedReferenceValues(db, auth, referenceValues, timestamp) {
+  const statement = db.prepare(
+    `INSERT INTO reference_values (
+      accountId, type, value, normalizedValue, usageCount, lastUsedAt, createdAt, updatedAt
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(accountId, type, normalizedValue) DO UPDATE SET
+      value = excluded.value,
+      usageCount = MAX(reference_values.usageCount, excluded.usageCount),
+      lastUsedAt = COALESCE(excluded.lastUsedAt, reference_values.lastUsedAt),
+      updatedAt = excluded.updatedAt`,
+  );
+
+  for (const referenceValue of referenceValues) {
+    statement.run(
+      auth.accountId,
+      referenceValue.type,
+      referenceValue.value,
+      normalizedReferenceValue(referenceValue.value),
+      referenceValue.usageCount,
+      referenceValue.lastUsedAt ?? null,
+      timestampOrNow(referenceValue.createdAt, timestamp),
+      timestampOrNow(referenceValue.updatedAt, timestamp),
     );
   }
 }
@@ -772,6 +833,7 @@ function deleteCurrentImportScope(db, auth) {
   db.prepare('DELETE FROM transactions WHERE accountId = ?').run(auth.accountId);
   db.prepare('DELETE FROM cards WHERE accountId = ?').run(auth.accountId);
   db.prepare('DELETE FROM deals WHERE accountId = ?').run(auth.accountId);
+  db.prepare('DELETE FROM reference_values WHERE accountId = ?').run(auth.accountId);
   db.prepare('DELETE FROM app_settings WHERE accountId = ?').run(auth.accountId);
 }
 
@@ -788,6 +850,7 @@ function importSummary(mode, payload, backupInfo = null) {
     transactionCount: payload.transactions.length,
     usageCount: payload.usages.length,
     settingCount: payload.appSettings.length,
+    referenceValueCount: payload.referenceValues.length,
   };
 }
 
@@ -798,6 +861,7 @@ function importPayloadIntoDatabase(db, auth, payload, mode, timestamp, requestId
     }
 
     insertImportedSettings(db, auth, payload.appSettings, timestamp);
+    insertImportedReferenceValues(db, auth, payload.referenceValues, timestamp);
     const dealIdMap = insertImportedDeals(db, auth, payload.deals, timestamp);
     const cardIdMap = insertImportedCards(db, auth, payload.cards, dealIdMap, timestamp);
     insertImportedTransactions(db, auth, payload.transactions, cardIdMap, timestamp);
@@ -816,7 +880,12 @@ function importPayloadIntoDatabase(db, auth, payload, mode, timestamp, requestId
 
     const summary = importSummary(mode, payload, backupInfo);
     const rowCount =
-      summary.settingCount + summary.dealCount + summary.cardCount + summary.transactionCount + summary.usageCount;
+      summary.settingCount
+      + summary.referenceValueCount
+      + summary.dealCount
+      + summary.cardCount
+      + summary.transactionCount
+      + summary.usageCount;
     const jobInfo = db
       .prepare(
         `INSERT INTO import_jobs (

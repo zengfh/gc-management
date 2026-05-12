@@ -1628,6 +1628,23 @@ describe('App', () => {
       .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
       .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
       .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            deal_name: [],
+            source: [{ id: 1, type: 'source', value: 'Staples', usageCount: 4 }],
+            card_brand: [{ id: 2, type: 'card_brand', value: 'Target', usageCount: 3 }],
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            { id: 1, type: 'source', value: 'Staples', usageCount: 5 },
+            { id: 2, type: 'card_brand', value: 'Target', usageCount: 4 },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(
         jsonResponse(
           {
               data: {
@@ -1690,6 +1707,114 @@ describe('App', () => {
         }),
         headers: expect.objectContaining({
           'X-CSRF-Token': 'csrf_ready',
+        }),
+      }),
+    );
+  });
+
+  it('suggests indexed card brands when an add-deal value looks mistyped', async () => {
+    globalThis.fetch
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            setupComplete: true,
+            sessionValid: true,
+            dekLoaded: true,
+            csrfToken: 'csrf_ready',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            deal_name: [],
+            source: [{ id: 1, type: 'source', value: 'Staples', usageCount: 2 }],
+            card_brand: [{ id: 2, type: 'card_brand', value: 'Amazon', usageCount: 7 }],
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            { id: 1, type: 'source', value: 'Staples', usageCount: 3 },
+            { id: 2, type: 'card_brand', value: 'Amazon', usageCount: 8 },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            data: {
+              deal: {
+                id: 12,
+                name: 'Staples',
+                source: 'Staples',
+                inputTotalCostCents: null,
+                rowVersion: 1,
+              },
+              cards: [
+                {
+                  id: 13,
+                  dealId: 12,
+                  brand: 'Amazon',
+                  status: 'available',
+                  faceValueCents: 5000,
+                  remainingBalanceCents: 5000,
+                  purchaseCostCents: 0,
+                },
+              ],
+            },
+          },
+          201,
+        ),
+      );
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByRole('heading', { name: /dashboard/i });
+    await user.click(screen.getByRole('button', { name: /add deal/i }));
+    await user.type(screen.getByLabelText(/^source$/i), 'Staples');
+    await user.type(screen.getByLabelText(/^card brand$/i), 'Amazin');
+    await user.type(screen.getByLabelText(/^face value$/i), '50.00');
+    await user.click(screen.getByRole('button', { name: /^create deal$/i }));
+
+    expect(await screen.findByRole('heading', { name: /review new entries/i })).toBeInTheDocument();
+    expect(screen.getByText(/possible typo/i)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /use amazon/i }));
+    expect(screen.getByLabelText(/^card brand$/i)).toHaveValue('Amazon');
+
+    await user.click(screen.getByRole('button', { name: /^create deal$/i }));
+
+    await screen.findByRole('button', { name: /open staples details/i });
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(
+      5,
+      '/api/reference-values',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          values: [
+            { type: 'source', value: 'Staples' },
+            { type: 'card_brand', value: 'Amazon' },
+          ],
+        }),
+      }),
+    );
+    expect(globalThis.fetch).toHaveBeenLastCalledWith(
+      '/api/deals',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          source: 'Staples',
+          cards: [
+            {
+              brand: 'Amazon',
+              cardType: 'merchant',
+              faceValueCents: 5000,
+            },
+          ],
         }),
       }),
     );

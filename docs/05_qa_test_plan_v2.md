@@ -332,6 +332,7 @@ P0 accessibility flows:
 - Setup/login.
 - Cards list.
 - Add deal/batch cards.
+- Add deal typeahead and index-review modal.
 - Card detail.
 - Sell/use modal.
 - Plaintext export modal.
@@ -383,6 +384,7 @@ Minimum regression before release:
 
 - Auth setup/login/logout/restart.
 - Add deal/cards.
+- Add deal typeahead substring match and typo suggestion.
 - Search exact card number.
 - Reserve/unreserve.
 - Sell/undo sale.

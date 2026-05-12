@@ -189,6 +189,24 @@ Duplicate rule:
 - On create/update/import, if cardNumberHash is not null, flag same accountId + brand + cardNumberHash as duplicate candidate.
 - Decide whether duplicates are hard-blocked or require explicit override. For MVP, hard-block active duplicate cards unless imported as conflict resolution.
 
+#### reference_values
+
+Indexed display values used by Add Deal typeahead.
+
+| Field | Type | Notes |
+|---|---|---|
+| id | INTEGER PK | |
+| accountId | INTEGER NOT NULL | FK accounts.id ON DELETE CASCADE |
+| type | TEXT NOT NULL | deal_name, source, card_brand |
+| value | TEXT NOT NULL | Display value |
+| normalizedValue | TEXT NOT NULL | Lowercase trimmed lookup key |
+| usageCount | INTEGER NOT NULL DEFAULT 0 | Ranking signal |
+| lastUsedAt | TEXT NULL | Ranking signal |
+| createdAt | TEXT NOT NULL | |
+| updatedAt | TEXT NOT NULL | |
+
+Unique index: accountId + type + normalizedValue. Substring lookup uses normalizedValue and ranks exact, prefix, then middle matches.
+
 #### reservations
 
 This can be a future table, but add fields early if reservation metadata matters.
@@ -452,7 +470,14 @@ Error response:
 | POST | /api/deals/:id/archive | |
 | POST | /api/deals/:id/unarchive | |
 
-### 6.6 Import/Export Endpoints
+### 6.6 Reference Value Endpoints
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | /api/reference-values | Returns indexed deal_name/source/card_brand values; supports types, q substring filter, and limit |
+| POST | /api/reference-values | Operator-only upsert/touch for approved index entries; writes redacted system audit |
+
+### 6.7 Import/Export Endpoints
 
 | Method | Path | Notes |
 |---|---|---|
@@ -463,14 +488,14 @@ Error response:
 | POST | /api/backup/db-file | Raw database export; fresh secret required |
 | POST | /api/backup/import | Plaintext or encrypted JSON restore; replace or merge; backup before replace |
 
-### 6.7 Settings Endpoints
+### 6.8 Settings Endpoints
 
 | Method | Path | Notes |
 |---|---|---|
 | GET | /api/settings/backup | Returns plaintext-export toggle, deployment policy lock state, reminder interval, last backup timestamps, and due status |
 | PUT | /api/settings/backup | Requires current unlock secret; updates backup reminder and plaintext-export toggle; rejects enabling plaintext export when deployment policy locks it; writes redacted audit |
 
-### 6.8 User/Admin Endpoints
+### 6.9 User/Admin Endpoints
 
 | Method | Path | Notes |
 |---|---|---|

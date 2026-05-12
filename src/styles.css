@@ -630,6 +630,124 @@ td {
   font-weight: 700;
 }
 
+.combobox-field {
+  position: relative;
+  display: grid;
+  gap: 6px;
+  color: #1f2937;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.combobox-menu {
+  position: absolute;
+  z-index: 4;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 220px;
+  overflow-y: auto;
+  margin: 0;
+  border: 1px solid #cfd6e0;
+  border-radius: 6px;
+  padding: 4px;
+  list-style: none;
+  background: #ffffff;
+  box-shadow: 0 16px 34px rgba(27, 36, 51, 0.16);
+}
+
+.combobox-option {
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-radius: 4px;
+  padding: 8px;
+  color: #17202a;
+  cursor: pointer;
+}
+
+.combobox-option.highlighted,
+.combobox-option:hover {
+  background: #e8f0fe;
+}
+
+.combobox-option small {
+  flex: 0 0 auto;
+  color: #536073;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.review-backdrop {
+  z-index: 40;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.review-modal {
+  width: min(520px, 100%);
+  max-height: min(760px, calc(100svh - 40px));
+  overflow-y: auto;
+  border: 1px solid #cfd6e0;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 22px 54px rgba(15, 23, 42, 0.22);
+}
+
+.reference-review-body {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+
+.reference-review-item {
+  display: grid;
+  gap: 10px;
+  border: 1px solid #e4e8ee;
+  border-radius: 8px;
+  padding: 12px;
+  background: #fbfcfd;
+}
+
+.reference-review-heading {
+  display: grid;
+  gap: 2px;
+}
+
+.reference-review-heading span,
+.reference-suggestions span {
+  color: #536073;
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.reference-review-heading strong {
+  color: #111827;
+  overflow-wrap: anywhere;
+}
+
+.reference-suggestions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.reference-suggestion {
+  min-height: 32px;
+  border: 1px solid #bfd2f8;
+  border-radius: 6px;
+  padding: 0 10px;
+  color: #174ea6;
+  background: #eef4ff;
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
 .warning-copy {
   margin: 0;
   border: 1px solid #fedf89;

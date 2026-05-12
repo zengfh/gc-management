@@ -208,6 +208,9 @@ function buildSanitizedExport(db, auth, exportedAt) {
   const settingRows = selectRows(db, 'SELECT * FROM app_settings WHERE accountId = ? ORDER BY id', [
     auth.accountId,
   ]);
+  const referenceValueRows = selectRows(db, 'SELECT * FROM reference_values WHERE accountId = ? ORDER BY id', [
+    auth.accountId,
+  ]);
   const importJobRows = selectRows(db, 'SELECT * FROM import_jobs WHERE accountId = ? ORDER BY id', [
     auth.accountId,
   ]);
@@ -226,6 +229,7 @@ function buildSanitizedExport(db, auth, exportedAt) {
     cards: cardRows.map(sanitizedCard),
     transactions: transactionRows,
     usages: usageRows,
+    referenceValues: referenceValueRows,
     importJobs: importJobRows,
     auditLog: auditRows,
     counts: {
@@ -234,6 +238,7 @@ function buildSanitizedExport(db, auth, exportedAt) {
       deals: dealRows.length,
       transactions: transactionRows.length,
       usages: usageRows.length,
+      referenceValues: referenceValueRows.length,
       auditEvents: auditRows.length,
     },
   };
@@ -246,6 +251,7 @@ function deleteInventoryData(db, auth, timestamp, requestId) {
       transactions: db.prepare('DELETE FROM transactions WHERE accountId = ?').run(auth.accountId).changes,
       cards: db.prepare('DELETE FROM cards WHERE accountId = ?').run(auth.accountId).changes,
       deals: db.prepare('DELETE FROM deals WHERE accountId = ?').run(auth.accountId).changes,
+      referenceValues: db.prepare('DELETE FROM reference_values WHERE accountId = ?').run(auth.accountId).changes,
       importJobs: db.prepare('DELETE FROM import_jobs WHERE accountId = ?').run(auth.accountId).changes,
       idempotencyKeys: db.prepare('DELETE FROM idempotency_keys WHERE accountId = ?').run(auth.accountId).changes,
     };

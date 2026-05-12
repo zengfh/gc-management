@@ -13,6 +13,7 @@ tags:
   - name: Auth
   - name: Cards
   - name: Deals
+  - name: ReferenceValues
   - name: ImportExport
   - name: Settings
   - name: Users
@@ -594,6 +595,71 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+  /api/reference-values:
+    get:
+      tags: [ReferenceValues]
+      summary: List indexed deal names, sources, and card brands
+      operationId: listReferenceValues
+      parameters:
+        - name: types
+          in: query
+          required: false
+          schema:
+            type: string
+            example: deal_name,source,card_brand
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 160
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+      responses:
+        "200":
+          description: Reference values grouped by type
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReferenceValuesResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      tags: [ReferenceValues]
+      summary: Add or mark indexed reference values as used
+      operationId: upsertReferenceValues
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpsertReferenceValuesRequest"
+      responses:
+        "200":
+          description: Upserted reference values
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReferenceValueListResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
   /api/cards/import-csv:
     post:
       tags: [ImportExport]
@@ -1643,6 +1709,79 @@ components:
               type: array
               items:
                 $ref: "#/components/schemas/Deal"
+    ReferenceValue:
+      type: object
+      required: [id, type, value, usageCount, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        type:
+          type: string
+          enum: [deal_name, source, card_brand]
+        value:
+          type: string
+        usageCount:
+          type: integer
+          minimum: 0
+        lastUsedAt:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+    ReferenceValuesByType:
+      type: object
+      properties:
+        deal_name:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReferenceValue"
+        source:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReferenceValue"
+        card_brand:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReferenceValue"
+    ReferenceValuesResponse:
+      allOf:
+        - $ref: "#/components/schemas/ObjectResponse"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/ReferenceValuesByType"
+    UpsertReferenceValueInput:
+      type: object
+      required: [type, value]
+      properties:
+        type:
+          type: string
+          enum: [deal_name, source, card_brand]
+        value:
+          type: string
+          minLength: 1
+          maxLength: 160
+    UpsertReferenceValuesRequest:
+      type: object
+      required: [values]
+      properties:
+        values:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items:
+            $ref: "#/components/schemas/UpsertReferenceValueInput"
+    ReferenceValueListResponse:
+      allOf:
+        - $ref: "#/components/schemas/ObjectResponse"
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: "#/components/schemas/ReferenceValue"
     AuditListResponse:
       allOf:
         - $ref: "#/components/schemas/ListEnvelope"
@@ -1671,6 +1810,10 @@ components:
           type: array
           items:
             type: object
+        referenceValues:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReferenceValue"
         deals:
           type: array
           items:

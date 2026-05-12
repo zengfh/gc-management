@@ -135,10 +135,19 @@ Verification:
 
 - ADR added: `docs/adr/0006-postgres-migration-spike.md`.
 
+## Add Deal Reference Index
+
+Status: implemented on 2026-05-12.
+
+- Added account-scoped reference values for deal names, sources, and card brands.
+- Add Deal now uses substring typeahead for indexed values.
+- Unknown values are reviewed before create, with typo suggestions from existing indexed values.
+- Plaintext/sanitized exports include reference values; replace imports and account data deletion clear the index.
+
 ## Current Verification
 
 - `npm run lint` passed.
-- `npm test` passed: 14 files, 119 tests.
+- `npm test` passed: 15 files, 125 tests.
 - `npm run test:perf` passed.
 - `npm run test:e2e` passed: 8 Chromium tests.
 - `npm run build` passed.

@@ -32,8 +32,10 @@ describe('database migrations', () => {
 
     expect(migrations.map((row) => row.id)).toContain('001_init.sql');
     expect(migrations.map((row) => row.id)).toContain('002_hosted_hardening.sql');
+    expect(migrations.map((row) => row.id)).toContain('004_reference_values.sql');
     expect(tables).toContain('accounts');
     expect(tables).toContain('cards');
+    expect(tables).toContain('reference_values');
     expect(tables).toContain('audit_log');
     expect(tables).toContain('web_sessions');
     expect(tables).toContain('auth_login_attempts');
