@@ -381,6 +381,85 @@ describe('App', () => {
     }
   });
 
+  it('exports encrypted JSON from the backup view with a separate passphrase', async () => {
+    const originalCreateObjectURL = globalThis.URL.createObjectURL;
+    const originalRevokeObjectURL = globalThis.URL.revokeObjectURL;
+    globalThis.URL.createObjectURL = undefined;
+    globalThis.URL.revokeObjectURL = undefined;
+    globalThis.fetch
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            setupComplete: true,
+            sessionValid: true,
+            dekLoaded: true,
+            csrfToken: 'csrf_ready',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            schemaVersion: 1,
+            exportType: 'encrypted_portable_json',
+            payloadSchemaVersion: 1,
+            appVersion: '0.1.0',
+            exportedAt: '2026-05-11T17:30:00.000Z',
+            encryptedAt: '2026-05-11T17:30:00.000Z',
+            kdf: {
+              name: 'scrypt',
+              salt: 'salt',
+              N: 131072,
+              r: 8,
+              p: 1,
+              keyLength: 32,
+            },
+            cipher: {
+              name: 'aes-256-gcm',
+              iv: 'iv',
+              authTag: 'tag',
+              ciphertext: 'ciphertext',
+            },
+          },
+        }),
+      );
+
+    try {
+      const user = userEvent.setup();
+      render(<App />);
+
+      await screen.findByRole('heading', { name: /dashboard/i });
+      await user.click(screen.getByRole('button', { name: /^backup$/i }));
+      await user.type(screen.getByLabelText(/^encrypted export unlock secret$/i), 'a strong unlock phrase');
+      await user.type(screen.getByLabelText(/^backup passphrase$/i), 'portable backup passphrase');
+      await user.type(screen.getByLabelText(/^repeat backup passphrase$/i), 'portable backup passphrase');
+      await user.type(screen.getByLabelText(/^type ENCRYPT to confirm$/i), 'ENCRYPT');
+      await user.click(screen.getByRole('button', { name: /^export encrypted json$/i }));
+
+      expect(await screen.findByText(/encrypted export prepared/i)).toBeInTheDocument();
+      expect(globalThis.fetch).toHaveBeenLastCalledWith(
+        '/api/backup/export-encrypted',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({
+            unlockSecret: 'a strong unlock phrase',
+            backupPassphrase: 'portable backup passphrase',
+            backupPassphraseConfirmation: 'portable backup passphrase',
+            confirmation: 'ENCRYPT',
+          }),
+          headers: expect.objectContaining({
+            'X-CSRF-Token': 'csrf_ready',
+          }),
+        }),
+      );
+    } finally {
+      globalThis.URL.createObjectURL = originalCreateObjectURL;
+      globalThis.URL.revokeObjectURL = originalRevokeObjectURL;
+    }
+  });
+
   it('exports the raw database file from the backup view', async () => {
     const originalCreateObjectURL = globalThis.URL.createObjectURL;
     const originalRevokeObjectURL = globalThis.URL.revokeObjectURL;
@@ -739,6 +818,124 @@ describe('App', () => {
         method: 'POST',
         body: JSON.stringify({
           unlockSecret: 'a strong unlock phrase',
+          mode: 'merge',
+          confirmation: '',
+          payload,
+        }),
+        headers: expect.objectContaining({
+          'X-CSRF-Token': 'csrf_ready',
+        }),
+      }),
+    );
+  });
+
+  it('imports an encrypted JSON backup from the backup view', async () => {
+    const payload = {
+      schemaVersion: 1,
+      exportType: 'encrypted_portable_json',
+      payloadSchemaVersion: 1,
+      appVersion: '0.1.0',
+      exportedAt: '2026-05-11T17:30:00.000Z',
+      encryptedAt: '2026-05-11T17:30:00.000Z',
+      kdf: {
+        name: 'scrypt',
+        salt: 'salt',
+        N: 131072,
+        r: 8,
+        p: 1,
+        keyLength: 32,
+      },
+      cipher: {
+        name: 'aes-256-gcm',
+        iv: 'iv',
+        authTag: 'tag',
+        ciphertext: 'ciphertext',
+      },
+    };
+
+    globalThis.fetch
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            setupComplete: true,
+            sessionValid: true,
+            dekLoaded: true,
+            csrfToken: 'csrf_ready',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            data: {
+              summary: {
+                mode: 'merge',
+                backupCreated: false,
+                dealCount: 1,
+                cardCount: 1,
+                transactionCount: 0,
+                usageCount: 0,
+                settingCount: 0,
+              },
+              importJob: {
+                id: 6,
+                type: 'json_merge',
+                status: 'confirmed',
+                rowCount: 2,
+                validCount: 2,
+                invalidCount: 0,
+              },
+            },
+          },
+          201,
+        ),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            {
+              id: 8,
+              brand: 'Target',
+              cardType: 'merchant',
+              status: 'available',
+              faceValueCents: 5000,
+              remainingBalanceCents: 5000,
+              purchaseCostCents: 4500,
+              cardNumberLast4: '1111',
+            },
+          ],
+          page: { total: 1, limit: 50, offset: 0, hasMore: false },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }));
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByRole('heading', { name: /dashboard/i });
+    await user.click(screen.getByRole('button', { name: /^backup$/i }));
+    await user.upload(
+      screen.getByLabelText(/^encrypted json backup file$/i),
+      new File([JSON.stringify(payload)], 'gift-card-encrypted-export-2026-05-11.json', {
+        type: 'application/json',
+      }),
+    );
+    await user.type(screen.getByLabelText(/^encrypted import unlock secret$/i), 'a strong unlock phrase');
+    await user.type(screen.getByLabelText(/^encrypted import backup passphrase$/i), 'portable backup passphrase');
+    await user.click(screen.getByRole('button', { name: /^import encrypted json backup$/i }));
+
+    expect(await screen.findByText(/encrypted json merge import completed: 1 card, 1 deal/i)).toBeInTheDocument();
+    expect(screen.getByText(/1 cards tracked/i)).toBeInTheDocument();
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(
+      4,
+      '/api/backup/import',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          unlockSecret: 'a strong unlock phrase',
+          backupPassphrase: 'portable backup passphrase',
           mode: 'merge',
           confirmation: '',
           payload,

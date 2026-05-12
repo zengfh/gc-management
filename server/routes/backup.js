@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import crypto from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import bcrypt from 'bcryptjs';
@@ -30,6 +31,48 @@ const rawDatabaseExportSchema = z
     unlockSecret: z.string().min(1),
   })
   .strict();
+
+const portableBackupKdfOptions = {
+  name: 'scrypt',
+  N: 2 ** 17,
+  r: 8,
+  p: 1,
+  keyLength: 32,
+  maxmem: 256 * 1024 * 1024,
+};
+const portableBackupCipher = 'aes-256-gcm';
+const portableBackupIvBytes = 12;
+const portableBackupAuthTagBytes = 16;
+const portableBackupSaltBytes = 16;
+const portableBackupAad = Buffer.from('gc-management:portable-backup:v1', 'utf8');
+
+const encryptedExportSchema = z
+  .object({
+    unlockSecret: z.string().min(1),
+    backupPassphrase: z.string().min(12),
+    backupPassphraseConfirmation: z.string().optional(),
+    confirmation: z.literal('ENCRYPT'),
+  })
+  .strict()
+  .superRefine((body, context) => {
+    if (body.backupPassphrase === body.unlockSecret) {
+      context.addIssue({
+        code: 'custom',
+        path: ['backupPassphrase'],
+        message: 'Use a backup passphrase that is different from the unlock secret.',
+      });
+    }
+    if (
+      body.backupPassphraseConfirmation != null
+      && body.backupPassphraseConfirmation !== body.backupPassphrase
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['backupPassphraseConfirmation'],
+        message: 'Backup passphrase confirmation does not match.',
+      });
+    }
+  });
 
 const nullableString = z.string().nullable().optional();
 const nullableInteger = z.number().int().nullable().optional();
@@ -142,12 +185,47 @@ const plaintextImportPayloadSchema = z
   })
   .passthrough();
 
+const encryptedPortablePayloadSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    exportType: z.literal('encrypted_portable_json'),
+    payloadSchemaVersion: z.literal(1),
+    appVersion: z.string().min(1),
+    exportedAt: z.string().min(1),
+    encryptedAt: z.string().min(1),
+    kdf: z
+      .object({
+        name: z.literal('scrypt'),
+        salt: z.string().min(1),
+        N: z.number().int().positive(),
+        r: z.number().int().positive(),
+        p: z.number().int().positive(),
+        keyLength: z.number().int().positive(),
+      })
+      .strict(),
+    cipher: z
+      .object({
+        name: z.literal(portableBackupCipher),
+        iv: z.string().min(1),
+        authTag: z.string().min(1),
+        ciphertext: z.string().min(1),
+      })
+      .strict(),
+  })
+  .strict();
+
+const importPayloadSchema = z.discriminatedUnion('exportType', [
+  plaintextImportPayloadSchema,
+  encryptedPortablePayloadSchema,
+]);
+
 const backupImportSchema = z
   .object({
     unlockSecret: z.string().min(1),
     mode: z.enum(['merge', 'replace']),
     confirmation: z.string().optional(),
-    payload: plaintextImportPayloadSchema,
+    backupPassphrase: z.string().optional(),
+    payload: importPayloadSchema,
   })
   .strict()
   .superRefine((body, context) => {
@@ -156,6 +234,13 @@ const backupImportSchema = z
         code: 'custom',
         path: ['confirmation'],
         message: 'Type REPLACE to confirm destructive import.',
+      });
+    }
+    if (body.payload.exportType === 'encrypted_portable_json' && !body.backupPassphrase) {
+      context.addIssue({
+        code: 'custom',
+        path: ['backupPassphrase'],
+        message: 'Backup passphrase is required for encrypted imports.',
       });
     }
   });
@@ -364,6 +449,142 @@ function buildPlaintextExport(db, auth, exportedAt) {
     transactions: transactionRows.map(toExportTransaction),
     usages: usageRows.map(toExportUsage),
   };
+}
+
+function portableBackupKdfParams(salt) {
+  return {
+    name: portableBackupKdfOptions.name,
+    salt,
+    N: portableBackupKdfOptions.N,
+    r: portableBackupKdfOptions.r,
+    p: portableBackupKdfOptions.p,
+    keyLength: portableBackupKdfOptions.keyLength,
+  };
+}
+
+function ensureSupportedPortableKdf(kdf) {
+  if (
+    kdf.name !== portableBackupKdfOptions.name
+    || kdf.N !== portableBackupKdfOptions.N
+    || kdf.r !== portableBackupKdfOptions.r
+    || kdf.p !== portableBackupKdfOptions.p
+    || kdf.keyLength !== portableBackupKdfOptions.keyLength
+  ) {
+    throw badRequest('UNSUPPORTED_BACKUP_KDF', 'Encrypted backup uses unsupported key derivation settings.', [
+      {
+        field: 'payload.kdf',
+        code: 'unsupported',
+        message: 'Encrypted backup key derivation settings are not supported by this app version.',
+      },
+    ]);
+  }
+}
+
+function derivePortableBackupKey(backupPassphrase, kdf) {
+  ensureSupportedPortableKdf(kdf);
+  return crypto.scryptSync(
+    backupPassphrase,
+    Buffer.from(kdf.salt, 'base64'),
+    kdf.keyLength,
+    {
+      N: kdf.N,
+      r: kdf.r,
+      p: kdf.p,
+      maxmem: portableBackupKdfOptions.maxmem,
+    },
+  );
+}
+
+function encryptPortableBackupPayload(payload, backupPassphrase, timestamp) {
+  const salt = crypto.randomBytes(portableBackupSaltBytes).toString('base64');
+  const kdf = portableBackupKdfParams(salt);
+  const key = derivePortableBackupKey(backupPassphrase, kdf);
+  const iv = crypto.randomBytes(portableBackupIvBytes);
+
+  try {
+    const cipher = crypto.createCipheriv(portableBackupCipher, key, iv, {
+      authTagLength: portableBackupAuthTagBytes,
+    });
+    cipher.setAAD(portableBackupAad);
+    const ciphertext = Buffer.concat([
+      cipher.update(JSON.stringify(payload), 'utf8'),
+      cipher.final(),
+    ]);
+
+    return {
+      schemaVersion: 1,
+      exportType: 'encrypted_portable_json',
+      payloadSchemaVersion: 1,
+      appVersion: process.env.npm_package_version || '0.1.0',
+      exportedAt: payload.exportedAt,
+      encryptedAt: timestamp,
+      kdf,
+      cipher: {
+        name: portableBackupCipher,
+        iv: iv.toString('base64'),
+        authTag: cipher.getAuthTag().toString('base64'),
+        ciphertext: ciphertext.toString('base64'),
+      },
+    };
+  } finally {
+    key.fill(0);
+  }
+}
+
+function decryptPortableBackupPayload(payload, backupPassphrase) {
+  const key = derivePortableBackupKey(backupPassphrase, payload.kdf);
+
+  try {
+    const decipher = crypto.createDecipheriv(
+      portableBackupCipher,
+      key,
+      Buffer.from(payload.cipher.iv, 'base64'),
+      { authTagLength: portableBackupAuthTagBytes },
+    );
+    decipher.setAAD(portableBackupAad);
+    decipher.setAuthTag(Buffer.from(payload.cipher.authTag, 'base64'));
+
+    const plaintext = Buffer.concat([
+      decipher.update(Buffer.from(payload.cipher.ciphertext, 'base64')),
+      decipher.final(),
+    ]).toString('utf8');
+    let parsed;
+    try {
+      parsed = JSON.parse(plaintext);
+    } catch {
+      throw badRequest('INVALID_BACKUP_PAYLOAD', 'Encrypted backup decrypted to invalid JSON.', [
+        {
+          field: 'payload.cipher.ciphertext',
+          code: 'invalid_json',
+          message: 'Encrypted backup decrypted to invalid JSON.',
+        },
+      ]);
+    }
+
+    const validation = plaintextImportPayloadSchema.safeParse(parsed);
+    if (!validation.success) {
+      throw badRequest(
+        'INVALID_BACKUP_PAYLOAD',
+        'Encrypted backup decrypted to an unsupported payload.',
+        zodFieldErrors(validation.error),
+      );
+    }
+
+    return validation.data;
+  } catch (error) {
+    if (error.status) {
+      throw error;
+    }
+    throw badRequest('INVALID_BACKUP_PASSPHRASE', 'Backup passphrase could not decrypt this backup.', [
+      {
+        field: 'backupPassphrase',
+        code: 'decrypt_failed',
+        message: 'Backup passphrase could not decrypt this backup.',
+      },
+    ]);
+  } finally {
+    key.fill(0);
+  }
 }
 
 function insertImportedSettings(db, auth, settings, timestamp) {
@@ -720,6 +941,41 @@ export function createBackupRouter({ db }) {
   );
 
   router.post(
+    '/export-encrypted',
+    asyncHandler(async (req, res) => {
+      const body = validateBody(encryptedExportSchema, req.body || {});
+      await verifyFreshUnlockSecret(db, req.auth, body.unlockSecret);
+
+      const timestamp = new Date().toISOString();
+      const plaintextPayload = buildPlaintextExport(db, req.auth, timestamp);
+      const payload = encryptPortableBackupPayload(plaintextPayload, body.backupPassphrase, timestamp);
+      insertAuditEvent(db, {
+        accountId: req.auth.accountId,
+        userId: req.auth.userId,
+        requestId: req.requestId,
+        entityType: 'backup',
+        action: 'backup.export_encrypted',
+        metadata: {
+          exportType: 'encrypted_portable_json',
+          payloadSchemaVersion: payload.payloadSchemaVersion,
+          dealCount: plaintextPayload.deals.length,
+          cardCount: plaintextPayload.cards.length,
+          transactionCount: plaintextPayload.transactions.length,
+          usageCount: plaintextPayload.usages.length,
+        },
+        timestamp,
+      });
+
+      res.set({
+        'Cache-Control': 'no-store',
+        Pragma: 'no-cache',
+        'Content-Disposition': `attachment; filename="gift-card-encrypted-export-${exportDate(timestamp)}.json"`,
+      });
+      res.json(objectResponse(payload));
+    }),
+  );
+
+  router.post(
     '/import',
     asyncHandler(async (req, res) => {
       const body = validateBody(backupImportSchema, req.body || {});
@@ -728,11 +984,15 @@ export function createBackupRouter({ db }) {
       try {
         const response = await runIdempotentJsonAsync(db, req, async () => {
           const timestamp = new Date().toISOString();
+          const importPayload =
+            body.payload.exportType === 'encrypted_portable_json'
+              ? decryptPortableBackupPayload(body.payload, body.backupPassphrase)
+              : body.payload;
           const backupInfo = body.mode === 'replace' ? await createPreReplaceBackup(db, timestamp) : null;
           const result = importPayloadIntoDatabase(
             db,
             req.auth,
-            body.payload,
+            importPayload,
             body.mode,
             timestamp,
             req.requestId,

@@ -13,8 +13,9 @@ Files:
 5. `04_ui_ux_spec_v2.md` - UI/UX design specification with page flows, components, accessibility, and sensitive credential behavior.
 6. `05_qa_test_plan_v2.md` - Canonical QA plan with traceability, test matrix, automation, CI gates, and performance/security tests.
 7. `06_implementation_roadmap.md` - Suggested phased roadmap and team operating model.
+8. `07_mvp_release_1_readiness.md` - MVP Release 1 readiness, release gate, backup drill, and rollback plan.
+9. `08_release_2_status.md` - Release 2 implementation status, completed milestones, remaining scope, and productization notes.
 
 Scope note:
 
 This package reviews documentation only. It does not represent a source-code audit or legal/compliance assessment. Before commercial launch, obtain appropriate security and legal/compliance review, especially for any network-branded prepaid card data.
-

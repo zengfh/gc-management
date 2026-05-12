@@ -1,6 +1,8 @@
+import fs from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
 
 const unlockSecret = 'a strong unlock phrase';
+const backupPassphrase = 'portable backup passphrase';
 
 async function unlockExistingVault(page) {
   await page.goto('/');
@@ -130,6 +132,44 @@ test.describe.serial('MVP Release 1 critical flows', () => {
     await page.getByRole('button', { name: /^export plaintext json$/i }).click();
 
     await expect(page.getByText(/plaintext export prepared/i)).toBeVisible();
+  });
+
+  test('encrypted export can be restored through replace import', async ({ page }) => {
+    test.setTimeout(120_000);
+    await unlockExistingVault(page);
+
+    await page.getByRole('button', { name: /^backup$/i }).click();
+    await page.getByLabel(/^encrypted export unlock secret$/i).fill(unlockSecret);
+    await page.getByLabel(/^backup passphrase$/i).fill(backupPassphrase);
+    await page.getByLabel(/^repeat backup passphrase$/i).fill(backupPassphrase);
+    await page.getByLabel(/^type ENCRYPT to confirm$/i).fill('ENCRYPT');
+    const downloadPromise = page.waitForEvent('download');
+    await page.getByRole('button', { name: /^export encrypted json$/i }).click();
+    const download = await downloadPromise;
+    await expect(page.getByText(/encrypted export prepared/i)).toBeVisible();
+    expect(download.suggestedFilename()).toMatch(/^gift-card-encrypted-export-\d{4}-\d{2}-\d{2}\.json$/);
+
+    const downloadPath = await download.path();
+    expect(downloadPath).toBeTruthy();
+    const backupBuffer = await fs.readFile(downloadPath);
+
+    await page.getByLabel(/^encrypted json backup file$/i).setInputFiles({
+      name: download.suggestedFilename(),
+      mimeType: 'application/json',
+      buffer: backupBuffer,
+    });
+    await page.getByRole('combobox', { name: /^encrypted import mode$/i }).selectOption('replace');
+    await page.getByLabel(/^encrypted import unlock secret$/i).fill(unlockSecret);
+    await page.getByLabel(/^encrypted import backup passphrase$/i).fill(backupPassphrase);
+    await page.getByLabel(/^type REPLACE to confirm$/i).fill('REPLACE');
+    await page.getByRole('button', { name: /^import encrypted json backup$/i }).click();
+
+    await expect(page.getByText(/encrypted json replace import completed/i)).toBeVisible();
+    await page.getByRole('button', { name: /^cards$/i }).click();
+    await expect(page.getByRole('row', { name: /available.*target/i })).toBeVisible();
+    await expect(page.getByRole('row', { name: /available.*amazon/i })).toBeVisible();
+    await expect(page.getByText('4111 1111 1111 1111')).toHaveCount(0);
+    await expect(page.getByText('4222222222222222')).toHaveCount(0);
   });
 
   test('revealed credentials disappear after logout', async ({ page }) => {

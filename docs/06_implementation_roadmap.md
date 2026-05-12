@@ -223,18 +223,18 @@ Goal: prepare for team/customer usage without prematurely rebuilding everything.
 
 Tasks:
 
-- Encrypted portable export.
-- Settings page.
-- Real account/user admin if needed.
-- Persistent session store for hosted deployment.
-- Persistent rate limit store.
-- Observability: metrics, alerts, error reporting.
-- Data retention policy.
-- Privacy/security documentation.
-- Performance load tests.
-- Postgres migration spike.
-- Admin/support access policy.
-- Feature flags.
+- [x] Encrypted portable export and restore path. Completed 2026-05-12.
+- [ ] Settings page.
+- [ ] Real account/user admin if needed.
+- [ ] Persistent session store for hosted deployment.
+- [ ] Persistent rate limit store.
+- [ ] Observability: metrics, alerts, error reporting.
+- [ ] Data retention policy.
+- [ ] Privacy/security documentation.
+- [ ] Performance load tests.
+- [ ] Postgres migration spike.
+- [ ] Admin/support access policy.
+- [ ] Feature flags.
 
 Exit criteria:
 
@@ -296,7 +296,7 @@ Do not start Phase 6 until the product's target customer, compliance posture, an
 
 ### P2 Backlog
 
-- Encrypted portable export.
+- Encrypted portable export. Completed 2026-05-12 as Release 2 milestone 1.
 - Reservation metadata.
 - Settings page.
 - Observability.
@@ -401,4 +401,3 @@ A realistic first sprint for a small team:
 8. Add CI with unit/integration tests.
 
 Do not start advanced dashboard or styling before these foundations are stable.
-

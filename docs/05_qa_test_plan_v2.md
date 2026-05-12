@@ -226,10 +226,14 @@ Example:
 | IMP-008 | Integration | Replace import malformed JSON | Rejected |
 | IMP-009 | Integration | Replace import valid | Auto-backup, transaction, foreign_key_check, readable cards |
 | IMP-010 | Integration | Replace import excludes users | Current unlock secret still works |
+| IMP-011 | Integration | Encrypted JSON import valid | Backup passphrase decrypts payload; imported credentials are re-encrypted for current vault |
+| IMP-012 | Integration | Encrypted JSON import wrong backup passphrase | Rejected; no cards/import jobs/audit side effects |
 | EXP-001 | E2E | Plaintext export happy path | Fresh secret + type EXPORT; file returned; no-store; audit |
 | EXP-002 | Integration | Plaintext export wrong secret | Rejected; no file |
 | EXP-003 | Integration | Raw DB export | Fresh secret required; no-store; audit |
 | EXP-004 | Integration | Export audit redaction | Audit contains export event only, not payload |
+| EXP-005 | Integration | Encrypted portable export happy path | Separate backup passphrase; AES-GCM envelope; no plaintext credentials/passphrases in file or audit |
+| EXP-006 | Integration | Encrypted export reuses unlock secret | Rejected; no file/audit payload |
 
 ### 7.8 Audit
 
@@ -263,7 +267,8 @@ Example:
 | E2E-005 | E2E | Void card | Write-off appears; card void |
 | E2E-006 | E2E | CSV import preview -> confirm | Rows created; invalid rows blocked |
 | E2E-007 | E2E | Plaintext export warning | Requires secret and confirmation phrase |
-| E2E-008 | E2E | Logout while credential revealed | Secret disappears and protected page inaccessible |
+| E2E-008 | E2E | Encrypted export/import smoke | Export encrypted backup; import into fresh vault using backup passphrase |
+| E2E-009 | E2E | Logout while credential revealed | Secret disappears and protected page inaccessible |
 
 ## 8. P1 Test Matrix
 
@@ -420,4 +425,3 @@ Try invalid transitions from every status and verify errors are clear and no sid
 ### Charter E - Productization Readiness
 
 Explore account/user seams, audit actor, export warnings, settings, performance with large data, and DB migration assumptions.
-

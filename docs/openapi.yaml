@@ -644,18 +644,68 @@ paths:
       tags: [ImportExport]
       summary: Plaintext JSON export
       operationId: exportPlaintextBackup
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlaintextBackupExportRequest"
       responses:
         "200":
           description: Plaintext export file
           content:
             application/json:
               schema:
-                type: object
+                allOf:
+                  - $ref: "#/components/schemas/ObjectResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/PlaintextBackupPayload"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/backup/export-encrypted:
+    post:
+      tags: [ImportExport]
+      summary: Encrypted portable JSON export
+      operationId: exportEncryptedBackup
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EncryptedBackupExportRequest"
+      responses:
+        "200":
+          description: Encrypted portable export file
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ObjectResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/EncryptedPortableBackupPayload"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
   /api/backup/import:
     post:
       tags: [ImportExport]
-      summary: Import a plaintext JSON backup by merge or replace
-      operationId: importPlaintextBackup
+      summary: Import a JSON backup by merge or replace
+      operationId: importBackup
       parameters:
         - $ref: "#/components/parameters/CsrfToken"
         - $ref: "#/components/parameters/IdempotencyKey"
@@ -1155,7 +1205,7 @@ components:
                 $ref: "#/components/schemas/AuditEvent"
     PlaintextBackupPayload:
       type: object
-      required: [schemaVersion, exportType, deals, cards, transactions, usages]
+      required: [schemaVersion, exportType, exportedAt, warning, deals, cards, transactions, usages]
       properties:
         schemaVersion:
           type: integer
@@ -1163,6 +1213,11 @@ components:
         exportType:
           type: string
           enum: [plaintext_json]
+        exportedAt:
+          type: string
+          format: date-time
+        warning:
+          type: string
         appSettings:
           type: array
           items:
@@ -1183,6 +1238,92 @@ components:
           type: array
           items:
             type: object
+    EncryptedPortableBackupPayload:
+      type: object
+      required: [schemaVersion, exportType, payloadSchemaVersion, appVersion, exportedAt, encryptedAt, kdf, cipher]
+      properties:
+        schemaVersion:
+          type: integer
+          enum: [1]
+        exportType:
+          type: string
+          enum: [encrypted_portable_json]
+        payloadSchemaVersion:
+          type: integer
+          enum: [1]
+        appVersion:
+          type: string
+        exportedAt:
+          type: string
+          format: date-time
+        encryptedAt:
+          type: string
+          format: date-time
+        kdf:
+          type: object
+          required: [name, salt, N, r, p, keyLength]
+          properties:
+            name:
+              type: string
+              enum: [scrypt]
+            salt:
+              type: string
+              description: Base64-encoded salt.
+            N:
+              type: integer
+              enum: [131072]
+            r:
+              type: integer
+              enum: [8]
+            p:
+              type: integer
+              enum: [1]
+            keyLength:
+              type: integer
+              enum: [32]
+        cipher:
+          type: object
+          required: [name, iv, authTag, ciphertext]
+          properties:
+            name:
+              type: string
+              enum: [aes-256-gcm]
+            iv:
+              type: string
+              description: Base64-encoded initialization vector.
+            authTag:
+              type: string
+              description: Base64-encoded GCM authentication tag.
+            ciphertext:
+              type: string
+              description: Base64-encoded encrypted plaintext backup payload.
+    PlaintextBackupExportRequest:
+      type: object
+      required: [unlockSecret, confirmation, acknowledgePlaintext]
+      properties:
+        unlockSecret:
+          type: string
+        confirmation:
+          type: string
+          enum: [EXPORT]
+        acknowledgePlaintext:
+          type: boolean
+          enum: [true]
+    EncryptedBackupExportRequest:
+      type: object
+      required: [unlockSecret, backupPassphrase, confirmation]
+      properties:
+        unlockSecret:
+          type: string
+        backupPassphrase:
+          type: string
+          minLength: 12
+          description: Must not be the current unlock secret.
+        backupPassphraseConfirmation:
+          type: string
+        confirmation:
+          type: string
+          enum: [ENCRYPT]
     BackupImportRequest:
       type: object
       required: [unlockSecret, mode, payload]
@@ -1195,8 +1336,15 @@ components:
         confirmation:
           type: string
           description: Required as REPLACE for destructive replace imports.
+        backupPassphrase:
+          type: string
+          description: Required when payload.exportType is encrypted_portable_json.
         payload:
-          $ref: "#/components/schemas/PlaintextBackupPayload"
+          oneOf:
+            - $ref: "#/components/schemas/PlaintextBackupPayload"
+            - $ref: "#/components/schemas/EncryptedPortableBackupPayload"
+          discriminator:
+            propertyName: exportType
     CsvImportRequest:
       type: object
       required: [csv]

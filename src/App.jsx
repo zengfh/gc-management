@@ -841,6 +841,99 @@ function BackupExportForm({ onExportPlaintext }) {
   );
 }
 
+function EncryptedBackupExportForm({ onExportEncrypted }) {
+  const [unlockSecret, setUnlockSecret] = useState('');
+  const [backupPassphrase, setBackupPassphrase] = useState('');
+  const [backupPassphraseConfirmation, setBackupPassphraseConfirmation] = useState('');
+  const [confirmation, setConfirmation] = useState('');
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  async function submitExport(event) {
+    event.preventDefault();
+    setError('');
+    setSuccess('');
+    if (backupPassphrase !== backupPassphraseConfirmation) {
+      setError('Backup passphrase confirmation does not match.');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const response = await onExportEncrypted({
+        unlockSecret,
+        backupPassphrase,
+        backupPassphraseConfirmation,
+        confirmation,
+      });
+      const payload = response.data;
+      const exportedDate = (payload?.exportedAt || new Date().toISOString()).slice(0, 10);
+      downloadJsonFile(`gift-card-encrypted-export-${exportedDate}.json`, payload);
+      setUnlockSecret('');
+      setBackupPassphrase('');
+      setBackupPassphraseConfirmation('');
+      setConfirmation('');
+      setSuccess('Encrypted export prepared.');
+    } catch (caught) {
+      setError(caught.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <form className="backup-export-form" onSubmit={submitExport}>
+      <div className="warning-copy">
+        Encrypted exports protect credentials with a separate backup passphrase.
+      </div>
+      <label>
+        <span>Encrypted export unlock secret</span>
+        <input
+          type="password"
+          value={unlockSecret}
+          autoComplete="current-password"
+          onChange={(event) => setUnlockSecret(event.target.value)}
+        />
+      </label>
+      <label>
+        <span>Backup passphrase</span>
+        <input
+          type="password"
+          value={backupPassphrase}
+          autoComplete="new-password"
+          onChange={(event) => setBackupPassphrase(event.target.value)}
+        />
+      </label>
+      <label>
+        <span>Repeat backup passphrase</span>
+        <input
+          type="password"
+          value={backupPassphraseConfirmation}
+          autoComplete="new-password"
+          onChange={(event) => setBackupPassphraseConfirmation(event.target.value)}
+        />
+      </label>
+      <label>
+        <span>Type ENCRYPT to confirm</span>
+        <input
+          value={confirmation}
+          autoCapitalize="characters"
+          onChange={(event) => setConfirmation(event.target.value)}
+        />
+      </label>
+      <div className="backup-actions">
+        <button type="submit" className="primary-action" disabled={submitting}>
+          <Lock aria-hidden="true" size={17} />
+          {submitting ? 'Exporting...' : 'Export encrypted JSON'}
+        </button>
+      </div>
+      <FieldError message={error} />
+      {success ? <p className="success-copy">{success}</p> : null}
+    </form>
+  );
+}
+
 function RawDatabaseExportForm({ onExportRawDatabase }) {
   const [unlockSecret, setUnlockSecret] = useState('');
   const [error, setError] = useState('');
@@ -1151,6 +1244,135 @@ function PlaintextJsonImportForm({ onImportBackup }) {
         <button type="submit" className={mode === 'replace' ? 'primary-action danger' : 'primary-action'} disabled={submitting}>
           <FilePlus2 aria-hidden="true" size={17} />
           {submitting ? 'Importing...' : 'Import JSON backup'}
+        </button>
+      </div>
+      {fileName ? <p className="muted-text import-file-name">{fileName}</p> : null}
+      <FieldError message={error} />
+      {success ? <p className="success-copy">{success}</p> : null}
+    </form>
+  );
+}
+
+function EncryptedJsonImportForm({ onImportBackup }) {
+  const [payload, setPayload] = useState(null);
+  const [fileName, setFileName] = useState('');
+  const [unlockSecret, setUnlockSecret] = useState('');
+  const [backupPassphrase, setBackupPassphrase] = useState('');
+  const [mode, setMode] = useState('merge');
+  const [confirmation, setConfirmation] = useState('');
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  async function updateFile(event) {
+    const file = event.target.files?.[0];
+    setPayload(null);
+    setFileName('');
+    setError('');
+    setSuccess('');
+    if (!file) {
+      return;
+    }
+
+    setFileName(file.name);
+    try {
+      const parsedPayload = JSON.parse(await readFileText(file));
+      if (parsedPayload?.exportType !== 'encrypted_portable_json') {
+        throw new Error('Invalid encrypted backup.');
+      }
+      setPayload(parsedPayload);
+    } catch {
+      setPayload(null);
+      setError('Choose a valid encrypted JSON backup file.');
+    }
+  }
+
+  async function submitImport(event) {
+    event.preventDefault();
+    setError('');
+    setSuccess('');
+    if (!payload) {
+      setError('Choose an encrypted JSON backup file first.');
+      return;
+    }
+    if (mode === 'replace' && confirmation !== 'REPLACE') {
+      setError('Type REPLACE to confirm destructive import.');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const response = await onImportBackup({
+        unlockSecret,
+        backupPassphrase,
+        mode,
+        confirmation,
+        payload,
+      });
+      const summary = response.data.summary;
+      setUnlockSecret('');
+      setBackupPassphrase('');
+      setConfirmation('');
+      setSuccess(
+        `Encrypted JSON ${summary.mode} import completed: ${summary.cardCount} ${
+          summary.cardCount === 1 ? 'card' : 'cards'
+        }, ${summary.dealCount} ${summary.dealCount === 1 ? 'deal' : 'deals'}.`,
+      );
+    } catch (caught) {
+      setError(caught.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <form className="backup-export-form json-import-form" onSubmit={submitImport}>
+      <div className="warning-copy">
+        Merge adds backup records to this vault. Replace removes current cards and deals after creating a server-side database backup.
+      </div>
+      <label>
+        <span>Encrypted JSON backup file</span>
+        <input type="file" accept=".json,application/json" onChange={updateFile} />
+      </label>
+      <label>
+        <span>Encrypted import mode</span>
+        <select value={mode} onChange={(event) => setMode(event.target.value)}>
+          <option value="merge">Merge into current vault</option>
+          <option value="replace">Replace current cards and deals</option>
+        </select>
+      </label>
+      <label>
+        <span>Encrypted import unlock secret</span>
+        <input
+          type="password"
+          value={unlockSecret}
+          autoComplete="current-password"
+          onChange={(event) => setUnlockSecret(event.target.value)}
+        />
+      </label>
+      <label>
+        <span>Encrypted import backup passphrase</span>
+        <input
+          type="password"
+          value={backupPassphrase}
+          autoComplete="current-password"
+          onChange={(event) => setBackupPassphrase(event.target.value)}
+        />
+      </label>
+      {mode === 'replace' ? (
+        <label>
+          <span>Type REPLACE to confirm</span>
+          <input
+            value={confirmation}
+            autoCapitalize="characters"
+            onChange={(event) => setConfirmation(event.target.value)}
+          />
+        </label>
+      ) : null}
+      <div className="backup-actions">
+        <button type="submit" className={mode === 'replace' ? 'primary-action danger' : 'primary-action'} disabled={submitting}>
+          <Lock aria-hidden="true" size={17} />
+          {submitting ? 'Importing...' : 'Import encrypted JSON backup'}
         </button>
       </div>
       {fileName ? <p className="muted-text import-file-name">{fileName}</p> : null}
@@ -2513,6 +2735,7 @@ function WorkSurface({
   onLogout,
   onLoadAudit,
   onExportPlaintext,
+  onExportEncrypted,
   onExportRawDatabase,
   onPreviewCsv,
   onConfirmCsv,
@@ -2818,6 +3041,14 @@ function WorkSurface({
                 <PlaintextJsonImportForm onImportBackup={onImportBackup} />
               </section>
               <section className="backup-block">
+                <h3>Encrypted JSON Import</h3>
+                <EncryptedJsonImportForm onImportBackup={onImportBackup} />
+              </section>
+              <section className="backup-block">
+                <h3>Encrypted JSON Export</h3>
+                <EncryptedBackupExportForm onExportEncrypted={onExportEncrypted} />
+              </section>
+              <section className="backup-block">
                 <h3>Plaintext JSON Export</h3>
                 <BackupExportForm onExportPlaintext={onExportPlaintext} />
               </section>
@@ -3064,6 +3295,14 @@ export default function App() {
 
   async function handleExportPlaintext(payload) {
     return apiFetch('/api/backup/export', {
+      method: 'POST',
+      body: payload,
+      csrfToken: auth.csrfToken,
+    });
+  }
+
+  async function handleExportEncrypted(payload) {
+    return apiFetch('/api/backup/export-encrypted', {
       method: 'POST',
       body: payload,
       csrfToken: auth.csrfToken,
@@ -3379,6 +3618,7 @@ export default function App() {
       onLogout={handleLogout}
       onLoadAudit={handleLoadAudit}
       onExportPlaintext={handleExportPlaintext}
+      onExportEncrypted={handleExportEncrypted}
       onExportRawDatabase={handleExportRawDatabase}
       onPreviewCsv={handlePreviewCsv}
       onConfirmCsv={handleConfirmCsv}

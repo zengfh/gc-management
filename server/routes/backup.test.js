@@ -126,6 +126,76 @@ describe('backup routes', () => {
     expect(auditText).not.toContain(unlockSecret);
   }, 45_000);
 
+  it('exports encrypted portable JSON without exposing credentials or passphrases', async () => {
+    const csrfToken = await setupOwner();
+    await createSampleCard(csrfToken);
+    const backupPassphrase = 'portable backup passphrase';
+
+    const response = await postWithCsrf('/api/backup/export-encrypted', csrfToken).send({
+      unlockSecret,
+      backupPassphrase,
+      backupPassphraseConfirmation: backupPassphrase,
+      confirmation: 'ENCRYPT',
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers['cache-control']).toContain('no-store');
+    expect(response.headers['content-disposition']).toMatch(
+      /attachment; filename="gift-card-encrypted-export-\d{4}-\d{2}-\d{2}\.json"/,
+    );
+    expect(response.body.data).toMatchObject({
+      schemaVersion: 1,
+      exportType: 'encrypted_portable_json',
+      payloadSchemaVersion: 1,
+      appVersion: expect.any(String),
+      exportedAt: expect.any(String),
+      encryptedAt: expect.any(String),
+      kdf: {
+        name: 'scrypt',
+        salt: expect.any(String),
+        N: 131072,
+        r: 8,
+        p: 1,
+        keyLength: 32,
+      },
+      cipher: {
+        name: 'aes-256-gcm',
+        iv: expect.any(String),
+        authTag: expect.any(String),
+        ciphertext: expect.any(String),
+      },
+    });
+    expect(response.body.data).not.toHaveProperty('cards');
+    expect(response.body.data).not.toHaveProperty('deals');
+
+    const exportText = JSON.stringify(response.body.data);
+    expect(exportText).not.toContain('4111111111111111');
+    expect(exportText).not.toContain('1234');
+    expect(exportText).not.toContain('94105');
+    expect(exportText).not.toContain(unlockSecret);
+    expect(exportText).not.toContain(backupPassphrase);
+
+    const auditRows = db
+      .prepare("SELECT * FROM audit_log WHERE entityType = 'backup' AND action = 'backup.export_encrypted'")
+      .all();
+    expect(auditRows).toHaveLength(1);
+    expect(JSON.parse(auditRows[0].metadata)).toMatchObject({
+      exportType: 'encrypted_portable_json',
+      payloadSchemaVersion: 1,
+      dealCount: 1,
+      cardCount: 1,
+      transactionCount: 0,
+      usageCount: 0,
+    });
+
+    const auditText = JSON.stringify(auditRows);
+    expect(auditText).not.toContain('4111111111111111');
+    expect(auditText).not.toContain('1234');
+    expect(auditText).not.toContain('94105');
+    expect(auditText).not.toContain(unlockSecret);
+    expect(auditText).not.toContain(backupPassphrase);
+  }, 45_000);
+
   it('rejects plaintext export without the current unlock secret and confirmation controls', async () => {
     const csrfToken = await setupOwner();
     await createSampleCard(csrfToken);
@@ -160,6 +230,30 @@ describe('backup routes', () => {
 
     const backupAuditCount = db
       .prepare("SELECT COUNT(*) AS count FROM audit_log WHERE entityType = 'backup'")
+      .get().count;
+    expect(backupAuditCount).toBe(0);
+  }, 45_000);
+
+  it('rejects encrypted export when the backup passphrase reuses the unlock secret', async () => {
+    const csrfToken = await setupOwner();
+    await createSampleCard(csrfToken);
+
+    const response = await postWithCsrf('/api/backup/export-encrypted', csrfToken).send({
+      unlockSecret,
+      backupPassphrase: unlockSecret,
+      backupPassphraseConfirmation: unlockSecret,
+      confirmation: 'ENCRYPT',
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.fieldErrors).toEqual([
+      expect.objectContaining({
+        field: 'backupPassphrase',
+        code: 'custom',
+      }),
+    ]);
+    const backupAuditCount = db
+      .prepare("SELECT COUNT(*) AS count FROM audit_log WHERE action = 'backup.export_encrypted'")
       .get().count;
     expect(backupAuditCount).toBe(0);
   }, 45_000);
@@ -302,6 +396,131 @@ describe('backup routes', () => {
       expect(auditText).not.toContain('1234');
       expect(auditText).not.toContain('94105');
       expect(auditText).not.toContain(unlockSecret);
+    } finally {
+      targetDb.close();
+    }
+  }, 45_000);
+
+  it('imports an encrypted portable JSON backup into an unlocked vault', async () => {
+    const backupPassphrase = 'portable backup passphrase';
+    const csrfToken = await setupOwner();
+    await createSampleCard(csrfToken);
+    const exportResponse = await postWithCsrf('/api/backup/export-encrypted', csrfToken).send({
+      unlockSecret,
+      backupPassphrase,
+      backupPassphraseConfirmation: backupPassphrase,
+      confirmation: 'ENCRYPT',
+    });
+    expect(exportResponse.status).toBe(200);
+
+    const targetDb = openDatabase({ filename: ':memory:' });
+    const targetAgent = request.agent(createApp({ db: targetDb }));
+    try {
+      const setupResponse = await targetAgent.post('/api/auth/setup').send({ unlockSecret });
+      const targetCsrfToken = setupResponse.body.data.csrfToken;
+
+      const importResponse = await targetAgent
+        .post('/api/backup/import')
+        .set('Origin', appOrigin)
+        .set('X-CSRF-Token', targetCsrfToken)
+        .send({
+          unlockSecret,
+          backupPassphrase,
+          mode: 'merge',
+          payload: exportResponse.body.data,
+        });
+
+      expect(importResponse.status).toBe(201);
+      expect(importResponse.body.data.summary).toMatchObject({
+        mode: 'merge',
+        dealCount: 1,
+        cardCount: 1,
+        transactionCount: 0,
+        usageCount: 0,
+      });
+      expect(importResponse.body.data.importJob).toMatchObject({
+        type: 'json_merge',
+        status: 'confirmed',
+        rowCount: 2,
+        validCount: 2,
+        invalidCount: 0,
+      });
+
+      const cardsResponse = await targetAgent.get('/api/cards');
+      expect(cardsResponse.body.data).toHaveLength(1);
+      expect(cardsResponse.body.data[0]).toMatchObject({
+        brand: 'Target',
+        cardNumberLast4: '1111',
+        remainingBalanceCents: 5000,
+      });
+
+      const revealResponse = await targetAgent
+        .post(`/api/cards/${cardsResponse.body.data[0].id}/reveal`)
+        .set('Origin', appOrigin)
+        .set('X-CSRF-Token', targetCsrfToken)
+        .send({});
+      expect(revealResponse.body.data).toMatchObject({
+        cardNumber: '4111111111111111',
+        pin: '1234',
+        billingZip: '94105',
+      });
+
+      const stored = targetDb.prepare('SELECT cardNumber, pin, billingZip FROM cards LIMIT 1').get();
+      expect(JSON.stringify(stored)).not.toContain('4111111111111111');
+      expect(JSON.stringify(stored)).not.toContain('1234');
+      expect(JSON.stringify(stored)).not.toContain('94105');
+
+      const auditRows = targetDb
+        .prepare("SELECT * FROM audit_log WHERE entityType = 'import' AND action = 'import.json_merge'")
+        .all();
+      expect(auditRows).toHaveLength(1);
+      const auditText = JSON.stringify(auditRows);
+      expect(auditText).not.toContain('4111111111111111');
+      expect(auditText).not.toContain('1234');
+      expect(auditText).not.toContain('94105');
+      expect(auditText).not.toContain(unlockSecret);
+      expect(auditText).not.toContain(backupPassphrase);
+    } finally {
+      targetDb.close();
+    }
+  }, 45_000);
+
+  it('rejects encrypted portable JSON import with the wrong backup passphrase', async () => {
+    const backupPassphrase = 'portable backup passphrase';
+    const csrfToken = await setupOwner();
+    await createSampleCard(csrfToken);
+    const exportResponse = await postWithCsrf('/api/backup/export-encrypted', csrfToken).send({
+      unlockSecret,
+      backupPassphrase,
+      backupPassphraseConfirmation: backupPassphrase,
+      confirmation: 'ENCRYPT',
+    });
+    expect(exportResponse.status).toBe(200);
+
+    const targetDb = openDatabase({ filename: ':memory:' });
+    const targetAgent = request.agent(createApp({ db: targetDb }));
+    try {
+      const setupResponse = await targetAgent.post('/api/auth/setup').send({ unlockSecret });
+      const targetCsrfToken = setupResponse.body.data.csrfToken;
+
+      const importResponse = await targetAgent
+        .post('/api/backup/import')
+        .set('Origin', appOrigin)
+        .set('X-CSRF-Token', targetCsrfToken)
+        .send({
+          unlockSecret,
+          backupPassphrase: 'wrong portable backup passphrase',
+          mode: 'merge',
+          payload: exportResponse.body.data,
+        });
+
+      expect(importResponse.status).toBe(400);
+      expect(importResponse.body.error.code).toBe('INVALID_BACKUP_PASSPHRASE');
+      expect(targetDb.prepare('SELECT COUNT(*) AS count FROM cards').get().count).toBe(0);
+      expect(targetDb.prepare('SELECT COUNT(*) AS count FROM import_jobs').get().count).toBe(0);
+      expect(
+        targetDb.prepare("SELECT COUNT(*) AS count FROM audit_log WHERE entityType = 'import'").get().count,
+      ).toBe(0);
     } finally {
       targetDb.close();
     }

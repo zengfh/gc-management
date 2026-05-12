@@ -271,13 +271,22 @@ Required controls:
 
 ### 10.3 Encrypted Portable Export
 
-Recommended before product rollout:
+Release 2 milestone 1 implementation status: code complete on 2026-05-12.
 
-- Export JSON encrypted with a separate backup passphrase.
-- Use authenticated encryption.
-- Include schemaVersion, appVersion, exportedAt, KDF parameters.
-- Do not reuse account unlock secret silently.
-- Provide restore test.
+Implemented controls:
+
+- `/api/backup/export-encrypted` exports JSON encrypted with a separate backup passphrase.
+- The server rejects backup passphrases that exactly reuse the current unlock secret.
+- The portable file uses scrypt parameters in the envelope and AES-256-GCM authenticated encryption.
+- The envelope includes `schemaVersion`, `payloadSchemaVersion`, `appVersion`, `exportedAt`, `encryptedAt`, KDF parameters, IV, auth tag, and ciphertext.
+- The plaintext payload is never returned in the encrypted file and export audit metadata stores counts only.
+- `/api/backup/import` restores encrypted portable JSON backups after validating the current unlock secret and backup passphrase.
+- Restore tests cover a valid encrypted import and a wrong-passphrase rejection with no database side effects.
+
+Remaining product hardening:
+
+- Add customer-facing backup passphrase recovery/rotation guidance before hosted use.
+- Decide whether plaintext export should be disabled or feature-flagged in product/SaaS mode.
 
 ## 11. Import Security
 
@@ -406,8 +415,8 @@ Future product:
 | CVV | network-card CVV rejected/not persisted/not exported |
 | XSS | notes, buyer, merchant, brand, CSV fields render as text |
 | Audit | sensitive fields redacted in old/new values |
-| Export | fresh secret, confirmation, no-store, audit, no CVV |
-| Import | malformed JSON/CSV rejected, revalidation, backup before replace |
+| Export | fresh secret, confirmation, no-store, audit, no CVV, encrypted export redaction |
+| Import | malformed JSON/CSV rejected, revalidation, encrypted restore, backup before replace |
 | Concurrency | double sell, rapid use, stale PUT |
 | Access control | future account isolation tests before product mode |
 
@@ -429,4 +438,3 @@ Before team/product deployment:
 - Monitoring and alerting configured.
 - Admin/support access policy documented.
 - Legal/compliance review completed for network-branded prepaid card data.
-

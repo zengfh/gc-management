@@ -303,7 +303,7 @@ Do not log sensitive field values.
 
 ### Release 2
 
-- Encrypted portable export.
+- Encrypted portable export and restore path. Status: implemented in Release 2 milestone 1 on 2026-05-12.
 - Settings page.
 - Reservation metadata.
 - Better P&L dashboard.
@@ -331,4 +331,3 @@ Do not log sensitive field values.
 8. Should plaintext export be disabled by default in product/SaaS mode?
 9. What customer-support workflows are needed for a future product?
 10. What legal/compliance review is required before storing any network-branded prepaid card data?
-

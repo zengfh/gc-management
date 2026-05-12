@@ -457,9 +457,9 @@ Error response:
 | POST | /api/cards/import-csv | Preview only; no commit |
 | POST | /api/cards/import-csv/confirm | Revalidates and commits |
 | POST | /api/backup/export | Plaintext JSON; fresh secret and confirmation required |
-| POST | /api/backup/export-encrypted | Recommended P1; encrypted portable JSON |
+| POST | /api/backup/export-encrypted | Implemented Release 2 milestone; encrypted portable JSON with separate backup passphrase |
 | POST | /api/backup/db-file | Raw database export; fresh secret required |
-| POST | /api/backup/import | replace or merge; backup before replace |
+| POST | /api/backup/import | Plaintext or encrypted JSON restore; replace or merge; backup before replace |
 
 ## 7. Validation Rules
 
@@ -611,4 +611,3 @@ Before merging a feature:
 - Security-sensitive fields are redacted in logs and audit.
 - QA test cases are updated.
 - No new dependency without review.
-
