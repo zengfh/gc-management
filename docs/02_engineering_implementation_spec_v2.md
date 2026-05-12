@@ -470,6 +470,21 @@ Error response:
 | GET | /api/settings/backup | Returns plaintext-export toggle, deployment policy lock state, reminder interval, last backup timestamps, and due status |
 | PUT | /api/settings/backup | Requires current unlock secret; updates backup reminder and plaintext-export toggle; rejects enabling plaintext export when deployment policy locks it; writes redacted audit |
 
+### 6.8 User/Admin Endpoints
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | /api/users | Admin-only; lists account users without secret hashes or encrypted key material |
+| POST | /api/users | Admin-only; current unlock secret plus new user's temporary unlock secret; wraps account DEK for the new user |
+| PUT | /api/users/:id | Admin-only; updates display name, role, or disabled status; owner demotion/disablement is constrained |
+| GET | /api/admin/support-policy | Admin-only; support access policy record |
+| PUT | /api/admin/support-policy | Admin-only; fresh unlock secret; writes redacted support policy audit |
+| GET | /api/admin/data-policy | Admin-only; retention policy for audit, idempotency, sessions, and login attempts |
+| PUT | /api/admin/data-policy | Admin-only; fresh unlock secret; writes redacted data policy audit |
+| POST | /api/admin/retention/run | Admin-only; dry run or destructive purge with `PURGE` confirmation |
+| POST | /api/admin/data-export | Admin-only; sanitized export without card credentials, key material, hashes, or blind indexes |
+| POST | /api/admin/data-delete | Admin-only; deletes inventory/history data with `DELETE_ACCOUNT_DATA` confirmation while preserving users and audit |
+
 ## 7. Validation Rules
 
 Centralize validation in backend modules. Do not duplicate business logic only in route handlers.
@@ -570,9 +585,9 @@ MVP should include:
 
 Product mode should add:
 
-- Metrics: request count, latency, error rate, DB busy count, import duration, export count.
-- Alerts for repeated failed login, export spikes, import failures, DB backup failures.
-- Centralized error reporting with redaction.
+- Metrics: request count, latency, error rate, DB busy count, import duration, export count. Release 3 implements process-local request counters and Prometheus text export.
+- Alerts for repeated failed login, export spikes, import failures, DB backup failures. Release 3 exposes metrics; alert-rule installation remains deployment work.
+- Centralized error reporting with redaction. Release 3 adds optional sanitized external error reporting via `GC_ERROR_REPORT_URL`.
 
 Structured log safety rules:
 
@@ -580,6 +595,8 @@ Structured log safety rules:
 - Do not log request bodies, cookies, authorization headers, full card numbers, PINs, billing ZIPs, unlock secrets, backup passphrases, or plaintext backup payloads.
 - Internal server error logs should include request ID, method, queryless path, status, error code, and error name.
 - `GET /api/observability/summary` returns authenticated in-process request metrics: uptime, total requests, 5xx count, average/max duration, counts by status class, and counts by method.
+- `GET /api/observability/metrics` returns Prometheus text metrics for admin sessions or scrapers with `GC_METRICS_TOKEN`.
+- `GC_DEPLOYMENT_MODE=multi-instance` is intentionally blocked until external shared sessions/rate limits and a server database are implemented.
 
 ## 11. Migrations
 

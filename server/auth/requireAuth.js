@@ -11,6 +11,9 @@ export function requireUnlockedSession(req, _res, next) {
   req.auth = {
     userId: req.session.userId,
     accountId: req.session.accountId,
+    role: unlocked.role,
+    email: unlocked.email,
+    displayName: unlocked.displayName,
     dek: unlocked.dek,
     blindIndexKey: unlocked.blindIndexKey,
   };

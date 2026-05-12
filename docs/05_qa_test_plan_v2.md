@@ -136,6 +136,9 @@ Example:
 | AUTH-008 | Integration | Change unlock secret | Old secret fails; new secret unlocks existing cards |
 | AUTH-009 | Security | Session ID changes on login | Session fixation prevented |
 | AUTH-010 | Security | Cookie flags in production config | HttpOnly, Secure, SameSite set |
+| AUTH-011 | Integration | Multiple active users | Login requires email; disabled users cannot log in |
+| AUTH-012 | Integration | Role-based access | Operators can mutate inventory but not admin settings; viewers are read-only and cannot reveal credentials |
+| AUTH-013 | UI | Viewer session | Settings, Backup, Import, Add Deal, and credential reveal controls are hidden |
 
 ### 7.2 CSRF and Session Security
 
@@ -283,7 +286,9 @@ Example:
 | Performance | `npm run test:perf` covers 20,000 card list, 1,000 row import preview, and high-frequency reads |
 | Security headers | CSP, frame-ancestors, nosniff, HSTS in production config |
 | Logging | Request IDs, redaction, no sensitive payloads, structured request logs without query strings |
-| Metrics | Authenticated observability summary with no query or credential details |
+| Metrics | Authenticated observability summary and Prometheus metrics export with no query or credential details |
+| Admin ops | User admin, support policy, data policy, sanitized export, retention purge, and inventory deletion |
+| Deployment gates | Production session secret required; multi-instance mode blocked until shared stores/server DB are implemented |
 | Migration | Upgrade seeded old DB to latest schema |
 | Hosted auth state | Persistent session metadata, memory-only DEK reload behavior, persistent failed-login counters |
 
@@ -386,8 +391,12 @@ Minimum regression before release:
 - Edit allowed/disallowed fields.
 - CSV preview/confirm.
 - Plaintext export.
+- Sanitized data export.
 - Raw DB export.
 - Import replace and merge.
+- User admin/RBAC.
+- Support policy/data policy updates.
+- Retention purge and inventory deletion.
 - Audit redaction.
 - CSRF rejection.
 - XSS rendering.

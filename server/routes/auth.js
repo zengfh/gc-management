@@ -64,10 +64,38 @@ function getPrimaryUser(db) {
       `SELECT users.*, accounts.mode AS accountMode
        FROM users
        JOIN accounts ON accounts.id = users.accountId
+       WHERE users.disabledAt IS NULL
        ORDER BY users.id
        LIMIT 1`,
     )
     .get();
+}
+
+function normalizeEmail(email) {
+  const normalized = String(email || '').trim().toLowerCase();
+  return normalized || null;
+}
+
+function getLoginUser(db, email) {
+  const normalizedEmail = normalizeEmail(email);
+  if (normalizedEmail) {
+    return db
+      .prepare(
+        `SELECT users.*, accounts.mode AS accountMode
+         FROM users
+         JOIN accounts ON accounts.id = users.accountId
+         WHERE LOWER(users.email) = ? AND users.disabledAt IS NULL
+         ORDER BY users.id
+         LIMIT 1`,
+      )
+      .get(normalizedEmail);
+  }
+
+  const userCount = db.prepare('SELECT COUNT(*) AS count FROM users WHERE disabledAt IS NULL').get().count;
+  if (userCount > 1) {
+    throw badRequest('EMAIL_REQUIRED', 'Email is required when multiple users exist.');
+  }
+  return getPrimaryUser(db);
 }
 
 function setupComplete(db) {
@@ -87,10 +115,22 @@ function cryptoRandomToken() {
 
 function authStatus(db, req) {
   const sessionValid = Boolean(req.session?.userId);
+  const unlocked = sessionValid ? getUnlockedSession(req.sessionID) : null;
   return {
     setupComplete: setupComplete(db),
     sessionValid,
-    dekLoaded: Boolean(sessionValid && getUnlockedSession(req.sessionID)),
+    dekLoaded: Boolean(unlocked),
+    ...(sessionValid
+      ? {
+          user: {
+            id: req.session.userId,
+            accountId: req.session.accountId,
+            role: req.session.role || unlocked?.role || null,
+            email: req.session.email || unlocked?.email || null,
+            displayName: req.session.displayName || unlocked?.displayName || null,
+          },
+        }
+      : {}),
     ...(sessionValid ? { csrfToken: ensureCsrfToken(req) } : {}),
   };
 }
@@ -136,7 +176,7 @@ export function createAuthRouter({ db, loginAttempts = createLoginAttemptStore()
             id, accountId, email, displayName, role, unlockSecretHash,
             encryptionSalt, encryptedDEK, keyVersion, createdAt, updatedAt
           ) VALUES (1, 1, ?, ?, 'owner', ?, ?, ?, 1, ?, ?)`,
-        ).run(email, displayName, unlockSecretHash, encryptionSalt, encryptedDEK, timestamp, timestamp);
+        ).run(normalizeEmail(email), displayName, unlockSecretHash, encryptionSalt, encryptedDEK, timestamp, timestamp);
         db.prepare(
           `INSERT INTO audit_log (
             accountId, userId, requestId, entityType, entityId, action, metadata, timestamp
@@ -148,10 +188,16 @@ export function createAuthRouter({ db, loginAttempts = createLoginAttemptStore()
       await regenerateSession(req);
       req.session.userId = 1;
       req.session.accountId = 1;
+      req.session.role = 'owner';
+      req.session.email = normalizeEmail(email);
+      req.session.displayName = displayName;
       ensureCsrfToken(req);
       unlockSession(req.sessionID, {
         userId: 1,
         accountId: 1,
+        role: 'owner',
+        email: normalizeEmail(email),
+        displayName,
         dek,
         blindIndexKey: deriveBlindIndexKey(dek),
       });
@@ -164,9 +210,13 @@ export function createAuthRouter({ db, loginAttempts = createLoginAttemptStore()
   router.post(
     '/login',
     asyncHandler(async (req, res) => {
-      const user = getPrimaryUser(db);
+      const { email, unlockSecret } = req.body || {};
+      const user = getLoginUser(db, email);
       if (!user) {
-        throw unauthorized('SETUP_REQUIRED', 'Setup has not been completed.');
+        throw unauthorized(
+          setupComplete(db) ? 'INVALID_UNLOCK_SECRET' : 'SETUP_REQUIRED',
+          setupComplete(db) ? 'Invalid unlock secret.' : 'Setup has not been completed.',
+        );
       }
 
       const loginKey = `${req.ip || 'unknown'}:${user.id}`;
@@ -174,7 +224,6 @@ export function createAuthRouter({ db, loginAttempts = createLoginAttemptStore()
         throw rateLimited('LOGIN_RATE_LIMITED', 'Too many failed login attempts. Try again later.');
       }
 
-      const { unlockSecret } = req.body || {};
       const passwordMatches = await bcrypt.compare(unlockSecret || '', user.unlockSecretHash);
       if (!passwordMatches) {
         loginAttempts.recordFailure(loginKey);
@@ -189,13 +238,20 @@ export function createAuthRouter({ db, loginAttempts = createLoginAttemptStore()
       await regenerateSession(req);
       req.session.userId = user.id;
       req.session.accountId = user.accountId;
+      req.session.role = user.role;
+      req.session.email = user.email;
+      req.session.displayName = user.displayName;
       ensureCsrfToken(req);
       unlockSession(req.sessionID, {
         userId: user.id,
         accountId: user.accountId,
+        role: user.role,
+        email: user.email,
+        displayName: user.displayName,
         dek,
         blindIndexKey: deriveBlindIndexKey(dek),
       });
+      db.prepare('UPDATE users SET lastLoginAt = ?, updatedAt = ? WHERE id = ?').run(nowIso(), nowIso(), user.id);
       await saveSession(req);
 
       res.json(objectResponse(authStatus(db, req)));
@@ -227,7 +283,9 @@ export function createAuthRouter({ db, loginAttempts = createLoginAttemptStore()
       }
 
       const { oldUnlockSecret, newUnlockSecret } = req.body || {};
-      const user = getPrimaryUser(db);
+      const user = db
+        .prepare('SELECT * FROM users WHERE id = ? AND accountId = ?')
+        .get(req.session.userId, req.session.accountId);
       const passwordMatches = await bcrypt.compare(oldUnlockSecret || '', user.unlockSecretHash);
       if (!passwordMatches) {
         throw unauthorized('INVALID_UNLOCK_SECRET', 'Invalid unlock secret.');

@@ -14,3 +14,11 @@ export function getUnlockedSession(sessionId) {
 export function clearUnlockedSession(sessionId) {
   unlockedSessions.delete(sessionId);
 }
+
+export function clearUnlockedSessionsForUser(userId) {
+  for (const [sessionId, payload] of unlockedSessions.entries()) {
+    if (payload.userId === userId) {
+      unlockedSessions.delete(sessionId);
+    }
+  }
+}

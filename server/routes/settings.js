@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { insertAuditEvent } from '../audit/index.js';
 import { requireUnlockedSession } from '../auth/requireAuth.js';
+import { requireAdminRole } from '../auth/roles.js';
 import { verifyFreshUnlockSecret } from '../auth/verifyUnlockSecret.js';
 import { asyncHandler, badRequest } from '../http/errors.js';
 import { objectResponse } from '../http/response.js';
@@ -39,6 +40,7 @@ export function createSettingsRouter({ db }) {
   const router = Router();
 
   router.use(requireUnlockedSession);
+  router.use(requireAdminRole);
 
   router.get(
     '/backup',

@@ -26,6 +26,32 @@ function blobResponse(body, status = 200, headers = {}) {
   });
 }
 
+function supportPolicyResponse(overrides = {}) {
+  return jsonResponse({
+    data: {
+      supportAccessEnabled: false,
+      supportContact: '',
+      supportPolicyUrl: '',
+      supportNotes: '',
+      supportUpdatedAt: null,
+      supportUpdatedByUserId: null,
+      ...overrides,
+    },
+  });
+}
+
+function dataPolicyResponse(overrides = {}) {
+  return jsonResponse({
+    data: {
+      auditRetentionDays: 365,
+      idempotencyRetentionDays: 7,
+      sessionRetentionDays: 7,
+      loginAttemptRetentionDays: 30,
+      ...overrides,
+    },
+  });
+}
+
 describe('App', () => {
   beforeEach(() => {
     vi.spyOn(globalThis, 'fetch');
@@ -1087,6 +1113,9 @@ describe('App', () => {
           },
         }),
       )
+      .mockResolvedValueOnce(jsonResponse({ data: [] }))
+      .mockResolvedValueOnce(supportPolicyResponse())
+      .mockResolvedValueOnce(dataPolicyResponse())
       .mockResolvedValueOnce(jsonResponse({ data: { changed: true } }));
 
     const user = userEvent.setup();
@@ -1143,6 +1172,9 @@ describe('App', () => {
           },
         }),
       )
+      .mockResolvedValueOnce(jsonResponse({ data: [] }))
+      .mockResolvedValueOnce(supportPolicyResponse())
+      .mockResolvedValueOnce(dataPolicyResponse())
       .mockResolvedValueOnce(
         jsonResponse({
           data: {
@@ -1215,7 +1247,10 @@ describe('App', () => {
             lastRawDatabaseExportAt: null,
           },
         }),
-      );
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [] }))
+      .mockResolvedValueOnce(supportPolicyResponse())
+      .mockResolvedValueOnce(dataPolicyResponse());
 
     const user = userEvent.setup();
     render(<App />);
@@ -1225,6 +1260,252 @@ describe('App', () => {
 
     expect(await screen.findByText(/^policy locked$/i)).toBeInTheDocument();
     expect(screen.getByRole('checkbox', { name: /^allow plaintext json export$/i })).toBeDisabled();
+  });
+
+  it('creates a user from security settings', async () => {
+    globalThis.fetch
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            setupComplete: true,
+            sessionValid: true,
+            dekLoaded: true,
+            csrfToken: 'csrf_ready',
+            user: {
+              id: 1,
+              email: 'owner@example.com',
+              displayName: 'Owner',
+              role: 'owner',
+            },
+          },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            allowPlaintextExport: true,
+            backupReminderDays: 30,
+            backupReminderDue: true,
+            lastBackupAt: null,
+            nextBackupDueAt: null,
+            lastPlaintextExportAt: null,
+            lastEncryptedExportAt: null,
+            lastRawDatabaseExportAt: null,
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            {
+              id: 1,
+              email: 'owner@example.com',
+              displayName: 'Owner',
+              role: 'owner',
+              disabledAt: null,
+              lastLoginAt: null,
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(supportPolicyResponse())
+      .mockResolvedValueOnce(dataPolicyResponse())
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            data: {
+              id: 2,
+              email: 'viewer@example.com',
+              displayName: 'Viewer A',
+              role: 'viewer',
+              disabledAt: null,
+              lastLoginAt: null,
+            },
+          },
+          201,
+        ),
+      );
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByRole('heading', { name: /dashboard/i });
+    await user.click(screen.getByRole('button', { name: /^settings$/i }));
+    expect(await screen.findByText('owner@example.com')).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText(/^user email$/i), 'viewer@example.com');
+    await user.type(screen.getByLabelText(/^display name$/i), 'Viewer A');
+    await user.selectOptions(screen.getByLabelText(/^role$/i), 'viewer');
+    await user.type(screen.getByLabelText(/^temporary unlock secret$/i), 'temporary unlock phrase');
+    await user.type(screen.getByLabelText(/^your unlock secret$/i), 'owner unlock phrase');
+    await user.click(screen.getByRole('button', { name: /^add user$/i }));
+
+    expect(await screen.findByText(/viewer a added/i)).toBeInTheDocument();
+    expect(screen.getByText('viewer@example.com')).toBeInTheDocument();
+    expect(globalThis.fetch).toHaveBeenLastCalledWith(
+      '/api/users',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          currentUnlockSecret: 'owner unlock phrase',
+          email: 'viewer@example.com',
+          displayName: 'Viewer A',
+          role: 'viewer',
+          unlockSecret: 'temporary unlock phrase',
+        }),
+        headers: expect.objectContaining({
+          'X-CSRF-Token': 'csrf_ready',
+        }),
+      }),
+    );
+  });
+
+  it('updates support and data policies from settings', async () => {
+    globalThis.fetch
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            setupComplete: true,
+            sessionValid: true,
+            dekLoaded: true,
+            csrfToken: 'csrf_ready',
+            user: {
+              id: 1,
+              email: 'owner@example.com',
+              displayName: 'Owner',
+              role: 'owner',
+            },
+          },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            allowPlaintextExport: true,
+            backupReminderDays: 30,
+            backupReminderDue: true,
+            lastBackupAt: null,
+            nextBackupDueAt: null,
+            lastPlaintextExportAt: null,
+            lastEncryptedExportAt: null,
+            lastRawDatabaseExportAt: null,
+          },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [] }))
+      .mockResolvedValueOnce(supportPolicyResponse())
+      .mockResolvedValueOnce(dataPolicyResponse())
+      .mockResolvedValueOnce(
+        supportPolicyResponse({
+          supportAccessEnabled: true,
+          supportContact: 'ops@example.com',
+          supportPolicyUrl: 'https://example.com/support',
+          supportNotes: 'Owner approval required.',
+          supportUpdatedAt: '2026-05-12T08:00:00.000Z',
+          supportUpdatedByUserId: 1,
+        }),
+      )
+      .mockResolvedValueOnce(
+        dataPolicyResponse({
+          auditRetentionDays: 180,
+          idempotencyRetentionDays: 14,
+          sessionRetentionDays: 3,
+          loginAttemptRetentionDays: 30,
+        }),
+      );
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByRole('heading', { name: /dashboard/i });
+    await user.click(screen.getByRole('button', { name: /^settings$/i }));
+
+    await user.click(await screen.findByRole('checkbox', { name: /^support access enabled$/i }));
+    await user.type(screen.getByLabelText(/^support contact$/i), 'ops@example.com');
+    await user.type(screen.getByLabelText(/^support policy url$/i), 'https://example.com/support');
+    await user.type(screen.getByLabelText(/^support notes$/i), 'Owner approval required.');
+    await user.type(screen.getByLabelText(/^support policy unlock secret$/i), 'a strong unlock phrase');
+    await user.click(screen.getByRole('button', { name: /^save support policy$/i }));
+
+    expect(await screen.findByText(/support policy saved/i)).toBeInTheDocument();
+    expect(globalThis.fetch).toHaveBeenLastCalledWith(
+      '/api/admin/support-policy',
+      expect.objectContaining({
+        method: 'PUT',
+        body: JSON.stringify({
+          unlockSecret: 'a strong unlock phrase',
+          supportAccessEnabled: true,
+          supportContact: 'ops@example.com',
+          supportPolicyUrl: 'https://example.com/support',
+          supportNotes: 'Owner approval required.',
+        }),
+        headers: expect.objectContaining({
+          'X-CSRF-Token': 'csrf_ready',
+        }),
+      }),
+    );
+
+    await user.clear(screen.getByLabelText(/^audit retention days$/i));
+    await user.type(screen.getByLabelText(/^audit retention days$/i), '180');
+    await user.clear(screen.getByLabelText(/^idempotency retention days$/i));
+    await user.type(screen.getByLabelText(/^idempotency retention days$/i), '14');
+    await user.clear(screen.getByLabelText(/^session retention days$/i));
+    await user.type(screen.getByLabelText(/^session retention days$/i), '3');
+    await user.type(screen.getByLabelText(/^data policy unlock secret$/i), 'a strong unlock phrase');
+    await user.click(screen.getByRole('button', { name: /^save data policy$/i }));
+
+    expect(await screen.findByText(/data policy saved/i)).toBeInTheDocument();
+    expect(globalThis.fetch).toHaveBeenLastCalledWith(
+      '/api/admin/data-policy',
+      expect.objectContaining({
+        method: 'PUT',
+        body: JSON.stringify({
+          unlockSecret: 'a strong unlock phrase',
+          auditRetentionDays: 180,
+          idempotencyRetentionDays: 14,
+          sessionRetentionDays: 3,
+          loginAttemptRetentionDays: 30,
+        }),
+        headers: expect.objectContaining({
+          'X-CSRF-Token': 'csrf_ready',
+        }),
+      }),
+    );
+  });
+
+  it('renders viewer sessions as read-only', async () => {
+    globalThis.fetch
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            setupComplete: true,
+            sessionValid: true,
+            dekLoaded: true,
+            csrfToken: 'csrf_viewer',
+            user: {
+              id: 3,
+              email: 'viewer@example.com',
+              displayName: 'Viewer A',
+              role: 'viewer',
+            },
+          },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }));
+
+    render(<App />);
+
+    expect(await screen.findByRole('heading', { name: /dashboard/i })).toBeInTheDocument();
+    expect(screen.getByText(/viewer a/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^settings$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^backup$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^import$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /add deal/i })).not.toBeInTheDocument();
   });
 
   it('reveals and copies card credentials from card detail without putting secrets in status text', async () => {

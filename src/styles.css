@@ -510,8 +510,15 @@ td {
 }
 
 .muted-text {
-  color: #7a8699;
+  color: #536073;
   font-size: 0.84rem;
+}
+
+.muted-block {
+  display: block;
+  color: #536073;
+  font-size: 0.82rem;
+  font-weight: 600;
 }
 
 .status-badge {
@@ -670,6 +677,16 @@ td {
   padding: 16px;
 }
 
+.user-admin-stack {
+  display: grid;
+  gap: 14px;
+}
+
+.data-operations-grid {
+  display: grid;
+  gap: 16px;
+}
+
 .settings-form {
   display: grid;
   grid-template-columns: repeat(3, minmax(180px, 1fr));
@@ -687,12 +704,18 @@ td {
 
 .settings-form .backup-actions,
 .settings-form .field-error,
-.settings-form .success-copy {
+.settings-form .success-copy,
+.settings-form .warning-copy {
   grid-column: 1 / -1;
 }
 
 .backup-settings-form {
   grid-template-columns: repeat(3, minmax(180px, 1fr));
+}
+
+.user-create-form {
+  border-top: 1px solid #e4e8ee;
+  padding-top: 16px;
 }
 
 .settings-summary-grid,

@@ -6,20 +6,28 @@ import { createSqliteLoginAttemptStore } from './auth/loginAttempts.js';
 import { createSqliteSessionStore } from './auth/sqliteSessionStore.js';
 import { verifyDatabase } from './db/index.js';
 import { errorResponse } from './http/response.js';
+import { createErrorReporter } from './observability/errorReporter.js';
 import { createRequestLogger, logRequestError } from './observability/requestLogging.js';
 import { createRequestMetrics, createRequestMetricsMiddleware } from './observability/requestMetrics.js';
 import { createAuditRouter } from './routes/audit.js';
 import { createAuthRouter } from './routes/auth.js';
 import { createBackupRouter } from './routes/backup.js';
 import { createCardsRouter } from './routes/cards.js';
+import { createAdminRouter } from './routes/admin.js';
 import { createDealsRouter } from './routes/deals.js';
 import { createObservabilityRouter } from './routes/observability.js';
 import { createSettingsRouter } from './routes/settings.js';
+import { createUsersRouter } from './routes/users.js';
 import { csrfProtection } from './security/csrf.js';
 
 function assertProductionConfig() {
   if (process.env.NODE_ENV === 'production' && !process.env.SESSION_SECRET) {
     throw new Error('SESSION_SECRET is required in production.');
+  }
+  if (process.env.GC_DEPLOYMENT_MODE === 'multi-instance') {
+    throw new Error(
+      'GC_DEPLOYMENT_MODE=multi-instance is blocked until external shared session/rate-limit stores and a server database are configured.',
+    );
   }
 }
 
@@ -29,6 +37,7 @@ export function createApp({ db, logger = console } = {}) {
   const app = express();
   const sessionStore = db ? createSqliteSessionStore({ db }) : undefined;
   const metrics = createRequestMetrics();
+  const errorReporter = createErrorReporter({ logger });
 
   app.disable('x-powered-by');
   app.use(
@@ -102,6 +111,7 @@ export function createApp({ db, logger = console } = {}) {
   });
 
   if (db) {
+    app.use('/api/admin', createAdminRouter({ db }));
     app.use('/api/auth', createAuthRouter({ db, loginAttempts: createSqliteLoginAttemptStore({ db }) }));
     app.use('/api/audit', createAuditRouter({ db }));
     app.use('/api/backup', createBackupRouter({ db }));
@@ -109,6 +119,7 @@ export function createApp({ db, logger = console } = {}) {
     app.use('/api/deals', createDealsRouter({ db }));
     app.use('/api/observability', createObservabilityRouter({ metrics }));
     app.use('/api/settings', createSettingsRouter({ db }));
+    app.use('/api/users', createUsersRouter({ db }));
   }
 
   app.use((req, res) => {
@@ -128,6 +139,7 @@ export function createApp({ db, logger = console } = {}) {
     }
 
     logRequestError({ logger, req, err });
+    errorReporter.report({ req, err });
     res
       .status(500)
       .json(errorResponse({ code: 'INTERNAL_ERROR', message: 'Unexpected server error.' }, req.requestId));

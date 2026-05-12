@@ -177,7 +177,10 @@ Require fresh unlock secret re-entry for:
 - Raw DB export.
 - Import replace.
 - Change unlock secret.
-- Future account deletion.
+- User creation and role/disabled-state changes.
+- Support policy and data retention policy updates.
+- Sanitized account export.
+- Retention purge and inventory deletion.
 
 Freshness window should be short, e.g. immediate prompt or a 5-minute reauth token.
 
@@ -192,6 +195,16 @@ Product mode:
 - A shared persistent rate-limit store such as Redis or the production database is required for multi-instance deployments.
 - Scope by account, user, IP, and action type.
 - Alert on repeated failed login and repeated export attempts.
+
+### 7.5 Authorization Roles
+
+Release 3 roles:
+
+- owner/admin: manage users, backup/export settings, support policy, data policy, observability, and destructive data operations.
+- operator: create and mutate cards/deals and run CSV import, but cannot reveal admin settings or full backup/export controls.
+- viewer: read inventory and audit surfaces only; cannot mutate inventory or reveal card credentials.
+
+Role changes and disabled-user changes clear that user's unlocked sessions. The app remains single-account in Release 3; multi-account tenancy remains out of scope.
 
 ## 8. XSS and Frontend Security
 
@@ -396,13 +409,14 @@ MVP:
 - No third-party analytics by default.
 - Logs must not contain sensitive payloads.
 - Backups are user-managed and clearly labeled.
+- Release 3 includes sanitized data export, support-policy records, retention policy settings, retention purge, and inventory deletion while preserving users and audit trail.
 
 Future product:
 
 - Privacy policy.
-- Data deletion/export workflow.
-- Retention settings for audit and backups.
-- Support access controls.
+- Full legal/privacy review for data deletion/export workflow.
+- Retention settings for backups and external monitoring systems.
+- Customer support access controls beyond the in-app support-policy record.
 - Tenant isolation tests.
 - Security incident process.
 

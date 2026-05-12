@@ -1,6 +1,6 @@
 # Release 3 Status
 
-Status: In progress
+Status: Release 3 complete
 Review date: 2026-05-12
 Primary audience: engineering, QA, operator
 
@@ -63,10 +63,82 @@ Verification:
 - App test verifies authenticated metrics response shape and confirms query details from a prior request are not returned.
 - Focused test passed: `npm test -- server/app.test.js`.
 
+### Milestone 4: User Admin And Role-Based Access
+
+Status: code complete; release gate passed on 2026-05-12.
+
+Delivered:
+
+- Added per-user email, disabled status, and last-login tracking.
+- Added owner/admin/operator/viewer roles.
+- Added admin-only user management API and Settings UI.
+- Login accepts email when multiple active users exist and blocks disabled users.
+- Viewers can read inventory and audit surfaces but cannot mutate cards/deals or reveal credentials.
+- Operators can manage inventory and CSV imports but cannot access admin settings, backup exports, user admin, or support/data policy controls.
+- Admin/owner roles can manage users, backup policy, support policy, data policy, observability, and backup/export operations.
+
+Verification:
+
+- Backend RBAC tests cover create/list users, operator permissions, viewer read-only behavior, email-required login, and disabled-user login rejection.
+- React tests cover admin user creation and viewer read-only navigation.
+- Focused tests passed: `npm test -- server/routes/users.test.js src/App.test.jsx`.
+
+### Milestone 5: Support Policy And Data Governance Workflows
+
+Status: code complete; release gate passed on 2026-05-12.
+
+Delivered:
+
+- Added admin support-access policy settings with explicit support-access enablement, contact, policy URL, notes, updated timestamp, and updater user ID.
+- Added admin data-retention policy for audit rows, idempotency records, expired web sessions, and login-attempt records.
+- Added retention preview/run endpoint with fresh unlock secret and `PURGE` confirmation for destructive deletion.
+- Added sanitized account export that omits card numbers, PINs, billing ZIPs, unlock-secret hashes, encrypted DEKs, and blind indexes.
+- Added guarded inventory deletion workflow that removes cards, deals, usage, sale history, import jobs, and idempotency rows while preserving users/settings/audit.
+- Added Settings UI controls for support policy, data policy, sanitized export, retention purge, and inventory deletion.
+
+Verification:
+
+- Backend admin tests cover policy updates, redacted audits, sanitized export exclusions, retention preview/purge, and inventory deletion.
+- React tests cover support and data policy updates from Settings.
+- Focused tests passed: `npm test -- server/routes/admin.test.js src/App.test.jsx`.
+
+### Milestone 6: Production Observability Export And Deployment Gates
+
+Status: code complete; release gate passed on 2026-05-12.
+
+Delivered:
+
+- Added Prometheus text metrics export at `GET /api/observability/metrics`.
+- Metrics scraping supports admin session auth or `Authorization: Bearer <GC_METRICS_TOKEN>` for external scrapers.
+- Metrics export includes aggregate counters/gauges only; it excludes request paths, query strings, request bodies, headers, cookies, and credential values.
+- Added optional external error report hook via `GC_ERROR_REPORT_URL` and `GC_ERROR_REPORT_TOKEN`.
+- External error reports send sanitized request ID, method, queryless path, account/user IDs, error name, and error code only.
+- Added startup guard that blocks `GC_DEPLOYMENT_MODE=multi-instance` until external shared session/rate-limit stores and server database support are implemented.
+
+Verification:
+
+- App tests cover Prometheus metrics output, absence of query/card details, sanitized external error report payload, production session-secret guard, and multi-instance startup block.
+- Focused test passed: `npm test -- server/app.test.js`.
+
+### Milestone 7: Postgres Migration Spike
+
+Status: documentation complete; release gate passed on 2026-05-12.
+
+Delivered:
+
+- Added ADR 0006 documenting the Postgres migration spike findings, blockers, and recommended sequence.
+- Confirmed SQLite remains appropriate for local/single-node Release 3.
+- Confirmed Postgres/shared stores are required before multi-instance hosting or SaaS-style tenancy.
+- Added the runtime multi-instance guard described in ADR 0006.
+
+Verification:
+
+- ADR added: `docs/adr/0006-postgres-migration-spike.md`.
+
 ## Current Verification
 
 - `npm run lint` passed.
-- `npm test` passed: 12 files, 105 tests.
+- `npm test` passed: 14 files, 119 tests.
 - `npm run test:perf` passed.
 - `npm run test:e2e` passed: 8 Chromium tests.
 - `npm run build` passed.
@@ -76,10 +148,6 @@ Verification:
 
 ## Remaining Productization Scope
 
-- Production observability: metrics export/scraping, alerts, and external error reporting.
-- Real account/user admin if the app moves beyond single-owner use.
-- Role-based access controls.
-- Support/admin access policy implementation.
-- Data retention and deletion/export workflows.
-- External shared session/rate-limit stores before multi-instance deployment.
-- Postgres migration spike if concurrent hosted usage outgrows SQLite deployment assumptions.
+- External shared session/rate-limit stores and Postgres implementation remain required before multi-instance deployment; Release 3 now blocks that mode at startup.
+- Production alert rules still need to be installed in the target monitoring platform; Release 3 documents the recommended signals and exports metrics.
+- SaaS/customer support tooling remains out of scope beyond the admin support-policy record and sanitized export/delete workflows.

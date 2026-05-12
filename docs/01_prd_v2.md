@@ -314,11 +314,11 @@ Do not log sensitive field values.
 
 ### Release 3
 
-- Team account model.
-- Role-based access.
+- Team account model. Status: single-account multi-user activation implemented in Release 3 on 2026-05-12; multi-account/team tenancy remains out of scope.
+- Role-based access. Status: owner/admin/operator/viewer RBAC implemented in Release 3 on 2026-05-12.
 - Persistent session/rate-limit store. Status: SQLite-backed single-node session and login-attempt stores implemented in Release 3 milestone 1 on 2026-05-12; external shared store remains required before multi-instance hosting.
-- Admin audit and support tooling.
-- Postgres migration spike if productization proceeds.
+- Admin audit and support tooling. Status: user admin, support-policy record, data-retention policy, sanitized data export, inventory deletion, metrics export, and sanitized error reporting implemented in Release 3 on 2026-05-12.
+- Postgres migration spike if productization proceeds. Status: completed in ADR 0006 on 2026-05-12; implementation remains required before multi-instance or SaaS deployment.
 
 ## 12. Open Product Questions
 

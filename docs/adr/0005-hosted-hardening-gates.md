@@ -22,8 +22,9 @@ Before hosted team use, the app must pass these gates:
 - `GC_PLAINTEXT_EXPORT_ENABLED=false` is implemented. It policy-locks plaintext JSON export off, prevents settings from enabling it, and returns 403 for plaintext export attempts.
 - SQLite-backed `web_sessions` is implemented for single-node hosted session metadata. DEK material intentionally remains process-memory-only; after a process restart, the session can remain valid but encrypted data requires unlocking again.
 - SQLite-backed `auth_login_attempts` is implemented for single-node persistent failed-login counters.
-- External shared session/rate-limit infrastructure is still required before multi-instance hosting.
-- Observability includes request IDs, health checks, security headers, audit rows, credential-safe structured request/error logs, and an authenticated runtime metrics summary. Production metrics export/scraping, alerting, and external error reporting remain future work.
+- External shared session/rate-limit infrastructure is still required before multi-instance hosting; `GC_DEPLOYMENT_MODE=multi-instance` is blocked at startup until that work is implemented.
+- Observability includes request IDs, health checks, security headers, audit rows, credential-safe structured request/error logs, an authenticated runtime metrics summary, Prometheus metrics export, and optional sanitized external error reporting. Alert-rule installation remains deployment work.
+- Support/data governance includes admin user management, owner/admin/operator/viewer RBAC, support-policy settings, retention policy settings, sanitized data export, retention purge, and guarded inventory deletion.
 
 ## Consequences
 

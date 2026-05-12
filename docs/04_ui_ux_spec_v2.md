@@ -526,11 +526,21 @@ Implemented Release 2 backup settings:
 - Current unlock secret required before saving backup settings.
 - Backup history timestamps for encrypted JSON, plaintext JSON, and raw database exports.
 
+Implemented Release 3 admin settings:
+
+- User Access table with active/disabled status, role selectors, and add-user form.
+- Support Policy form with support access enablement, contact, policy URL, notes, and last-updated summary.
+- Data Policy form for audit, idempotency, session, and login-attempt retention days.
+- Data Operations controls for sanitized export, retention purge, and inventory deletion with exact confirmation text.
+- Read-only viewer sessions hide Settings, Backup, Import, Add Deal, and credential reveal actions.
+
 Rules:
 
 - Do not show the unlock secret or backup passphrase in settings status, toasts, or audit summaries.
+- Do not show temporary user unlock secrets in success messages or audit summaries.
 - If plaintext export is disabled, the backend must reject plaintext export even if a stale UI still shows the export button.
 - Keep unlock-secret rotation in the same Settings area, but visually separated from backup settings.
+- Destructive data operations must use danger styling, current unlock secret, exact confirmation text, and a result summary that does not include credential values.
 
 ## 8. Global States
 

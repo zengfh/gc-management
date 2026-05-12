@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { insertAuditEvent } from '../audit/index.js';
 import { requireUnlockedSession } from '../auth/requireAuth.js';
+import { requireOperatorRole } from '../auth/roles.js';
 import { asyncHandler, badRequest, conflict, notFound } from '../http/errors.js';
 import {
   cardNumberHash as hashCardNumber,
@@ -326,6 +327,7 @@ export function createDealsRouter({ db }) {
 
   router.post(
     '/',
+    requireOperatorRole,
     asyncHandler(async (req, res) => {
       const rawCards = Array.isArray(req.body?.cards) ? req.body.cards : [];
       const body = validateBody(createDealSchema, req.body || {});
@@ -443,6 +445,7 @@ export function createDealsRouter({ db }) {
 
   router.put(
     '/:dealId',
+    requireOperatorRole,
     asyncHandler(async (req, res) => {
       const dealId = parsePositiveInt(req.params.dealId, null, { min: 1 });
       const body = validateBody(updateDealSchema, req.body || {});
@@ -534,6 +537,7 @@ export function createDealsRouter({ db }) {
 
   router.post(
     '/:dealId/archive',
+    requireOperatorRole,
     asyncHandler(async (req, res) => {
       const dealId = parsePositiveInt(req.params.dealId, null, { min: 1 });
       archiveDeal({ req, dealId, archivedAt: nowIso() });
@@ -543,6 +547,7 @@ export function createDealsRouter({ db }) {
 
   router.post(
     '/:dealId/unarchive',
+    requireOperatorRole,
     asyncHandler(async (req, res) => {
       const dealId = parsePositiveInt(req.params.dealId, null, { min: 1 });
       archiveDeal({ req, dealId, archivedAt: null });

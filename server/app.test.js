@@ -145,6 +145,91 @@ describe('app', () => {
     }
   }, 30_000);
 
+  it('exports Prometheus metrics with a scraper token and no request details', async () => {
+    const originalToken = process.env.GC_METRICS_TOKEN;
+    process.env.GC_METRICS_TOKEN = 'metrics-token';
+    const db = openDatabase({ filename: ':memory:' });
+    const app = createApp({ db });
+    try {
+      await request(app).get('/api/health?cardNumber=4111111111111111');
+
+      const response = await request(app)
+        .get('/api/observability/metrics')
+        .set('Authorization', 'Bearer metrics-token');
+
+      expect(response.status).toBe(200);
+      expect(response.headers['content-type']).toContain('text/plain');
+      expect(response.text).toContain('gc_http_requests_total');
+      expect(response.text).toContain('gc_http_requests_by_status_class_total{status_class="2xx"}');
+      expect(response.text).not.toContain('4111111111111111');
+      expect(response.text).not.toContain('cardNumber');
+    } finally {
+      db.close();
+      if (originalToken === undefined) {
+        delete process.env.GC_METRICS_TOKEN;
+      } else {
+        process.env.GC_METRICS_TOKEN = originalToken;
+      }
+    }
+  });
+
+  it('reports internal errors externally without request payload or query data', async () => {
+    const originalEndpoint = process.env.GC_ERROR_REPORT_URL;
+    const originalToken = process.env.GC_ERROR_REPORT_TOKEN;
+    process.env.GC_ERROR_REPORT_URL = 'https://errors.example.test/report';
+    process.env.GC_ERROR_REPORT_TOKEN = 'error-token';
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: true });
+    const logger = {
+      info: vi.fn(),
+      error: vi.fn(),
+    };
+    const db = openDatabase({ filename: ':memory:' });
+    const app = createApp({ db, logger });
+
+    try {
+      db.close();
+      const response = await request(app)
+        .get('/api/health?cardNumber=4111111111111111&unlockSecret=a%20strong%20unlock%20phrase')
+        .set('x-request-id', 'req_external_error');
+
+      expect(response.status).toBe(500);
+      expect(fetchSpy).toHaveBeenCalledWith(
+        'https://errors.example.test/report',
+        expect.objectContaining({
+          method: 'POST',
+          headers: expect.objectContaining({
+            Authorization: 'Bearer error-token',
+          }),
+        }),
+      );
+      const reportBody = JSON.parse(fetchSpy.mock.calls[0][1].body);
+      expect(reportBody).toMatchObject({
+        event: 'server.error',
+        requestId: 'req_external_error',
+        method: 'GET',
+        path: '/api/health',
+        error: {
+          code: 'INTERNAL_ERROR',
+        },
+      });
+      expect(JSON.stringify(reportBody)).not.toContain('4111111111111111');
+      expect(JSON.stringify(reportBody)).not.toContain('unlockSecret');
+      expect(JSON.stringify(reportBody)).not.toContain('a strong unlock phrase');
+    } finally {
+      fetchSpy.mockRestore();
+      if (originalEndpoint === undefined) {
+        delete process.env.GC_ERROR_REPORT_URL;
+      } else {
+        process.env.GC_ERROR_REPORT_URL = originalEndpoint;
+      }
+      if (originalToken === undefined) {
+        delete process.env.GC_ERROR_REPORT_TOKEN;
+      } else {
+        process.env.GC_ERROR_REPORT_TOKEN = originalToken;
+      }
+    }
+  });
+
   it('rejects production startup without an explicit session secret', () => {
     const originalNodeEnv = process.env.NODE_ENV;
     const originalSessionSecret = process.env.SESSION_SECRET;
@@ -157,6 +242,22 @@ describe('app', () => {
       db.close();
       process.env.NODE_ENV = originalNodeEnv;
       process.env.SESSION_SECRET = originalSessionSecret;
+    }
+  });
+
+  it('blocks unsafe multi-instance startup until external stores are implemented', () => {
+    const originalMode = process.env.GC_DEPLOYMENT_MODE;
+    process.env.GC_DEPLOYMENT_MODE = 'multi-instance';
+    const db = openDatabase({ filename: ':memory:' });
+    try {
+      expect(() => createApp({ db })).toThrow(/multi-instance is blocked/i);
+    } finally {
+      db.close();
+      if (originalMode === undefined) {
+        delete process.env.GC_DEPLOYMENT_MODE;
+      } else {
+        process.env.GC_DEPLOYMENT_MODE = originalMode;
+      }
     }
   });
 });

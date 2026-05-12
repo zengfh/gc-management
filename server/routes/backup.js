@@ -6,6 +6,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { insertAuditEvent } from '../audit/index.js';
 import { requireUnlockedSession } from '../auth/requireAuth.js';
+import { requireAdminRole } from '../auth/roles.js';
 import { verifyFreshUnlockSecret } from '../auth/verifyUnlockSecret.js';
 import { asyncHandler, badRequest, forbidden } from '../http/errors.js';
 import { runIdempotentJsonAsync, sendIdempotentJson } from '../http/idempotency.js';
@@ -889,6 +890,7 @@ export function createBackupRouter({ db }) {
   const router = Router();
 
   router.use(requireUnlockedSession);
+  router.use(requireAdminRole);
 
   router.post(
     '/export',

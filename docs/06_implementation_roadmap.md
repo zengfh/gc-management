@@ -236,13 +236,13 @@ Tasks:
 - [x] Persistent login rate-limit store for single-node hosted deployment. Completed 2026-05-12 with SQLite-backed `auth_login_attempts`.
 - [x] Credential-safe structured request/error logs. Completed 2026-05-12 with `GC_REQUEST_LOGS=true` or production mode.
 - [x] Authenticated runtime metrics summary. Completed 2026-05-12 with `/api/observability/summary`.
-- [ ] Real account/user admin if needed.
-- [ ] Production metrics export, alerts, and external error reporting.
-- [ ] Data retention policy.
+- [x] Real account/user admin if needed. Completed 2026-05-12 with admin user management and owner/admin/operator/viewer RBAC.
+- [x] Production metrics export and external error reporting. Completed 2026-05-12 with Prometheus metrics export, metrics bearer token support, and optional sanitized error-report webhook. Alert installation remains deployment work.
+- [x] Data retention policy. Completed 2026-05-12 with retention policy settings and guarded retention purge.
 - [ ] Privacy/security documentation.
 - [ ] Performance load tests.
-- [ ] Postgres migration spike.
-- [ ] Admin/support access policy.
+- [x] Postgres migration spike. Completed 2026-05-12 in ADR 0006; multi-instance startup is blocked until shared stores and server DB support exist.
+- [x] Admin/support access policy. Completed 2026-05-12 with support-policy settings and audit trail.
 - [ ] Feature flags.
 
 Exit criteria:
@@ -308,9 +308,9 @@ Do not start Phase 6 until the product's target customer, compliance posture, an
 - Encrypted portable export. Completed 2026-05-12 as Release 2 milestone 1.
 - Reservation metadata UX/API polish. Completed 2026-05-12 as Release 2 milestone 3.
 - Settings page backup controls. Completed 2026-05-12 as Release 2 milestone 2.
-- Observability.
-- Team/user model activation.
-- Postgres migration spike.
+- Observability. Runtime summary, Prometheus export, structured logs, and sanitized error reporting implemented in Release 3.
+- Team/user model activation. Admin user management and RBAC implemented in Release 3 for one account.
+- Postgres migration spike. Completed in ADR 0006; implementation remains future work before multi-instance deployment.
 - Feature flags.
 - Product analytics without sensitive data.
 

@@ -3,6 +3,7 @@ import { parse as parseCsv } from 'csv-parse/sync';
 import { z } from 'zod';
 import { insertAuditEvent } from '../audit/index.js';
 import { requireUnlockedSession } from '../auth/requireAuth.js';
+import { requireOperatorRole } from '../auth/roles.js';
 import { transitionFor } from '../cards/stateMachine.js';
 import { asyncHandler, badRequest, conflict, notFound } from '../http/errors.js';
 import { runIdempotentJson, sendIdempotentJson } from '../http/idempotency.js';
@@ -732,6 +733,7 @@ export function createCardsRouter({ db }) {
 
   router.post(
     '/',
+    requireOperatorRole,
     asyncHandler(async (req, res) => {
       const { cards } = validateBody(createCardsSchema, req.body);
       const timestamp = nowIso();
@@ -807,6 +809,7 @@ export function createCardsRouter({ db }) {
 
   router.post(
     '/import-csv',
+    requireOperatorRole,
     asyncHandler(async (req, res) => {
       const body = validateBody(importCsvPreviewSchema, req.body || {});
       res.json(objectResponse(buildCsvPreview(db, req.auth, body.csv)));
@@ -815,6 +818,7 @@ export function createCardsRouter({ db }) {
 
   router.post(
     '/import-csv/confirm',
+    requireOperatorRole,
     asyncHandler(async (req, res) => {
       const body = validateBody(importCsvPreviewSchema, req.body || {});
       const preview = buildCsvPreview(db, req.auth, body.csv);
@@ -984,6 +988,7 @@ export function createCardsRouter({ db }) {
 
   router.post(
     '/:cardId/reveal',
+    requireOperatorRole,
     asyncHandler(async (req, res) => {
       const cardId = parsePositiveInt(req.params.cardId, null, { min: 1 });
       const timestamp = nowIso();
@@ -1066,6 +1071,7 @@ export function createCardsRouter({ db }) {
 
   router.put(
     '/:cardId',
+    requireOperatorRole,
     asyncHandler(async (req, res) => {
       const cardId = parsePositiveInt(req.params.cardId, null, { min: 1 });
       const body = validateBody(updateCardSchema, req.body || {});
@@ -1138,6 +1144,7 @@ export function createCardsRouter({ db }) {
 
   router.delete(
     '/:cardId',
+    requireOperatorRole,
     asyncHandler(async (req, res) => {
       const cardId = parsePositiveInt(req.params.cardId, null, { min: 1 });
       const timestamp = nowIso();
@@ -1176,6 +1183,7 @@ export function createCardsRouter({ db }) {
 
   router.post(
     '/:cardId/reserve',
+    requireOperatorRole,
     asyncHandler(async (req, res) => {
       const cardId = parsePositiveInt(req.params.cardId, null, { min: 1 });
       const body = validateBody(reserveCardSchema, req.body || {});
@@ -1198,6 +1206,7 @@ export function createCardsRouter({ db }) {
 
   router.post(
     '/:cardId/unreserve',
+    requireOperatorRole,
     asyncHandler(async (req, res) => {
       const cardId = parsePositiveInt(req.params.cardId, null, { min: 1 });
       const response = runIdempotentJson(db, req, () => {
@@ -1218,6 +1227,7 @@ export function createCardsRouter({ db }) {
 
   router.post(
     '/:cardId/sell',
+    requireOperatorRole,
     asyncHandler(async (req, res) => {
       const cardId = parsePositiveInt(req.params.cardId, null, { min: 1 });
       const body = validateBody(sellCardSchema, req.body);
@@ -1288,6 +1298,7 @@ export function createCardsRouter({ db }) {
 
   router.post(
     '/:cardId/undo-sale',
+    requireOperatorRole,
     asyncHandler(async (req, res) => {
       const cardId = parsePositiveInt(req.params.cardId, null, { min: 1 });
       const body = validateBody(undoSaleSchema, req.body);
@@ -1384,6 +1395,7 @@ export function createCardsRouter({ db }) {
 
   router.post(
     '/:cardId/use',
+    requireOperatorRole,
     asyncHandler(async (req, res) => {
       const cardId = parsePositiveInt(req.params.cardId, null, { min: 1 });
       const body = validateBody(useCardSchema, req.body);
@@ -1456,6 +1468,7 @@ export function createCardsRouter({ db }) {
 
   router.post(
     '/:cardId/undo-usage',
+    requireOperatorRole,
     asyncHandler(async (req, res) => {
       const cardId = parsePositiveInt(req.params.cardId, null, { min: 1 });
       const body = validateBody(undoUsageSchema, req.body);
@@ -1544,6 +1557,7 @@ export function createCardsRouter({ db }) {
 
   router.post(
     '/:cardId/void',
+    requireOperatorRole,
     asyncHandler(async (req, res) => {
       const cardId = parsePositiveInt(req.params.cardId, null, { min: 1 });
       const body = validateBody(voidCardSchema, req.body || {});

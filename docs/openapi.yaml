@@ -14,6 +14,9 @@ tags:
   - name: Cards
   - name: Deals
   - name: ImportExport
+  - name: Settings
+  - name: Users
+  - name: Admin
   - name: Audit
   - name: Observability
 paths:
@@ -779,6 +782,282 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
+  /api/users:
+    get:
+      tags: [Users]
+      summary: List account users
+      operationId: listUsers
+      responses:
+        "200":
+          description: Account users
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      tags: [Users]
+      summary: Create an account user
+      operationId: createUser
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserCreateRequest"
+      responses:
+        "201":
+          description: Created user
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ObjectResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/User"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/users/{userId}:
+    put:
+      tags: [Users]
+      summary: Update user role, display name, or disabled status
+      operationId: updateUser
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserUpdateRequest"
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ObjectResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/User"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/admin/support-policy:
+    get:
+      tags: [Admin]
+      summary: Get support access policy
+      operationId: getSupportPolicy
+      responses:
+        "200":
+          description: Support access policy
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ObjectResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/SupportPolicy"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    put:
+      tags: [Admin]
+      summary: Update support access policy
+      operationId: updateSupportPolicy
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SupportPolicyUpdateRequest"
+      responses:
+        "200":
+          description: Updated support access policy
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ObjectResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/SupportPolicy"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/admin/data-policy:
+    get:
+      tags: [Admin]
+      summary: Get data retention policy
+      operationId: getDataPolicy
+      responses:
+        "200":
+          description: Data retention policy
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ObjectResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/DataPolicy"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    put:
+      tags: [Admin]
+      summary: Update data retention policy
+      operationId: updateDataPolicy
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DataPolicyUpdateRequest"
+      responses:
+        "200":
+          description: Updated data retention policy
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ObjectResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/DataPolicy"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/admin/retention/run:
+    post:
+      tags: [Admin]
+      summary: Preview or run data retention deletion
+      operationId: runDataRetention
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RetentionRunRequest"
+      responses:
+        "200":
+          description: Retention result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RetentionRunResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/admin/data-export:
+    post:
+      tags: [Admin]
+      summary: Export sanitized account data without card credentials or key material
+      operationId: exportSanitizedAccountData
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SanitizedDataExportRequest"
+      responses:
+        "200":
+          description: Sanitized export
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ObjectResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/SanitizedAccountExport"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/admin/data-delete:
+    post:
+      tags: [Admin]
+      summary: Delete account inventory data while preserving users and audit trail
+      operationId: deleteAccountInventoryData
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeleteInventoryDataRequest"
+      responses:
+        "200":
+          description: Inventory deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteInventoryDataResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
   /api/audit:
     get:
       tags: [Audit]
@@ -808,6 +1087,26 @@ paths:
                 $ref: "#/components/schemas/ObservabilitySummaryResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
+  /api/observability/metrics:
+    get:
+      tags: [Observability]
+      summary: Prometheus metrics export
+      operationId: getPrometheusMetrics
+      description: >
+        Returns process-local request metrics. Authenticated admins may call this
+        endpoint with a session, or scrapers may use `Authorization: Bearer`
+        when `GC_METRICS_TOKEN` is configured.
+      responses:
+        "200":
+          description: Prometheus text exposition
+          content:
+            text/plain:
+              schema:
+                type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
 components:
   parameters:
     CardId:
@@ -819,6 +1118,13 @@ components:
         minimum: 1
     DealId:
       name: dealId
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+    UserId:
+      name: userId
       in: path
       required: true
       schema:
@@ -920,8 +1226,27 @@ components:
               type: boolean
             dekLoaded:
               type: boolean
+            user:
+              $ref: "#/components/schemas/AuthUser"
             csrfToken:
               type: string
+    AuthUser:
+      type: object
+      required: [id, accountId, role]
+      properties:
+        id:
+          type: integer
+        accountId:
+          type: integer
+        role:
+          type: string
+          enum: [owner, admin, operator, viewer]
+        email:
+          type: string
+          nullable: true
+        displayName:
+          type: string
+          nullable: true
     ObservabilitySummaryResponse:
       type: object
       required: [data]
@@ -978,6 +1303,10 @@ components:
       type: object
       required: [unlockSecret]
       properties:
+        email:
+          type: string
+          format: email
+          description: Required when more than one active user exists.
         unlockSecret:
           type: string
     ChangeUnlockSecretRequest:
@@ -1502,6 +1831,276 @@ components:
           type: integer
           minimum: 0
           maximum: 365
+    User:
+      type: object
+      required: [id, accountId, displayName, role, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        accountId:
+          type: integer
+        email:
+          type: string
+          nullable: true
+        displayName:
+          type: string
+        role:
+          type: string
+          enum: [owner, admin, operator, viewer]
+        disabledAt:
+          type: string
+          format: date-time
+          nullable: true
+        lastLoginAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    UserListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/User"
+    UserCreateRequest:
+      type: object
+      required: [currentUnlockSecret, email, displayName, role, unlockSecret]
+      properties:
+        currentUnlockSecret:
+          type: string
+        email:
+          type: string
+          format: email
+        displayName:
+          type: string
+        role:
+          type: string
+          enum: [admin, operator, viewer]
+        unlockSecret:
+          type: string
+          minLength: 8
+          description: Temporary unlock secret for the new user.
+    UserUpdateRequest:
+      type: object
+      properties:
+        displayName:
+          type: string
+        role:
+          type: string
+          enum: [owner, admin, operator, viewer]
+        disabled:
+          type: boolean
+    SupportPolicy:
+      type: object
+      required:
+        - supportAccessEnabled
+        - supportContact
+        - supportPolicyUrl
+        - supportNotes
+        - supportUpdatedAt
+        - supportUpdatedByUserId
+      properties:
+        supportAccessEnabled:
+          type: boolean
+        supportContact:
+          type: string
+        supportPolicyUrl:
+          type: string
+        supportNotes:
+          type: string
+        supportUpdatedAt:
+          type: string
+          format: date-time
+          nullable: true
+        supportUpdatedByUserId:
+          type: integer
+          nullable: true
+    SupportPolicyUpdateRequest:
+      type: object
+      required: [unlockSecret, supportAccessEnabled]
+      properties:
+        unlockSecret:
+          type: string
+        supportAccessEnabled:
+          type: boolean
+        supportContact:
+          type: string
+          maxLength: 200
+        supportPolicyUrl:
+          type: string
+          maxLength: 500
+        supportNotes:
+          type: string
+          maxLength: 1000
+    DataPolicy:
+      type: object
+      required:
+        - auditRetentionDays
+        - idempotencyRetentionDays
+        - sessionRetentionDays
+        - loginAttemptRetentionDays
+      properties:
+        auditRetentionDays:
+          type: integer
+          minimum: 1
+          maximum: 3650
+        idempotencyRetentionDays:
+          type: integer
+          minimum: 1
+          maximum: 3650
+        sessionRetentionDays:
+          type: integer
+          minimum: 1
+          maximum: 3650
+        loginAttemptRetentionDays:
+          type: integer
+          minimum: 1
+          maximum: 3650
+    DataPolicyUpdateRequest:
+      allOf:
+        - $ref: "#/components/schemas/DataPolicy"
+        - type: object
+          required: [unlockSecret]
+          properties:
+            unlockSecret:
+              type: string
+    RetentionRunRequest:
+      type: object
+      required: [unlockSecret]
+      properties:
+        unlockSecret:
+          type: string
+        dryRun:
+          type: boolean
+          default: false
+        confirmation:
+          type: string
+          description: Required as PURGE when dryRun is false.
+    RetentionCounts:
+      type: object
+      required: [auditLog, idempotencyKeys, webSessions, loginAttempts]
+      properties:
+        auditLog:
+          type: integer
+          minimum: 0
+        idempotencyKeys:
+          type: integer
+          minimum: 0
+        webSessions:
+          type: integer
+          minimum: 0
+        loginAttempts:
+          type: integer
+          minimum: 0
+    RetentionRunResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [dryRun, counts]
+          properties:
+            dryRun:
+              type: boolean
+            counts:
+              $ref: "#/components/schemas/RetentionCounts"
+    SanitizedDataExportRequest:
+      type: object
+      required: [unlockSecret, confirmation]
+      properties:
+        unlockSecret:
+          type: string
+        confirmation:
+          type: string
+          enum: [EXPORT]
+    SanitizedAccountExport:
+      type: object
+      required: [schemaVersion, exportType, exportedAt, warning, counts]
+      properties:
+        schemaVersion:
+          type: integer
+          enum: [1]
+        exportType:
+          type: string
+          enum: [sanitized_account_json]
+        exportedAt:
+          type: string
+          format: date-time
+        warning:
+          type: string
+        accounts:
+          type: array
+          items:
+            type: object
+        users:
+          type: array
+          items:
+            $ref: "#/components/schemas/User"
+        appSettings:
+          type: array
+          items:
+            type: object
+        deals:
+          type: array
+          items:
+            type: object
+        cards:
+          type: array
+          items:
+            type: object
+            description: Sanitized card rows omit cardNumber, pin, billingZip, encrypted values, and blind indexes.
+        transactions:
+          type: array
+          items:
+            type: object
+        usages:
+          type: array
+          items:
+            type: object
+        importJobs:
+          type: array
+          items:
+            type: object
+        auditLog:
+          type: array
+          items:
+            type: object
+        counts:
+          type: object
+          additionalProperties:
+            type: integer
+            minimum: 0
+    DeleteInventoryDataRequest:
+      type: object
+      required: [unlockSecret, confirmation]
+      properties:
+        unlockSecret:
+          type: string
+        confirmation:
+          type: string
+          enum: [DELETE_ACCOUNT_DATA]
+    DeleteInventoryDataResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [deleted, counts]
+          properties:
+            deleted:
+              type: boolean
+            counts:
+              type: object
+              additionalProperties:
+                type: integer
+                minimum: 0
     BackupImportRequest:
       type: object
       required: [unlockSecret, mode, payload]

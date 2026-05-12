@@ -50,6 +50,22 @@ const defaultBackupSettings = {
   lastRawDatabaseExportAt: null,
 };
 
+const defaultSupportPolicy = {
+  supportAccessEnabled: false,
+  supportContact: '',
+  supportPolicyUrl: '',
+  supportNotes: '',
+  supportUpdatedAt: null,
+  supportUpdatedByUserId: null,
+};
+
+const defaultDataPolicy = {
+  auditRetentionDays: 365,
+  idempotencyRetentionDays: 7,
+  sessionRetentionDays: 7,
+  loginAttemptRetentionDays: 30,
+};
+
 const csvImportTemplates = [
   {
     id: 'gc-manager',
@@ -90,6 +106,20 @@ const statusLabels = {
 };
 
 const terminalCardStatuses = new Set(['sold', 'used_up', 'void']);
+const adminRoleSet = new Set(['owner', 'admin']);
+const operatorRoleSet = new Set(['owner', 'admin', 'operator']);
+
+function authRole(auth) {
+  return auth?.user?.role || 'owner';
+}
+
+function canAdmin(auth) {
+  return adminRoleSet.has(authRole(auth));
+}
+
+function canManageInventory(auth) {
+  return operatorRoleSet.has(authRole(auth));
+}
 
 const dialogFocusableSelector = [
   'button:not([disabled])',
@@ -495,6 +525,7 @@ function SetupScreen({ onSetup }) {
 }
 
 function UnlockScreen({ onLogin }) {
+  const [email, setEmail] = useState('');
   const [unlockSecret, setUnlockSecret] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -504,7 +535,7 @@ function UnlockScreen({ onLogin }) {
     setError('');
     setSubmitting(true);
     try {
-      await onLogin(unlockSecret);
+      await onLogin({ email: email.trim(), unlockSecret });
     } catch (caught) {
       setError(caught.message);
     } finally {
@@ -524,6 +555,15 @@ function UnlockScreen({ onLogin }) {
           Enter your unlock secret to load the encryption key into memory for this session.
         </p>
         <form className="auth-form" onSubmit={submitLogin}>
+          <label>
+            <span>Email</span>
+            <input
+              type="email"
+              autoComplete="username"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+            />
+          </label>
           <label>
             <span>Unlock secret</span>
             <input
@@ -565,6 +605,7 @@ function Metric({ label, value, icon: Icon }) {
 
 function CardsTable({
   cards,
+  canManage,
   onUseCard,
   onViewCard,
   onEditCard,
@@ -637,15 +678,17 @@ function CardsTable({
               <td>{card.updatedAt ? new Date(card.updatedAt).toLocaleDateString() : 'Not recorded'}</td>
               <td>
                 <div className="row-actions">
-                  <button
-                    type="button"
-                    className="table-action"
-                    aria-label={`Edit ${card.brand}`}
-                    onClick={() => onEditCard(card)}
-                  >
-                    Edit
-                  </button>
-                  {card.status === 'available' ? (
+                  {canManage ? (
+                    <button
+                      type="button"
+                      className="table-action"
+                      aria-label={`Edit ${card.brand}`}
+                      onClick={() => onEditCard(card)}
+                    >
+                      Edit
+                    </button>
+                  ) : null}
+                  {canManage && card.status === 'available' ? (
                     <button
                       type="button"
                       className="table-action danger"
@@ -655,7 +698,7 @@ function CardsTable({
                       Delete
                     </button>
                   ) : null}
-                  {card.status === 'available' ? (
+                  {canManage && card.status === 'available' ? (
                     <button
                       type="button"
                       className="table-action"
@@ -665,7 +708,7 @@ function CardsTable({
                       Reserve
                     </button>
                   ) : null}
-                  {card.status === 'reserved' ? (
+                  {canManage && card.status === 'reserved' ? (
                     <button
                       type="button"
                       className="table-action"
@@ -675,7 +718,7 @@ function CardsTable({
                       Unreserve
                     </button>
                   ) : null}
-                  {['available', 'reserved', 'in_use'].includes(card.status) ? (
+                  {canManage && ['available', 'reserved', 'in_use'].includes(card.status) ? (
                     <button
                       type="button"
                       className="table-action"
@@ -685,7 +728,7 @@ function CardsTable({
                       Sell
                     </button>
                   ) : null}
-                  {['available', 'in_use'].includes(card.status) ? (
+                  {canManage && ['available', 'in_use'].includes(card.status) ? (
                     <button
                       type="button"
                       className="table-action"
@@ -695,7 +738,7 @@ function CardsTable({
                       Use
                     </button>
                   ) : null}
-                  {['available', 'reserved', 'in_use'].includes(card.status) ? (
+                  {canManage && ['available', 'reserved', 'in_use'].includes(card.status) ? (
                     <button
                       type="button"
                       className="table-action danger"
@@ -705,7 +748,7 @@ function CardsTable({
                       Void
                     </button>
                   ) : null}
-                  {card.status === 'sold' ? (
+                  {canManage && card.status === 'sold' ? (
                     <button
                       type="button"
                       className="table-action"
@@ -715,8 +758,8 @@ function CardsTable({
                       Undo sale
                     </button>
                   ) : null}
-                  {!['available', 'reserved', 'in_use', 'sold'].includes(card.status) ? (
-                    <span className="muted-text">No action</span>
+                  {!canManage || !['available', 'reserved', 'in_use', 'sold'].includes(card.status) ? (
+                    <span className="muted-text">{canManage ? 'No action' : 'Read only'}</span>
                   ) : null}
                 </div>
               </td>
@@ -728,7 +771,7 @@ function CardsTable({
   );
 }
 
-function DealsTable({ deals, onViewDeal, onEditDeal, onArchiveDeal, onUnarchiveDeal }) {
+function DealsTable({ deals, canManage, onViewDeal, onEditDeal, onArchiveDeal, onUnarchiveDeal }) {
   if (deals.length === 0) {
     return (
       <div className="empty-state">
@@ -774,15 +817,17 @@ function DealsTable({ deals, onViewDeal, onEditDeal, onArchiveDeal, onUnarchiveD
               <td className="numeric">{formatMoney(deal.inputTotalCostCents || 0)}</td>
               <td>
                 <div className="row-actions">
-                  <button
-                    type="button"
-                    className="table-action"
-                    aria-label={`Edit ${deal.name}`}
-                    onClick={() => onEditDeal(deal)}
-                  >
-                    Edit
-                  </button>
-                  {deal.archivedAt ? (
+                  {canManage ? (
+                    <button
+                      type="button"
+                      className="table-action"
+                      aria-label={`Edit ${deal.name}`}
+                      onClick={() => onEditDeal(deal)}
+                    >
+                      Edit
+                    </button>
+                  ) : null}
+                  {canManage && deal.archivedAt ? (
                     <button
                       type="button"
                       className="table-action"
@@ -791,7 +836,7 @@ function DealsTable({ deals, onViewDeal, onEditDeal, onArchiveDeal, onUnarchiveD
                     >
                       Unarchive
                     </button>
-                  ) : (
+                  ) : canManage ? (
                     <button
                       type="button"
                       className="table-action"
@@ -800,6 +845,8 @@ function DealsTable({ deals, onViewDeal, onEditDeal, onArchiveDeal, onUnarchiveD
                     >
                       Archive
                     </button>
+                  ) : (
+                    <span className="muted-text">Read only</span>
                   )}
                 </div>
               </td>
@@ -1678,6 +1725,542 @@ function BackupSettingsForm({ settings, onUpdateBackupSettings }) {
   );
 }
 
+function UserAdminPanel({ users, loading, loaded, error, onCreateUser, onUpdateUser }) {
+  const [email, setEmail] = useState('');
+  const [displayName, setDisplayName] = useState('');
+  const [role, setRole] = useState('operator');
+  const [unlockSecret, setUnlockSecret] = useState('');
+  const [currentUnlockSecret, setCurrentUnlockSecret] = useState('');
+  const [formError, setFormError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  async function submitCreate(event) {
+    event.preventDefault();
+    setFormError('');
+    setSuccess('');
+    setSubmitting(true);
+    try {
+      const created = await onCreateUser({
+        currentUnlockSecret,
+        email,
+        displayName,
+        role,
+        unlockSecret,
+      });
+      setEmail('');
+      setDisplayName('');
+      setRole('operator');
+      setUnlockSecret('');
+      setCurrentUnlockSecret('');
+      setSuccess(`${created.displayName} added.`);
+    } catch (caught) {
+      setFormError(caught.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="user-admin-stack">
+      {loading ? <div className="loading-strip inline-loading">Loading users...</div> : null}
+      <FieldError message={error} />
+      {loaded ? (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>User</th>
+                <th>Role</th>
+                <th>Status</th>
+                <th>Last login</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {users.map((user) => (
+                <UserAdminRow key={user.id} user={user} onUpdateUser={onUpdateUser} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+      <form className="settings-form user-create-form" onSubmit={submitCreate}>
+        <label>
+          <span>User email</span>
+          <input
+            type="email"
+            value={email}
+            autoComplete="off"
+            onChange={(event) => setEmail(event.target.value)}
+            required
+          />
+        </label>
+        <label>
+          <span>Display name</span>
+          <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} required />
+        </label>
+        <label>
+          <span>Role</span>
+          <select value={role} onChange={(event) => setRole(event.target.value)}>
+            <option value="operator">Operator</option>
+            <option value="viewer">Viewer</option>
+            <option value="admin">Admin</option>
+          </select>
+        </label>
+        <label>
+          <span>Temporary unlock secret</span>
+          <input
+            type="password"
+            autoComplete="new-password"
+            value={unlockSecret}
+            onChange={(event) => setUnlockSecret(event.target.value)}
+            required
+          />
+        </label>
+        <label>
+          <span>Your unlock secret</span>
+          <input
+            type="password"
+            autoComplete="current-password"
+            value={currentUnlockSecret}
+            onChange={(event) => setCurrentUnlockSecret(event.target.value)}
+            required
+          />
+        </label>
+        <div className="backup-actions">
+          <button type="submit" className="primary-action" disabled={submitting}>
+            <ShieldCheck aria-hidden="true" size={17} />
+            {submitting ? 'Adding...' : 'Add user'}
+          </button>
+        </div>
+        <FieldError message={formError} />
+        {success ? <p className="success-copy">{success}</p> : null}
+      </form>
+    </div>
+  );
+}
+
+function UserAdminRow({ user, onUpdateUser }) {
+  const [role, setRole] = useState(user.role);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  async function updateRole(event) {
+    const nextRole = event.target.value;
+    setRole(nextRole);
+    setError('');
+    setSubmitting(true);
+    try {
+      await onUpdateUser(user.id, { role: nextRole });
+    } catch (caught) {
+      setRole(user.role);
+      setError(caught.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function toggleDisabled() {
+    setError('');
+    setSubmitting(true);
+    try {
+      await onUpdateUser(user.id, { disabled: !user.disabledAt });
+    } catch (caught) {
+      setError(caught.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <tr>
+      <td>
+        <strong>{user.displayName}</strong>
+        <span className="muted-block">{user.email || 'No email'}</span>
+        <FieldError message={error} />
+      </td>
+      <td>
+        <select
+          value={role}
+          onChange={updateRole}
+          disabled={submitting || user.role === 'owner'}
+          aria-label={`Role for ${user.displayName}`}
+        >
+          <option value="owner">Owner</option>
+          <option value="admin">Admin</option>
+          <option value="operator">Operator</option>
+          <option value="viewer">Viewer</option>
+        </select>
+      </td>
+      <td>{user.disabledAt ? 'Disabled' : 'Active'}</td>
+      <td>{formatDateTime(user.lastLoginAt)}</td>
+      <td>
+        <button
+          type="button"
+          className={user.disabledAt ? 'table-action' : 'table-action danger'}
+          onClick={toggleDisabled}
+          disabled={submitting || user.role === 'owner'}
+          aria-label={`${user.disabledAt ? 'Enable' : 'Disable'} ${user.displayName}`}
+        >
+          {user.disabledAt ? 'Enable' : 'Disable'}
+        </button>
+      </td>
+    </tr>
+  );
+}
+
+function SupportPolicyForm({ policy, onUpdateSupportPolicy }) {
+  const [supportAccessEnabled, setSupportAccessEnabled] = useState(policy.supportAccessEnabled);
+  const [supportContact, setSupportContact] = useState(policy.supportContact || '');
+  const [supportPolicyUrl, setSupportPolicyUrl] = useState(policy.supportPolicyUrl || '');
+  const [supportNotes, setSupportNotes] = useState(policy.supportNotes || '');
+  const [unlockSecret, setUnlockSecret] = useState('');
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  async function submitPolicy(event) {
+    event.preventDefault();
+    setError('');
+    setSuccess('');
+    setSubmitting(true);
+    try {
+      await onUpdateSupportPolicy({
+        unlockSecret,
+        supportAccessEnabled,
+        supportContact,
+        supportPolicyUrl,
+        supportNotes,
+      });
+      setUnlockSecret('');
+      setSuccess('Support policy saved.');
+    } catch (caught) {
+      setError(caught.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <form className="settings-form" onSubmit={submitPolicy}>
+      <label className="check-row settings-check">
+        <input
+          type="checkbox"
+          checked={supportAccessEnabled}
+          onChange={(event) => setSupportAccessEnabled(event.target.checked)}
+        />
+        <span>Support access enabled</span>
+      </label>
+      <label>
+        <span>Support contact</span>
+        <input value={supportContact} onChange={(event) => setSupportContact(event.target.value)} />
+      </label>
+      <label>
+        <span>Support policy URL</span>
+        <input value={supportPolicyUrl} onChange={(event) => setSupportPolicyUrl(event.target.value)} />
+      </label>
+      <label>
+        <span>Support notes</span>
+        <textarea value={supportNotes} onChange={(event) => setSupportNotes(event.target.value)} rows={3} />
+      </label>
+      <label>
+        <span>Support policy unlock secret</span>
+        <input
+          type="password"
+          value={unlockSecret}
+          autoComplete="current-password"
+          onChange={(event) => setUnlockSecret(event.target.value)}
+        />
+      </label>
+      <div className="settings-summary-grid">
+        <span className="metric-tile">
+          <small>Last updated</small>
+          <strong>{formatDateTime(policy.supportUpdatedAt)}</strong>
+        </span>
+      </div>
+      <div className="backup-actions">
+        <button type="submit" className="primary-action" disabled={submitting}>
+          <ShieldCheck aria-hidden="true" size={17} />
+          {submitting ? 'Saving...' : 'Save support policy'}
+        </button>
+      </div>
+      <FieldError message={error} />
+      {success ? <p className="success-copy">{success}</p> : null}
+    </form>
+  );
+}
+
+function DataPolicyForm({ policy, onUpdateDataPolicy }) {
+  const [auditRetentionDays, setAuditRetentionDays] = useState(String(policy.auditRetentionDays));
+  const [idempotencyRetentionDays, setIdempotencyRetentionDays] = useState(String(policy.idempotencyRetentionDays));
+  const [sessionRetentionDays, setSessionRetentionDays] = useState(String(policy.sessionRetentionDays));
+  const [loginAttemptRetentionDays, setLoginAttemptRetentionDays] = useState(String(policy.loginAttemptRetentionDays));
+  const [unlockSecret, setUnlockSecret] = useState('');
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  async function submitPolicy(event) {
+    event.preventDefault();
+    setError('');
+    setSuccess('');
+    setSubmitting(true);
+    try {
+      await onUpdateDataPolicy({
+        unlockSecret,
+        auditRetentionDays: Number(auditRetentionDays),
+        idempotencyRetentionDays: Number(idempotencyRetentionDays),
+        sessionRetentionDays: Number(sessionRetentionDays),
+        loginAttemptRetentionDays: Number(loginAttemptRetentionDays),
+      });
+      setUnlockSecret('');
+      setSuccess('Data policy saved.');
+    } catch (caught) {
+      setError(caught.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <form className="settings-form" onSubmit={submitPolicy}>
+      <label>
+        <span>Audit retention days</span>
+        <input
+          type="number"
+          min="1"
+          max="3650"
+          value={auditRetentionDays}
+          onChange={(event) => setAuditRetentionDays(event.target.value)}
+        />
+      </label>
+      <label>
+        <span>Idempotency retention days</span>
+        <input
+          type="number"
+          min="1"
+          max="3650"
+          value={idempotencyRetentionDays}
+          onChange={(event) => setIdempotencyRetentionDays(event.target.value)}
+        />
+      </label>
+      <label>
+        <span>Session retention days</span>
+        <input
+          type="number"
+          min="1"
+          max="3650"
+          value={sessionRetentionDays}
+          onChange={(event) => setSessionRetentionDays(event.target.value)}
+        />
+      </label>
+      <label>
+        <span>Login attempt retention days</span>
+        <input
+          type="number"
+          min="1"
+          max="3650"
+          value={loginAttemptRetentionDays}
+          onChange={(event) => setLoginAttemptRetentionDays(event.target.value)}
+        />
+      </label>
+      <label>
+        <span>Data policy unlock secret</span>
+        <input
+          type="password"
+          value={unlockSecret}
+          autoComplete="current-password"
+          onChange={(event) => setUnlockSecret(event.target.value)}
+        />
+      </label>
+      <div className="backup-actions">
+        <button type="submit" className="primary-action" disabled={submitting}>
+          <ShieldCheck aria-hidden="true" size={17} />
+          {submitting ? 'Saving...' : 'Save data policy'}
+        </button>
+      </div>
+      <FieldError message={error} />
+      {success ? <p className="success-copy">{success}</p> : null}
+    </form>
+  );
+}
+
+function DataOperationsPanel({ onExportAccountData, onRunRetention, onDeleteAccountData }) {
+  const [exportUnlockSecret, setExportUnlockSecret] = useState('');
+  const [exportConfirmation, setExportConfirmation] = useState('');
+  const [exportError, setExportError] = useState('');
+  const [exportSuccess, setExportSuccess] = useState('');
+  const [exporting, setExporting] = useState(false);
+  const [retentionUnlockSecret, setRetentionUnlockSecret] = useState('');
+  const [retentionConfirmation, setRetentionConfirmation] = useState('');
+  const [retentionError, setRetentionError] = useState('');
+  const [retentionSuccess, setRetentionSuccess] = useState('');
+  const [retentionRunning, setRetentionRunning] = useState(false);
+  const [deleteUnlockSecret, setDeleteUnlockSecret] = useState('');
+  const [deleteConfirmation, setDeleteConfirmation] = useState('');
+  const [deleteError, setDeleteError] = useState('');
+  const [deleteSuccess, setDeleteSuccess] = useState('');
+  const [deleting, setDeleting] = useState(false);
+
+  async function submitExport(event) {
+    event.preventDefault();
+    setExportError('');
+    setExportSuccess('');
+    setExporting(true);
+    try {
+      const response = await onExportAccountData({
+        unlockSecret: exportUnlockSecret,
+        confirmation: exportConfirmation,
+      });
+      const payload = response.data;
+      const exportedDate = (payload?.exportedAt || new Date().toISOString()).slice(0, 10);
+      downloadJsonFile(`gift-card-sanitized-export-${exportedDate}.json`, payload);
+      setExportUnlockSecret('');
+      setExportConfirmation('');
+      setExportSuccess(`Sanitized export prepared with ${payload?.counts?.cards || 0} cards.`);
+    } catch (caught) {
+      setExportError(caught.message);
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  async function submitRetention(event) {
+    event.preventDefault();
+    setRetentionError('');
+    setRetentionSuccess('');
+    setRetentionRunning(true);
+    try {
+      const response = await onRunRetention({
+        unlockSecret: retentionUnlockSecret,
+        confirmation: retentionConfirmation,
+      });
+      const counts = response.data.counts || {};
+      setRetentionUnlockSecret('');
+      setRetentionConfirmation('');
+      setRetentionSuccess(`Retention purged ${counts.auditLog || 0} audit rows and ${counts.idempotencyKeys || 0} idempotency rows.`);
+    } catch (caught) {
+      setRetentionError(caught.message);
+    } finally {
+      setRetentionRunning(false);
+    }
+  }
+
+  async function submitDelete(event) {
+    event.preventDefault();
+    setDeleteError('');
+    setDeleteSuccess('');
+    setDeleting(true);
+    try {
+      const response = await onDeleteAccountData({
+        unlockSecret: deleteUnlockSecret,
+        confirmation: deleteConfirmation,
+      });
+      const counts = response.data.counts || {};
+      setDeleteUnlockSecret('');
+      setDeleteConfirmation('');
+      setDeleteSuccess(`Deleted ${counts.cards || 0} cards and ${counts.deals || 0} deals.`);
+    } catch (caught) {
+      setDeleteError(caught.message);
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  return (
+    <div className="data-operations-grid">
+      <form className="settings-form" onSubmit={submitExport}>
+        <label>
+          <span>Sanitized export unlock secret</span>
+          <input
+            type="password"
+            value={exportUnlockSecret}
+            autoComplete="current-password"
+            onChange={(event) => setExportUnlockSecret(event.target.value)}
+          />
+        </label>
+        <label>
+          <span>Type EXPORT to confirm</span>
+          <input
+            value={exportConfirmation}
+            autoCapitalize="characters"
+            onChange={(event) => setExportConfirmation(event.target.value)}
+          />
+        </label>
+        <div className="backup-actions">
+          <button type="submit" className="primary-action" disabled={exporting}>
+            <Download aria-hidden="true" size={17} />
+            {exporting ? 'Exporting...' : 'Export sanitized data'}
+          </button>
+        </div>
+        <FieldError message={exportError} />
+        {exportSuccess ? <p className="success-copy">{exportSuccess}</p> : null}
+      </form>
+
+      <form className="settings-form" onSubmit={submitRetention}>
+        <label>
+          <span>Retention unlock secret</span>
+          <input
+            type="password"
+            value={retentionUnlockSecret}
+            autoComplete="current-password"
+            onChange={(event) => setRetentionUnlockSecret(event.target.value)}
+          />
+        </label>
+        <label>
+          <span>Type PURGE to confirm</span>
+          <input
+            value={retentionConfirmation}
+            autoCapitalize="characters"
+            onChange={(event) => setRetentionConfirmation(event.target.value)}
+          />
+        </label>
+        <div className="backup-actions">
+          <button type="submit" className="primary-action" disabled={retentionRunning}>
+            <RefreshCw aria-hidden="true" size={17} />
+            {retentionRunning ? 'Purging...' : 'Run retention purge'}
+          </button>
+        </div>
+        <FieldError message={retentionError} />
+        {retentionSuccess ? <p className="success-copy">{retentionSuccess}</p> : null}
+      </form>
+
+      <form className="settings-form" onSubmit={submitDelete}>
+        <div className="warning-copy danger-warning">
+          <AlertTriangle aria-hidden="true" size={18} />
+          <span>Inventory deletion removes cards, deals, usage, sale history, import jobs, and idempotency records.</span>
+        </div>
+        <label>
+          <span>Delete inventory unlock secret</span>
+          <input
+            type="password"
+            value={deleteUnlockSecret}
+            autoComplete="current-password"
+            onChange={(event) => setDeleteUnlockSecret(event.target.value)}
+          />
+        </label>
+        <label>
+          <span>Type DELETE_ACCOUNT_DATA to confirm</span>
+          <input
+            value={deleteConfirmation}
+            autoCapitalize="characters"
+            onChange={(event) => setDeleteConfirmation(event.target.value)}
+          />
+        </label>
+        <div className="backup-actions">
+          <button type="submit" className="primary-action danger" disabled={deleting}>
+            <AlertTriangle aria-hidden="true" size={17} />
+            {deleting ? 'Deleting...' : 'Delete inventory data'}
+          </button>
+        </div>
+        <FieldError message={deleteError} />
+        {deleteSuccess ? <p className="success-copy">{deleteSuccess}</p> : null}
+      </form>
+    </div>
+  );
+}
+
 function ChangeUnlockSecretForm({ onChangeUnlockSecret }) {
   const [oldUnlockSecret, setOldUnlockSecret] = useState('');
   const [newUnlockSecret, setNewUnlockSecret] = useState('');
@@ -1957,7 +2540,7 @@ function HistoryList({ title, items, renderItem, emptyText, children }) {
   );
 }
 
-function CardDetailPanel({ detailState, onClose, onLogout, onUndoUsage, onRevealCredentials }) {
+function CardDetailPanel({ detailState, canManage, onClose, onLogout, onUndoUsage, onRevealCredentials }) {
   const { card, data, error, loading } = detailState;
   const detailCard = data?.card || card;
   const [undoUsage, setUndoUsage] = useState(null);
@@ -2138,10 +2721,12 @@ function CardDetailPanel({ detailState, onClose, onLogout, onUndoUsage, onReveal
           <section className="detail-section credential-section">
             <div className="credential-heading">
               <h3>Credentials</h3>
-              <button type="button" className="secondary-action" onClick={revealCredentials} disabled={revealing}>
-                <Eye aria-hidden="true" size={17} />
-                {revealing ? 'Revealing...' : 'Reveal credentials'}
-              </button>
+              {canManage ? (
+                <button type="button" className="secondary-action" onClick={revealCredentials} disabled={revealing}>
+                  <Eye aria-hidden="true" size={17} />
+                  {revealing ? 'Revealing...' : 'Reveal credentials'}
+                </button>
+              ) : null}
             </div>
             <div className="credential-grid">
               <div className="credential-row">
@@ -2150,26 +2735,32 @@ function CardDetailPanel({ detailState, onClose, onLogout, onUndoUsage, onReveal
                   {credentials?.cardNumber ||
                     (detailCard.cardNumberLast4 ? `**** ${detailCard.cardNumberLast4}` : 'Hidden')}
                 </strong>
-                <button type="button" className="table-action" onClick={() => copyCredential('cardNumber', 'Card number')}>
-                  <Copy aria-hidden="true" size={15} />
-                  Copy card number
-                </button>
+                {canManage ? (
+                  <button type="button" className="table-action" onClick={() => copyCredential('cardNumber', 'Card number')}>
+                    <Copy aria-hidden="true" size={15} />
+                    Copy card number
+                  </button>
+                ) : null}
               </div>
               <div className="credential-row">
                 <span>PIN</span>
                 <strong className="mono">{credentials ? credentials.pin || 'Not recorded' : 'Hidden'}</strong>
-                <button type="button" className="table-action" onClick={() => copyCredential('pin', 'PIN')}>
-                  <Copy aria-hidden="true" size={15} />
-                  Copy PIN
-                </button>
+                {canManage ? (
+                  <button type="button" className="table-action" onClick={() => copyCredential('pin', 'PIN')}>
+                    <Copy aria-hidden="true" size={15} />
+                    Copy PIN
+                  </button>
+                ) : null}
               </div>
               <div className="credential-row">
                 <span>Billing ZIP</span>
                 <strong className="mono">{credentials ? credentials.billingZip || 'Not recorded' : 'Hidden'}</strong>
-                <button type="button" className="table-action" onClick={() => copyCredential('billingZip', 'Billing ZIP')}>
-                  <Copy aria-hidden="true" size={15} />
-                  Copy ZIP
-                </button>
+                {canManage ? (
+                  <button type="button" className="table-action" onClick={() => copyCredential('billingZip', 'Billing ZIP')}>
+                    <Copy aria-hidden="true" size={15} />
+                    Copy ZIP
+                  </button>
+                ) : null}
               </div>
             </div>
             <FieldError message={credentialError} />
@@ -2226,7 +2817,7 @@ function CardDetailPanel({ detailState, onClose, onLogout, onUndoUsage, onReveal
                 {usage.isWriteOff ? <span className="detail-pill">Write-off</span> : null}
                 {usage.isReversed ? <span className="detail-pill">Reversed</span> : null}
                 {usage.reversalReason ? <span>{usage.reversalReason}</span> : null}
-                {canUndoUsage(usage) ? (
+                {canManage && canUndoUsage(usage) ? (
                   <button
                     type="button"
                     className="table-action"
@@ -3114,6 +3705,7 @@ function UseCardPanel({ card, onClose, onUseCard }) {
 }
 
 function WorkSurface({
+  auth,
   cards,
   cardsPage,
   deals,
@@ -3124,11 +3716,33 @@ function WorkSurface({
   backupSettingsLoading,
   backupSettingsLoaded,
   backupSettingsError,
+  users,
+  usersLoading,
+  usersLoaded,
+  usersError,
+  supportPolicy,
+  supportPolicyLoading,
+  supportPolicyLoaded,
+  supportPolicyError,
+  dataPolicy,
+  dataPolicyLoading,
+  dataPolicyLoaded,
+  dataPolicyError,
   loading,
   onRefresh,
   onLogout,
   onLoadAudit,
   onLoadBackupSettings,
+  onLoadUsers,
+  onLoadSupportPolicy,
+  onLoadDataPolicy,
+  onCreateUser,
+  onUpdateUser,
+  onUpdateSupportPolicy,
+  onUpdateDataPolicy,
+  onExportAccountData,
+  onRunRetention,
+  onDeleteAccountData,
   onUpdateBackupSettings,
   onExportPlaintext,
   onExportEncrypted,
@@ -3170,6 +3784,8 @@ function WorkSurface({
   const [dealDetailState, setDealDetailState] = useState(null);
   const [showArchivedDeals, setShowArchivedDeals] = useState(false);
   const [dealError, setDealError] = useState('');
+  const userCanAdmin = canAdmin(auth);
+  const userCanManageInventory = canManageInventory(auth);
   const activeCards = cards.filter((card) => ['available', 'reserved', 'in_use'].includes(card.status));
   const soldCards = cards.filter((card) => card.status === 'sold');
   const activeRemaining = activeCards.reduce((sum, card) => sum + card.remainingBalanceCents, 0);
@@ -3228,7 +3844,14 @@ function WorkSurface({
       await onLoadAudit({});
     }
     if (view === 'settings') {
-      await onLoadBackupSettings();
+      if (userCanAdmin) {
+        await Promise.all([
+          onLoadBackupSettings(),
+          onLoadUsers(),
+          onLoadSupportPolicy(),
+          onLoadDataPolicy(),
+        ]);
+      }
     }
   }
 
@@ -3304,7 +3927,17 @@ function WorkSurface({
           <span>Gift Card Manager</span>
         </div>
         <nav aria-label="Primary">
-          {navItems.map((item) => {
+          {navItems
+            .filter((item) => {
+              if (item.id === 'settings') {
+                return userCanAdmin;
+              }
+              if (item.id === 'backup') {
+                return userCanManageInventory;
+              }
+              return true;
+            })
+            .map((item) => {
             const Icon = item.icon;
             return (
               <button
@@ -3332,20 +3965,27 @@ function WorkSurface({
           <div>
             <p className="eyebrow">Local secure inventory</p>
             <h1>{viewTitle(activeView)}</h1>
+            <span className="muted-text">
+              {auth?.user?.displayName || 'Current user'} · {formatDisplayValue(authRole(auth))}
+            </span>
           </div>
           <div className="topbar-actions">
             <button type="button" className="secondary-action" onClick={onRefresh}>
               <RefreshCw aria-hidden="true" size={17} />
               Refresh
             </button>
-            <button type="button" className="secondary-action" onClick={() => setActiveView('backup')}>
-              <FilePlus2 aria-hidden="true" size={17} />
-              Import
-            </button>
-            <button type="button" className="primary-action compact" onClick={() => setShowAddDeal(true)}>
-              <Plus aria-hidden="true" size={17} />
-              Add Deal
-            </button>
+            {userCanManageInventory ? (
+              <button type="button" className="secondary-action" onClick={() => setActiveView('backup')}>
+                <FilePlus2 aria-hidden="true" size={17} />
+                Import
+              </button>
+            ) : null}
+            {userCanManageInventory ? (
+              <button type="button" className="primary-action compact" onClick={() => setShowAddDeal(true)}>
+                <Plus aria-hidden="true" size={17} />
+                Add Deal
+              </button>
+            ) : null}
           </div>
         </header>
 
@@ -3367,6 +4007,7 @@ function WorkSurface({
               </div>
               <CardsTable
                 cards={cards.slice(0, 6)}
+                canManage={userCanManageInventory}
                 onUseCard={setUsageCard}
                 onViewCard={openCardDetail}
                 onEditCard={setEditCard}
@@ -3387,6 +4028,7 @@ function WorkSurface({
               </div>
               <DealsTable
                 deals={deals.slice(0, 6)}
+                canManage={userCanManageInventory}
                 onViewDeal={openDealDetail}
                 onEditDeal={setEditDeal}
                 onArchiveDeal={archiveDeal}
@@ -3405,6 +4047,7 @@ function WorkSurface({
             <CardSearchForm deals={deals} onSearchCards={onSearchCards} />
             <CardsTable
               cards={cards}
+              canManage={userCanManageInventory}
               onUseCard={setUsageCard}
               onViewCard={openCardDetail}
               onEditCard={setEditCard}
@@ -3438,6 +4081,7 @@ function WorkSurface({
             </div>
             <DealsTable
               deals={deals}
+              canManage={userCanManageInventory}
               onViewDeal={openDealDetail}
               onEditDeal={setEditDeal}
               onArchiveDeal={archiveDeal}
@@ -3470,26 +4114,30 @@ function WorkSurface({
                 <h3>CSV Import Preview</h3>
                 <CsvImportPreviewForm onPreviewCsv={onPreviewCsv} onConfirmCsv={onConfirmCsv} />
               </section>
-              <section className="backup-block">
-                <h3>Plaintext JSON Import</h3>
-                <PlaintextJsonImportForm onImportBackup={onImportBackup} />
-              </section>
-              <section className="backup-block">
-                <h3>Encrypted JSON Import</h3>
-                <EncryptedJsonImportForm onImportBackup={onImportBackup} />
-              </section>
-              <section className="backup-block">
-                <h3>Encrypted JSON Export</h3>
-                <EncryptedBackupExportForm onExportEncrypted={onExportEncrypted} />
-              </section>
-              <section className="backup-block">
-                <h3>Plaintext JSON Export</h3>
-                <BackupExportForm onExportPlaintext={onExportPlaintext} />
-              </section>
-              <section className="backup-block">
-                <h3>Raw Encrypted Database Export</h3>
-                <RawDatabaseExportForm onExportRawDatabase={onExportRawDatabase} />
-              </section>
+              {userCanAdmin ? (
+                <>
+                  <section className="backup-block">
+                    <h3>Plaintext JSON Import</h3>
+                    <PlaintextJsonImportForm onImportBackup={onImportBackup} />
+                  </section>
+                  <section className="backup-block">
+                    <h3>Encrypted JSON Import</h3>
+                    <EncryptedJsonImportForm onImportBackup={onImportBackup} />
+                  </section>
+                  <section className="backup-block">
+                    <h3>Encrypted JSON Export</h3>
+                    <EncryptedBackupExportForm onExportEncrypted={onExportEncrypted} />
+                  </section>
+                  <section className="backup-block">
+                    <h3>Plaintext JSON Export</h3>
+                    <BackupExportForm onExportPlaintext={onExportPlaintext} />
+                  </section>
+                  <section className="backup-block">
+                    <h3>Raw Encrypted Database Export</h3>
+                    <RawDatabaseExportForm onExportRawDatabase={onExportRawDatabase} />
+                  </section>
+                </>
+              ) : null}
             </div>
           </section>
         ) : null}
@@ -3513,6 +4161,51 @@ function WorkSurface({
                     onUpdateBackupSettings={onUpdateBackupSettings}
                   />
                 ) : null}
+              </section>
+              <section className="backup-block">
+                <h3>User Access</h3>
+                <UserAdminPanel
+                  users={users}
+                  loading={usersLoading}
+                  loaded={usersLoaded}
+                  error={usersError}
+                  onCreateUser={onCreateUser}
+                  onUpdateUser={onUpdateUser}
+                />
+              </section>
+              <section className="backup-block">
+                <h3>Support Policy</h3>
+                {supportPolicyLoading ? (
+                  <div className="loading-strip inline-loading">Loading support policy...</div>
+                ) : null}
+                <FieldError message={supportPolicyError} />
+                {supportPolicyLoaded ? (
+                  <SupportPolicyForm
+                    policy={supportPolicy}
+                    onUpdateSupportPolicy={onUpdateSupportPolicy}
+                  />
+                ) : null}
+              </section>
+              <section className="backup-block">
+                <h3>Data Policy</h3>
+                {dataPolicyLoading ? (
+                  <div className="loading-strip inline-loading">Loading data policy...</div>
+                ) : null}
+                <FieldError message={dataPolicyError} />
+                {dataPolicyLoaded ? (
+                  <DataPolicyForm
+                    policy={dataPolicy}
+                    onUpdateDataPolicy={onUpdateDataPolicy}
+                  />
+                ) : null}
+              </section>
+              <section className="backup-block">
+                <h3>Data Operations</h3>
+                <DataOperationsPanel
+                  onExportAccountData={onExportAccountData}
+                  onRunRetention={onRunRetention}
+                  onDeleteAccountData={onDeleteAccountData}
+                />
               </section>
               <section className="backup-block">
                 <h3>Unlock Secret</h3>
@@ -3590,6 +4283,7 @@ function WorkSurface({
       {detailState ? (
         <CardDetailPanel
           detailState={detailState}
+          canManage={userCanManageInventory}
           onClose={() => setDetailState(null)}
           onLogout={onLogout}
           onUndoUsage={undoUsageFromDetail}
@@ -3616,6 +4310,18 @@ export default function App() {
   const [backupSettingsLoading, setBackupSettingsLoading] = useState(false);
   const [backupSettingsLoaded, setBackupSettingsLoaded] = useState(false);
   const [backupSettingsError, setBackupSettingsError] = useState('');
+  const [users, setUsers] = useState([]);
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [usersLoaded, setUsersLoaded] = useState(false);
+  const [usersError, setUsersError] = useState('');
+  const [supportPolicy, setSupportPolicy] = useState(defaultSupportPolicy);
+  const [supportPolicyLoading, setSupportPolicyLoading] = useState(false);
+  const [supportPolicyLoaded, setSupportPolicyLoaded] = useState(false);
+  const [supportPolicyError, setSupportPolicyError] = useState('');
+  const [dataPolicy, setDataPolicy] = useState(defaultDataPolicy);
+  const [dataPolicyLoading, setDataPolicyLoading] = useState(false);
+  const [dataPolicyLoaded, setDataPolicyLoaded] = useState(false);
+  const [dataPolicyError, setDataPolicyError] = useState('');
   const [loading, setLoading] = useState(true);
   const [inventoryLoading, setInventoryLoading] = useState(false);
   const [error, setError] = useState('');
@@ -3778,6 +4484,123 @@ export default function App() {
     return response;
   }
 
+  async function handleLoadUsers() {
+    setUsersLoading(true);
+    setUsersError('');
+    try {
+      const response = await apiFetch('/api/users');
+      setUsers(Array.isArray(response.data) ? response.data : []);
+      setUsersLoaded(true);
+      return response;
+    } catch (caught) {
+      setUsersError(caught.message);
+      return null;
+    } finally {
+      setUsersLoading(false);
+    }
+  }
+
+  async function handleCreateUser(payload) {
+    const response = await apiFetch('/api/users', {
+      method: 'POST',
+      body: payload,
+      csrfToken: auth.csrfToken,
+    });
+    setUsers((current) => [...current, response.data]);
+    setUsersLoaded(true);
+    return response.data;
+  }
+
+  async function handleUpdateUser(userId, payload) {
+    const response = await apiFetch(`/api/users/${userId}`, {
+      method: 'PUT',
+      body: payload,
+      csrfToken: auth.csrfToken,
+    });
+    setUsers((current) => current.map((user) => (user.id === response.data.id ? response.data : user)));
+    return response.data;
+  }
+
+  async function handleLoadSupportPolicy() {
+    setSupportPolicyLoading(true);
+    setSupportPolicyError('');
+    try {
+      const response = await apiFetch('/api/admin/support-policy');
+      setSupportPolicy(response.data || defaultSupportPolicy);
+      setSupportPolicyLoaded(true);
+      return response;
+    } catch (caught) {
+      setSupportPolicyError(caught.message);
+      return null;
+    } finally {
+      setSupportPolicyLoading(false);
+    }
+  }
+
+  async function handleUpdateSupportPolicy(payload) {
+    const response = await apiFetch('/api/admin/support-policy', {
+      method: 'PUT',
+      body: payload,
+      csrfToken: auth.csrfToken,
+    });
+    setSupportPolicy(response.data || defaultSupportPolicy);
+    setSupportPolicyLoaded(true);
+    return response;
+  }
+
+  async function handleLoadDataPolicy() {
+    setDataPolicyLoading(true);
+    setDataPolicyError('');
+    try {
+      const response = await apiFetch('/api/admin/data-policy');
+      setDataPolicy(response.data || defaultDataPolicy);
+      setDataPolicyLoaded(true);
+      return response;
+    } catch (caught) {
+      setDataPolicyError(caught.message);
+      return null;
+    } finally {
+      setDataPolicyLoading(false);
+    }
+  }
+
+  async function handleUpdateDataPolicy(payload) {
+    const response = await apiFetch('/api/admin/data-policy', {
+      method: 'PUT',
+      body: payload,
+      csrfToken: auth.csrfToken,
+    });
+    setDataPolicy(response.data || defaultDataPolicy);
+    setDataPolicyLoaded(true);
+    return response;
+  }
+
+  async function handleExportAccountData(payload) {
+    return apiFetch('/api/admin/data-export', {
+      method: 'POST',
+      body: payload,
+      csrfToken: auth.csrfToken,
+    });
+  }
+
+  async function handleRunRetention(payload) {
+    return apiFetch('/api/admin/retention/run', {
+      method: 'POST',
+      body: payload,
+      csrfToken: auth.csrfToken,
+    });
+  }
+
+  async function handleDeleteAccountData(payload) {
+    const response = await apiFetch('/api/admin/data-delete', {
+      method: 'POST',
+      body: payload,
+      csrfToken: auth.csrfToken,
+    });
+    await loadInventory();
+    return response;
+  }
+
   async function handleExportPlaintext(payload) {
     return apiFetch('/api/backup/export', {
       method: 'POST',
@@ -3897,10 +4720,13 @@ export default function App() {
     await loadInventory();
   }
 
-  async function handleLogin(unlockSecret) {
+  async function handleLogin({ email, unlockSecret }) {
     const response = await apiFetch('/api/auth/login', {
       method: 'POST',
-      body: { unlockSecret },
+      body: {
+        ...(email ? { email } : {}),
+        unlockSecret,
+      },
     });
     setAuth(response.data);
     await loadInventory();
@@ -3924,6 +4750,15 @@ export default function App() {
     setBackupSettings(defaultBackupSettings);
     setBackupSettingsLoaded(false);
     setBackupSettingsError('');
+    setUsers([]);
+    setUsersLoaded(false);
+    setUsersError('');
+    setSupportPolicy(defaultSupportPolicy);
+    setSupportPolicyLoaded(false);
+    setSupportPolicyError('');
+    setDataPolicy(defaultDataPolicy);
+    setDataPolicyLoaded(false);
+    setDataPolicyError('');
   }
 
   async function handleCreateDeal(payload) {
@@ -4101,6 +4936,7 @@ export default function App() {
 
   return (
     <WorkSurface
+      auth={auth}
       cards={cards}
       cardsPage={cardsPage}
       deals={deals}
@@ -4111,11 +4947,33 @@ export default function App() {
       backupSettingsLoading={backupSettingsLoading}
       backupSettingsLoaded={backupSettingsLoaded}
       backupSettingsError={backupSettingsError}
+      users={users}
+      usersLoading={usersLoading}
+      usersLoaded={usersLoaded}
+      usersError={usersError}
+      supportPolicy={supportPolicy}
+      supportPolicyLoading={supportPolicyLoading}
+      supportPolicyLoaded={supportPolicyLoaded}
+      supportPolicyError={supportPolicyError}
+      dataPolicy={dataPolicy}
+      dataPolicyLoading={dataPolicyLoading}
+      dataPolicyLoaded={dataPolicyLoaded}
+      dataPolicyError={dataPolicyError}
       loading={inventoryLoading}
       onRefresh={loadInventory}
       onLogout={handleLogout}
       onLoadAudit={handleLoadAudit}
       onLoadBackupSettings={handleLoadBackupSettings}
+      onLoadUsers={handleLoadUsers}
+      onLoadSupportPolicy={handleLoadSupportPolicy}
+      onLoadDataPolicy={handleLoadDataPolicy}
+      onCreateUser={handleCreateUser}
+      onUpdateUser={handleUpdateUser}
+      onUpdateSupportPolicy={handleUpdateSupportPolicy}
+      onUpdateDataPolicy={handleUpdateDataPolicy}
+      onExportAccountData={handleExportAccountData}
+      onRunRetention={handleRunRetention}
+      onDeleteAccountData={handleDeleteAccountData}
       onUpdateBackupSettings={handleUpdateBackupSettings}
       onExportPlaintext={handleExportPlaintext}
       onExportEncrypted={handleExportEncrypted}
