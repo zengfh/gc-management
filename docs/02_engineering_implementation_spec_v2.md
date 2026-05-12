@@ -579,6 +579,7 @@ Structured log safety rules:
 - Log request path without query string.
 - Do not log request bodies, cookies, authorization headers, full card numbers, PINs, billing ZIPs, unlock secrets, backup passphrases, or plaintext backup payloads.
 - Internal server error logs should include request ID, method, queryless path, status, error code, and error name.
+- `GET /api/observability/summary` returns authenticated in-process request metrics: uptime, total requests, 5xx count, average/max duration, counts by status class, and counts by method.
 
 ## 11. Migrations
 

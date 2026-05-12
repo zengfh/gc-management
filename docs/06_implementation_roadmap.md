@@ -235,8 +235,9 @@ Tasks:
 - [x] Persistent session store for single-node hosted deployment. Completed 2026-05-12 with SQLite-backed `web_sessions`.
 - [x] Persistent login rate-limit store for single-node hosted deployment. Completed 2026-05-12 with SQLite-backed `auth_login_attempts`.
 - [x] Credential-safe structured request/error logs. Completed 2026-05-12 with `GC_REQUEST_LOGS=true` or production mode.
+- [x] Authenticated runtime metrics summary. Completed 2026-05-12 with `/api/observability/summary`.
 - [ ] Real account/user admin if needed.
-- [ ] Production metrics, alerts, and external error reporting.
+- [ ] Production metrics export, alerts, and external error reporting.
 - [ ] Data retention policy.
 - [ ] Privacy/security documentation.
 - [ ] Performance load tests.

@@ -46,10 +46,27 @@ Verification:
 - App test verifies request logging emits structured metadata and excludes a card number, `unlockSecret` query key, and unlock-secret query value.
 - Focused test passed: `npm test -- server/app.test.js`.
 
+### Milestone 3: Runtime Metrics Summary
+
+Status: code complete; release gate passed on 2026-05-12.
+
+Delivered:
+
+- Added in-process request metrics collector.
+- Added authenticated `GET /api/observability/summary`.
+- Summary includes metrics start time, uptime, total requests, 5xx count, average/max duration, counts by status class, and counts by method.
+- Summary intentionally does not include request paths, query strings, request bodies, headers, cookies, or credential values.
+- OpenAPI, engineering, QA, and roadmap docs have been updated for this milestone.
+
+Verification:
+
+- App test verifies authenticated metrics response shape and confirms query details from a prior request are not returned.
+- Focused test passed: `npm test -- server/app.test.js`.
+
 ## Current Verification
 
 - `npm run lint` passed.
-- `npm test` passed: 12 files, 104 tests.
+- `npm test` passed: 12 files, 105 tests.
 - `npm run test:perf` passed.
 - `npm run test:e2e` passed: 8 Chromium tests.
 - `npm run build` passed.
@@ -59,7 +76,7 @@ Verification:
 
 ## Remaining Productization Scope
 
-- Production observability: metrics, alerts, and external error reporting.
+- Production observability: metrics export/scraping, alerts, and external error reporting.
 - Real account/user admin if the app moves beyond single-owner use.
 - Role-based access controls.
 - Support/admin access policy implementation.

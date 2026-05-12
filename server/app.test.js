@@ -107,6 +107,44 @@ describe('app', () => {
     }
   });
 
+  it('returns authenticated observability metrics without query details', async () => {
+    const db = openDatabase({ filename: ':memory:' });
+    const agent = request.agent(createApp({ db }));
+    try {
+      await agent.get('/api/health?cardNumber=4111111111111111');
+      const setupResponse = await agent.post('/api/auth/setup').send({
+        unlockSecret: 'a strong unlock phrase',
+      });
+      expect(setupResponse.status).toBe(201);
+
+      const summaryResponse = await agent.get('/api/observability/summary');
+
+      expect(summaryResponse.status).toBe(200);
+      expect(summaryResponse.body.data).toMatchObject({
+        startedAt: expect.any(String),
+        uptimeSeconds: expect.any(Number),
+        requests: {
+          total: expect.any(Number),
+          errorCount: 0,
+          averageDurationMs: expect.any(Number),
+          maxDurationMs: expect.any(Number),
+          byStatusClass: expect.objectContaining({
+            '2xx': expect.any(Number),
+          }),
+          byMethod: expect.objectContaining({
+            GET: expect.any(Number),
+            POST: expect.any(Number),
+          }),
+        },
+      });
+      expect(summaryResponse.body.data.requests.total).toBeGreaterThanOrEqual(2);
+      expect(JSON.stringify(summaryResponse.body)).not.toContain('4111111111111111');
+      expect(JSON.stringify(summaryResponse.body)).not.toContain('cardNumber');
+    } finally {
+      db.close();
+    }
+  }, 30_000);
+
   it('rejects production startup without an explicit session secret', () => {
     const originalNodeEnv = process.env.NODE_ENV;
     const originalSessionSecret = process.env.SESSION_SECRET;

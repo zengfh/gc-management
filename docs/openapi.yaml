@@ -15,6 +15,7 @@ tags:
   - name: Deals
   - name: ImportExport
   - name: Audit
+  - name: Observability
 paths:
   /api/health:
     get:
@@ -793,6 +794,20 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AuditListResponse"
+  /api/observability/summary:
+    get:
+      tags: [Observability]
+      summary: Authenticated runtime metrics summary
+      operationId: getObservabilitySummary
+      responses:
+        "200":
+          description: Runtime metrics summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ObservabilitySummaryResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
 components:
   parameters:
     CardId:
@@ -907,6 +922,46 @@ components:
               type: boolean
             csrfToken:
               type: string
+    ObservabilitySummaryResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [startedAt, uptimeSeconds, requests]
+          properties:
+            startedAt:
+              type: string
+              format: date-time
+            uptimeSeconds:
+              type: integer
+              minimum: 0
+            requests:
+              type: object
+              required: [total, errorCount, averageDurationMs, maxDurationMs, byStatusClass, byMethod]
+              properties:
+                total:
+                  type: integer
+                  minimum: 0
+                errorCount:
+                  type: integer
+                  minimum: 0
+                averageDurationMs:
+                  type: number
+                  minimum: 0
+                maxDurationMs:
+                  type: number
+                  minimum: 0
+                byStatusClass:
+                  type: object
+                  additionalProperties:
+                    type: integer
+                    minimum: 0
+                byMethod:
+                  type: object
+                  additionalProperties:
+                    type: integer
+                    minimum: 0
     SetupRequest:
       type: object
       required: [unlockSecret]
