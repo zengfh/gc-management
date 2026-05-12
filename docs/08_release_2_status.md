@@ -61,9 +61,33 @@ Verification:
 - `docs/openapi.yaml` parses successfully.
 - `git diff --check` passed.
 
+### Milestone 3: Reservation Metadata UX/API Polish
+
+Status: code complete; release gate passed on 2026-05-12.
+
+Delivered:
+
+- Card API responses now include `reservedFor`, `reservedUntil`, and `reservedNotes`.
+- Reserve action now opens a UI panel for reserved-for, reserved-until, and reservation notes instead of immediately reserving with an empty payload.
+- Card list shows a reservation summary for reserved cards.
+- Card detail shows reservation metadata alongside other card metadata.
+- Unreserve continues to clear reservation metadata.
+- UI/UX, QA, PRD, and roadmap docs have been updated for this milestone.
+
+Verification:
+
+- Backend test now asserts reservation metadata is returned on reserve and cleared on unreserve.
+- React test now exercises the reserve metadata panel and verifies the reserve payload.
+- `npm run lint` passed.
+- `npm test` passed: 12 files, 94 tests.
+- `npm run test:e2e` passed: 7 Chromium tests.
+- `npm run build` passed.
+- `npm audit --audit-level=high` passed with 0 vulnerabilities.
+- `docs/openapi.yaml` parses successfully.
+- `git diff --check` passed.
+
 ## Remaining Release 2 Scope
 
-- Reservation metadata UX and API polish.
 - Better P&L dashboard.
 - Accessibility polish and formal WCAG-oriented checks.
 - More import templates.

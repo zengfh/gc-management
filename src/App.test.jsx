@@ -2563,6 +2563,9 @@ describe('App', () => {
             id: 1,
             brand: 'Target',
             status: 'reserved',
+            reservedFor: 'Dealer A',
+            reservedUntil: '2026-06-01',
+            reservedNotes: 'Awaiting payment',
             faceValueCents: 5000,
             remainingBalanceCents: 5000,
             purchaseCostCents: 4500,
@@ -2592,14 +2595,23 @@ describe('App', () => {
     await screen.findByRole('heading', { name: /dashboard/i });
     await user.click(screen.getByRole('button', { name: /^cards$/i }));
     await user.click(screen.getByRole('button', { name: /reserve target/i }));
+    const reserveDialog = await screen.findByRole('dialog', { name: /reserve card/i });
+    await user.type(within(reserveDialog).getByLabelText(/^reserved for$/i), 'Dealer A');
+    await user.type(within(reserveDialog).getByLabelText(/^reserved until$/i), '2026-06-01');
+    await user.type(within(reserveDialog).getByLabelText(/^reservation notes$/i), 'Awaiting payment');
+    await user.click(within(reserveDialog).getByRole('button', { name: /^reserve card$/i }));
 
-    expect(await screen.findByRole('row', { name: /reserved target/i })).toBeInTheDocument();
+    expect(await screen.findByRole('row', { name: /reserved target dealer a/i })).toBeInTheDocument();
     expect(globalThis.fetch).toHaveBeenNthCalledWith(
       4,
       '/api/cards/1/reserve',
       expect.objectContaining({
         method: 'POST',
-        body: JSON.stringify({}),
+        body: JSON.stringify({
+          reservedFor: 'Dealer A',
+          reservedUntil: '2026-06-01',
+          reservedNotes: 'Awaiting payment',
+        }),
         headers: expect.objectContaining({
           'X-CSRF-Token': 'csrf_ready',
         }),

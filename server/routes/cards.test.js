@@ -254,6 +254,9 @@ describe('card routes', () => {
     expect(reserveResponse.body.data).toMatchObject({
       id: cardId,
       status: 'reserved',
+      reservedFor: 'Dealer A',
+      reservedUntil: '2026-06-01',
+      reservedNotes: 'Awaiting payment',
       rowVersion: 2,
     });
 
@@ -266,6 +269,9 @@ describe('card routes', () => {
     expect(unreserveResponse.body.data).toMatchObject({
       id: cardId,
       status: 'available',
+      reservedFor: null,
+      reservedUntil: null,
+      reservedNotes: null,
       rowVersion: 3,
     });
 

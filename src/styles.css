@@ -470,6 +470,22 @@ td {
   color: #b42318;
 }
 
+.reservation-cell {
+  display: grid;
+  gap: 2px;
+}
+
+.reservation-cell strong {
+  color: #111827;
+  font-size: 0.88rem;
+}
+
+.reservation-cell span {
+  color: #64748b;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
 .row-actions {
   display: flex;
   align-items: center;

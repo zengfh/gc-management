@@ -180,8 +180,8 @@ Example:
 
 | Test ID | Type | Scenario | Expected Result |
 |---|---|---|---|
-| LIFE-001 | Integration | Add -> reserve | status reserved; audit |
-| LIFE-002 | Integration | reserve -> unreserve | status available; audit |
+| LIFE-001 | Integration | Add -> reserve with metadata | status reserved; reservation metadata persisted and returned; audit |
+| LIFE-002 | Integration | reserve -> unreserve | status available; reservation metadata cleared; audit |
 | LIFE-003 | Integration | available -> sell | status sold; sale transaction; balance 0; snapshot recorded |
 | LIFE-004 | Integration | reserved -> sell | status sold; statusAtSale reserved |
 | LIFE-005 | Integration | in_use -> sell | status sold; remainingBalanceAtSaleCents snapshot |

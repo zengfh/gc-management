@@ -450,6 +450,7 @@ function CardsTable({
           <tr>
             <th>Status</th>
             <th>Brand</th>
+            <th>Reservation</th>
             <th>Last 4</th>
             <th>Source</th>
             <th>Expiration</th>
@@ -475,6 +476,16 @@ function CardsTable({
                 >
                   {card.brand}
                 </button>
+              </td>
+              <td>
+                {card.status === 'reserved' ? (
+                  <div className="reservation-cell">
+                    <strong>{card.reservedFor || 'Reserved'}</strong>
+                    <span>{card.reservedUntil ? `Until ${card.reservedUntil}` : 'No expiration'}</span>
+                  </div>
+                ) : (
+                  'Not reserved'
+                )}
               </td>
               <td className="mono">{card.cardNumberLast4 ? `**** ${card.cardNumberLast4}` : 'Hidden'}</td>
               <td>{card.source || 'Not recorded'}</td>
@@ -1899,6 +1910,14 @@ function CardDetailPanel({ detailState, onClose, onLogout, onUndoUsage, onReveal
               <strong>{statusText(detailCard.status)}</strong>
             </div>
             <div className="preview-box">
+              <span>Reserved for</span>
+              <strong>{detailCard.reservedFor || 'Not reserved'}</strong>
+            </div>
+            <div className="preview-box">
+              <span>Reserved until</span>
+              <strong>{detailCard.reservedUntil || 'Not recorded'}</strong>
+            </div>
+            <div className="preview-box">
               <span>Masked number</span>
               <strong className="mono">
                 {detailCard.cardNumberLast4 ? `**** ${detailCard.cardNumberLast4}` : 'Hidden'}
@@ -1935,6 +1954,10 @@ function CardDetailPanel({ detailState, onClose, onLogout, onUndoUsage, onReveal
             <div className="preview-box detail-note">
               <span>Notes</span>
               <strong>{detailCard.notes || 'Not recorded'}</strong>
+            </div>
+            <div className="preview-box detail-note">
+              <span>Reservation notes</span>
+              <strong>{detailCard.reservedNotes || 'Not recorded'}</strong>
             </div>
           </div>
           <section className="detail-section credential-section">
@@ -2532,6 +2555,77 @@ function EditDealPanel({ deal, onClose, onEditDeal }) {
   );
 }
 
+function ReserveCardPanel({ card, onClose, onReserveCard }) {
+  const [reservedFor, setReservedFor] = useState('');
+  const [reservedUntil, setReservedUntil] = useState('');
+  const [reservedNotes, setReservedNotes] = useState('');
+  const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  async function submitReserve(event) {
+    event.preventDefault();
+    setError('');
+
+    setSubmitting(true);
+    try {
+      await onReserveCard(card.id, {
+        ...(reservedFor.trim() ? { reservedFor: reservedFor.trim() } : {}),
+        ...(reservedUntil ? { reservedUntil } : {}),
+        ...(reservedNotes.trim() ? { reservedNotes: reservedNotes.trim() } : {}),
+      });
+      onClose();
+    } catch (caught) {
+      setError(caught.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <section className="slide-panel" role="dialog" aria-modal="true" aria-labelledby="reserve-card-title">
+        <div className="panel-heading">
+          <div>
+            <p className="eyebrow">{card.brand}</p>
+            <h2 id="reserve-card-title">Reserve card</h2>
+          </div>
+          <button type="button" className="icon-button" aria-label="Close reserve card" onClick={onClose}>
+            <X aria-hidden="true" size={18} />
+          </button>
+        </div>
+        <form className="panel-form" onSubmit={submitReserve}>
+          <div className="preview-box">
+            <span>Remaining reserved</span>
+            <strong>{formatMoney(card.remainingBalanceCents)}</strong>
+          </div>
+          <label>
+            <span>Reserved for</span>
+            <input value={reservedFor} onChange={(event) => setReservedFor(event.target.value)} />
+          </label>
+          <label>
+            <span>Reserved until</span>
+            <input type="date" value={reservedUntil} onChange={(event) => setReservedUntil(event.target.value)} />
+          </label>
+          <label>
+            <span>Reservation notes</span>
+            <textarea rows="3" value={reservedNotes} onChange={(event) => setReservedNotes(event.target.value)} />
+          </label>
+          <FieldError message={error} />
+          <div className="panel-actions">
+            <button type="button" className="secondary-action" onClick={onClose}>
+              Cancel
+            </button>
+            <button type="submit" className="primary-action" disabled={submitting}>
+              <PackageCheck aria-hidden="true" size={17} />
+              {submitting ? 'Reserving...' : 'Reserve card'}
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
+  );
+}
+
 function VoidCardPanel({ card, onClose, onVoidCard }) {
   const [reason, setReason] = useState('');
   const [error, setError] = useState('');
@@ -2883,6 +2977,7 @@ function WorkSurface({
   const [usageCard, setUsageCard] = useState(null);
   const [editCard, setEditCard] = useState(null);
   const [deleteCard, setDeleteCard] = useState(null);
+  const [reserveCard, setReserveCard] = useState(null);
   const [saleCard, setSaleCard] = useState(null);
   const [undoSaleCard, setUndoSaleCard] = useState(null);
   const [voidCard, setVoidCard] = useState(null);
@@ -3060,7 +3155,7 @@ function WorkSurface({
                 onSellCard={setSaleCard}
                 onUndoSale={setUndoSaleCard}
                 onVoidCard={setVoidCard}
-                onReserveCard={onReserveCard}
+                onReserveCard={setReserveCard}
                 onUnreserveCard={onUnreserveCard}
               />
             </section>
@@ -3098,7 +3193,7 @@ function WorkSurface({
               onSellCard={setSaleCard}
               onUndoSale={setUndoSaleCard}
               onVoidCard={setVoidCard}
-              onReserveCard={onReserveCard}
+              onReserveCard={setReserveCard}
               onUnreserveCard={onUnreserveCard}
             />
             <CardsPagination page={cardsPage} currentCount={cards.length} onPageCards={pageCards} />
@@ -3243,6 +3338,13 @@ function WorkSurface({
           card={deleteCard}
           onClose={() => setDeleteCard(null)}
           onDeleteCard={onDeleteCard}
+        />
+      ) : null}
+      {reserveCard ? (
+        <ReserveCardPanel
+          card={reserveCard}
+          onClose={() => setReserveCard(null)}
+          onReserveCard={onReserveCard}
         />
       ) : null}
       {saleCard ? (
@@ -3725,10 +3827,10 @@ export default function App() {
     );
   }
 
-  async function handleCardTransition(cardId, action) {
+  async function handleCardTransition(cardId, action, payload = {}) {
     const response = await apiFetch(`/api/cards/${cardId}/${action}`, {
       method: 'POST',
-      body: {},
+      body: payload,
       csrfToken: auth.csrfToken,
     });
     setCards((current) =>
@@ -3815,7 +3917,7 @@ export default function App() {
       onSellCard={handleSellCard}
       onUndoSale={handleUndoSale}
       onVoidCard={handleVoidCard}
-      onReserveCard={(card) => handleCardTransition(card.id, 'reserve')}
+      onReserveCard={(cardId, payload) => handleCardTransition(cardId, 'reserve', payload)}
       onUnreserveCard={(card) => handleCardTransition(card.id, 'unreserve')}
     />
   );

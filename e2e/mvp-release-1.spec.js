@@ -50,6 +50,9 @@ test.describe.serial('MVP Release 1 critical flows', () => {
 
     await page.getByRole('button', { name: /^cards$/i }).click();
     await page.getByRole('button', { name: /reserve target/i }).click();
+    await page.getByRole('dialog', { name: /reserve card/i }).getByLabel(/^reserved for$/i).fill('Dealer A');
+    await page.getByRole('dialog', { name: /reserve card/i }).getByLabel(/^reserved until$/i).fill('2026-06-01');
+    await page.getByRole('dialog', { name: /reserve card/i }).getByRole('button', { name: /^reserve card$/i }).click();
     await expect(page.getByRole('row', { name: /reserved.*target/i })).toBeVisible();
 
     await page.getByRole('button', { name: /sell target/i }).click();

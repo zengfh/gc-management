@@ -279,6 +279,7 @@ Columns:
 
 - Status
 - Brand
+- Reservation summary when reserved
 - Last 4
 - Type
 - Format
@@ -305,7 +306,7 @@ Filters:
 Row actions:
 
 - View
-- Reserve/Unreserve
+- Reserve/Unreserve; reserve opens a panel for reserved-for, reserved-until, and reservation notes
 - Sell
 - Use
 - Edit
@@ -323,10 +324,11 @@ Sections:
 1. Header: brand, status badge, remaining balance, face value.
 2. Credential panel: masked/reveal/copy values.
 3. Metadata: deal, source, purchase cost, expiration, format, notes.
-4. Actions: valid state actions.
-5. Transactions table.
-6. Usages table with reversed toggle.
-7. Audit timeline.
+4. Reservation metadata: reserved for, reserved until, reservation notes.
+5. Actions: valid state actions.
+6. Transactions table.
+7. Usages table with reversed toggle.
+8. Audit timeline.
 
 Safety:
 

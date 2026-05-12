@@ -225,6 +225,7 @@ Tasks:
 
 - [x] Encrypted portable export and restore path. Completed 2026-05-12.
 - [x] Settings page backup controls. Completed 2026-05-12.
+- [x] Reservation metadata UX/API polish. Completed 2026-05-12.
 - [ ] Real account/user admin if needed.
 - [ ] Persistent session store for hosted deployment.
 - [ ] Persistent rate limit store.
@@ -297,7 +298,7 @@ Do not start Phase 6 until the product's target customer, compliance posture, an
 ### P2 Backlog
 
 - Encrypted portable export. Completed 2026-05-12 as Release 2 milestone 1.
-- Reservation metadata.
+- Reservation metadata UX/API polish. Completed 2026-05-12 as Release 2 milestone 3.
 - Settings page backup controls. Completed 2026-05-12 as Release 2 milestone 2.
 - Observability.
 - Team/user model activation.
