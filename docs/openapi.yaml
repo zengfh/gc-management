@@ -981,11 +981,26 @@ components:
         cardNumberLast4:
           type: string
           nullable: true
+        source:
+          type: string
+          nullable: true
         expirationDate:
           type: string
           nullable: true
         status:
           $ref: "#/components/schemas/CardStatus"
+        reservedFor:
+          type: string
+          nullable: true
+        reservedUntil:
+          type: string
+          nullable: true
+        reservedNotes:
+          type: string
+          nullable: true
+        latestSalePriceCents:
+          type: integer
+          nullable: true
         rowVersion:
           type: integer
     CardInput:

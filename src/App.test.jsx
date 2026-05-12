@@ -203,6 +203,78 @@ describe('App', () => {
     });
   });
 
+  it('renders dashboard P&L and risk metrics from card data', async () => {
+    globalThis.fetch
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            setupComplete: true,
+            sessionValid: true,
+            dekLoaded: true,
+            csrfToken: 'csrf_ready',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            {
+              id: 1,
+              brand: 'Target',
+              status: 'available',
+              faceValueCents: 5000,
+              remainingBalanceCents: 5000,
+              purchaseCostCents: 4500,
+              cardNumberLast4: '1111',
+              expirationDate: '2026-06-01',
+            },
+            {
+              id: 2,
+              brand: 'Amazon',
+              status: 'reserved',
+              faceValueCents: 2500,
+              remainingBalanceCents: 2500,
+              purchaseCostCents: 2000,
+              cardNumberLast4: '2222',
+              reservedFor: 'Dealer A',
+              reservedUntil: '2026-05-01',
+            },
+            {
+              id: 3,
+              brand: 'Best Buy',
+              status: 'in_use',
+              faceValueCents: 10000,
+              remainingBalanceCents: 6000,
+              purchaseCostCents: 8000,
+              cardNumberLast4: '3333',
+            },
+            {
+              id: 4,
+              brand: 'Visa',
+              status: 'sold',
+              faceValueCents: 10000,
+              remainingBalanceCents: 0,
+              purchaseCostCents: 9000,
+              latestSalePriceCents: 9500,
+              cardNumberLast4: '4444',
+            },
+          ],
+          page: { total: 4, limit: 50, offset: 0, hasMore: false },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }));
+
+    render(<App />);
+
+    await screen.findByRole('heading', { name: /dashboard/i });
+    expect(screen.getByText(/^Active remaining$/i).closest('article')).toHaveTextContent('$135.00');
+    expect(screen.getByText(/^Active cost basis$/i).closest('article')).toHaveTextContent('$145.00');
+    expect(screen.getByText(/^Active gross margin$/i).closest('article')).toHaveTextContent('-$10.00');
+    expect(screen.getByText(/^Sold proceeds$/i).closest('article')).toHaveTextContent('$95.00');
+    expect(screen.getByText(/^Realized P&L$/i).closest('article')).toHaveTextContent('$5.00');
+    expect(screen.getByText(/^Stale reservations$/i).closest('article')).toHaveTextContent('1');
+  });
+
   it('loads the audit log from primary navigation', async () => {
     globalThis.fetch
       .mockResolvedValueOnce(

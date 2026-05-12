@@ -226,6 +226,7 @@ Tasks:
 - [x] Encrypted portable export and restore path. Completed 2026-05-12.
 - [x] Settings page backup controls. Completed 2026-05-12.
 - [x] Reservation metadata UX/API polish. Completed 2026-05-12.
+- [x] Better P&L dashboard. Completed 2026-05-12.
 - [ ] Real account/user admin if needed.
 - [ ] Persistent session store for hosted deployment.
 - [ ] Persistent rate limit store.

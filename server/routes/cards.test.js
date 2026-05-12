@@ -315,6 +315,12 @@ describe('card routes', () => {
       remainingBalanceAtSaleCents: 5_000,
       statusAtSale: 'available',
     });
+    const soldListResponse = await agent.get('/api/cards');
+    expect(soldListResponse.body.data[0]).toMatchObject({
+      id: cardId,
+      status: 'sold',
+      latestSalePriceCents: 4_800,
+    });
 
     const duplicateSell = await postWithCsrf(`/api/cards/${cardId}/sell`, csrfToken).send({
       salePriceCents: 4_800,
@@ -334,6 +340,12 @@ describe('card routes', () => {
       status: 'available',
       remainingBalanceCents: 5_000,
       rowVersion: 3,
+    });
+    const restoredListResponse = await agent.get('/api/cards');
+    expect(restoredListResponse.body.data[0]).toMatchObject({
+      id: cardId,
+      status: 'available',
+      latestSalePriceCents: null,
     });
     expect(undoResponse.body.data.transactions.map((transaction) => transaction.type)).toEqual([
       'sale_reversal',

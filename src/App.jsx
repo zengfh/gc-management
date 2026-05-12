@@ -168,6 +168,36 @@ function formatDateTime(value) {
   return new Date(value).toLocaleString();
 }
 
+function parseDateOnly(value) {
+  if (!value) {
+    return null;
+  }
+  const parsed = new Date(`${value}T00:00:00`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function isWithinNextDays(value, days) {
+  const parsed = parseDateOnly(value);
+  if (!parsed) {
+    return false;
+  }
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const end = new Date(today);
+  end.setDate(end.getDate() + days);
+  return parsed >= today && parsed <= end;
+}
+
+function isBeforeToday(value) {
+  const parsed = parseDateOnly(value);
+  if (!parsed) {
+    return false;
+  }
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return parsed < today;
+}
+
 function formatDisplayValue(value) {
   if (!value) {
     return 'Not recorded';
@@ -2985,22 +3015,56 @@ function WorkSurface({
   const [dealDetailState, setDealDetailState] = useState(null);
   const [showArchivedDeals, setShowArchivedDeals] = useState(false);
   const [dealError, setDealError] = useState('');
-  const activeRemaining = cards
-    .filter((card) => ['available', 'reserved', 'in_use'].includes(card.status))
-    .reduce((sum, card) => sum + card.remainingBalanceCents, 0);
+  const activeCards = cards.filter((card) => ['available', 'reserved', 'in_use'].includes(card.status));
+  const soldCards = cards.filter((card) => card.status === 'sold');
+  const activeRemaining = activeCards.reduce((sum, card) => sum + card.remainingBalanceCents, 0);
+  const activeCostBasis = activeCards.reduce((sum, card) => sum + card.purchaseCostCents, 0);
   const availableFace = cards
     .filter((card) => card.status === 'available')
     .reduce((sum, card) => sum + card.faceValueCents, 0);
-  const costBasis = cards.reduce((sum, card) => sum + card.purchaseCostCents, 0);
+  const reservedRemaining = cards
+    .filter((card) => card.status === 'reserved')
+    .reduce((sum, card) => sum + card.remainingBalanceCents, 0);
+  const inUseRemaining = cards
+    .filter((card) => card.status === 'in_use')
+    .reduce((sum, card) => sum + card.remainingBalanceCents, 0);
+  const soldProceeds = soldCards.reduce((sum, card) => sum + (card.latestSalePriceCents || 0), 0);
+  const soldCostBasis = soldCards.reduce((sum, card) => sum + card.purchaseCostCents, 0);
+  const activeGrossMargin = activeRemaining - activeCostBasis;
+  const realizedProfit = soldProceeds - soldCostBasis;
+  const expiringSoonCards = activeCards.filter((card) => isWithinNextDays(card.expirationDate, 30));
+  const expiringSoonRemaining = expiringSoonCards.reduce((sum, card) => sum + card.remainingBalanceCents, 0);
+  const staleReservationCount = cards.filter(
+    (card) => card.status === 'reserved' && isBeforeToday(card.reservedUntil),
+  ).length;
 
   const summaryCards = useMemo(
     () => [
       { label: 'Active remaining', value: formatMoney(activeRemaining), icon: CircleDollarSign },
+      { label: 'Active cost basis', value: formatMoney(activeCostBasis), icon: Tag },
+      { label: 'Active gross margin', value: formatMoney(activeGrossMargin), icon: CircleDollarSign },
+      { label: 'Sold proceeds', value: formatMoney(soldProceeds), icon: CircleDollarSign },
+      { label: 'Realized P&L', value: formatMoney(realizedProfit), icon: CircleDollarSign },
       { label: 'Available face', value: formatMoney(availableFace), icon: PackageCheck },
+      { label: 'Reserved remaining', value: formatMoney(reservedRemaining), icon: PackageCheck },
+      { label: 'In-use remaining', value: formatMoney(inUseRemaining), icon: CreditCard },
+      { label: 'Expiring 30d', value: formatMoney(expiringSoonRemaining), icon: CreditCard },
+      { label: 'Stale reservations', value: String(staleReservationCount), icon: PackageCheck },
       { label: 'Tracked cards', value: String(cards.length), icon: CreditCard },
-      { label: 'Cost basis', value: formatMoney(costBasis), icon: Tag },
     ],
-    [activeRemaining, availableFace, cards.length, costBasis],
+    [
+      activeRemaining,
+      activeCostBasis,
+      activeGrossMargin,
+      soldProceeds,
+      realizedProfit,
+      availableFace,
+      reservedRemaining,
+      inUseRemaining,
+      expiringSoonRemaining,
+      staleReservationCount,
+      cards.length,
+    ],
   );
 
   async function activateView(view) {
@@ -3800,8 +3864,12 @@ export default function App() {
       body: payload,
       csrfToken: auth.csrfToken,
     });
+    const soldCard = {
+      ...response.data.card,
+      latestSalePriceCents: payload.salePriceCents,
+    };
     setCards((current) =>
-      current.map((card) => (card.id === response.data.card.id ? response.data.card : card)),
+      current.map((card) => (card.id === soldCard.id ? soldCard : card)),
     );
   }
 
@@ -3812,7 +3880,9 @@ export default function App() {
       csrfToken: auth.csrfToken,
     });
     setCards((current) =>
-      current.map((card) => (card.id === response.data.card.id ? response.data.card : card)),
+      current.map((card) =>
+        card.id === response.data.card.id ? { ...response.data.card, latestSalePriceCents: null } : card,
+      ),
     );
   }
 

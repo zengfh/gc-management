@@ -86,9 +86,31 @@ Verification:
 - `docs/openapi.yaml` parses successfully.
 - `git diff --check` passed.
 
+### Milestone 4: Better P&L Dashboard
+
+Status: code complete; release gate passed on 2026-05-12.
+
+Delivered:
+
+- Dashboard metrics now include active cost basis, active gross margin, sold proceeds, realized P&L, reserved remaining, in-use remaining, expiring-30-day remaining value, and stale reservation count.
+- Card list responses include `latestSalePriceCents` for the latest non-reversed sale, so dashboard P&L can avoid counting undone sales.
+- Sell and undo-sale UI updates keep the in-memory dashboard data consistent without requiring a full reload.
+- UI/UX, QA, PRD, and roadmap docs have been updated for this milestone.
+
+Verification:
+
+- Backend test verifies `latestSalePriceCents` appears for sold cards and clears after undo sale.
+- React test verifies dashboard P&L and risk metrics from mixed inventory data.
+- `npm run lint` passed.
+- `npm test` passed: 12 files, 95 tests.
+- `npm run test:e2e` passed: 7 Chromium tests.
+- `npm run build` passed.
+- `npm audit --audit-level=high` passed with 0 vulnerabilities.
+- `docs/openapi.yaml` parses successfully.
+- `git diff --check` passed.
+
 ## Remaining Release 2 Scope
 
-- Better P&L dashboard.
 - Accessibility polish and formal WCAG-oriented checks.
 - More import templates.
 - Performance smoke/load tests.

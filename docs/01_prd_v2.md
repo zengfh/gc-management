@@ -306,7 +306,7 @@ Do not log sensitive field values.
 - Encrypted portable export and restore path. Status: implemented in Release 2 milestone 1 on 2026-05-12.
 - Settings page backup controls. Status: implemented in Release 2 milestone 2 on 2026-05-12.
 - Reservation metadata UX/API polish. Status: implemented in Release 2 milestone 3 on 2026-05-12.
-- Better P&L dashboard.
+- Better P&L dashboard. Status: implemented in Release 2 milestone 4 on 2026-05-12.
 - Accessibility polish.
 - More import templates.
 - Performance tests.

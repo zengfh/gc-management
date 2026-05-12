@@ -258,7 +258,8 @@ Widgets:
 - Reserved balance.
 - In-use balance.
 - Cost basis.
-- Sold value and estimated P&L if data exists.
+- Active gross margin.
+- Sold proceeds and realized P&L when latest sale data exists.
 - Expiring soon.
 - Stale reservations.
 - Recent activity.

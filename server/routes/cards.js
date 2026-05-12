@@ -455,6 +455,7 @@ function toCardResponse(row) {
     reservedFor: row.reservedFor,
     reservedUntil: row.reservedUntil,
     reservedNotes: row.reservedNotes,
+    latestSalePriceCents: row.latestSalePriceCents ?? null,
     rowVersion: row.rowVersion,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -617,7 +618,24 @@ export function createCardsRouter({ db }) {
       const total = db.prepare(`SELECT COUNT(*) AS count FROM cards WHERE ${whereClause}`).get(...params).count;
       const rows = db
         .prepare(
-          `SELECT *
+          `SELECT cards.*,
+                  (
+                    SELECT sale.salePriceCents
+                    FROM transactions AS sale
+                    WHERE sale.accountId = cards.accountId
+                      AND sale.cardId = cards.id
+                      AND sale.type = 'sale'
+                      AND NOT EXISTS (
+                        SELECT 1
+                        FROM transactions AS reversal
+                        WHERE reversal.accountId = sale.accountId
+                          AND reversal.cardId = sale.cardId
+                          AND reversal.type = 'sale_reversal'
+                          AND reversal.id > sale.id
+                      )
+                    ORDER BY sale.id DESC
+                    LIMIT 1
+                  ) AS latestSalePriceCents
            FROM cards
            WHERE ${whereClause}
            ORDER BY ${sort.column} ${sort.direction}, id ${sort.direction}
