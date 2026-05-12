@@ -1,6 +1,7 @@
 import request from 'supertest';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../app.js';
+import { clearUnlockedSession } from '../auth/unlockStore.js';
 import { openDatabase } from '../db/index.js';
 
 describe('auth routes', () => {
@@ -172,6 +173,57 @@ describe('auth routes', () => {
     }
 
     const blockedResponse = await agent.post('/api/auth/login').send({
+      unlockSecret: 'wrong unlock phrase final',
+    });
+    expect(blockedResponse.status).toBe(429);
+    expect(blockedResponse.body.error.code).toBe('LOGIN_RATE_LIMITED');
+  }, 45_000);
+
+  it('persists session metadata across app instances while requiring key reload', async () => {
+    const setupResponse = await setupOwner();
+    const cookie = setupResponse.headers['set-cookie'];
+    const sessionRow = db.prepare('SELECT sid FROM web_sessions').get();
+    expect(sessionRow).toEqual({ sid: expect.any(String) });
+
+    clearUnlockedSession(sessionRow.sid);
+    const restartedApp = createApp({ db });
+
+    const statusResponse = await request(restartedApp).get('/api/auth/status').set('Cookie', cookie);
+    expect(statusResponse.status).toBe(200);
+    expect(statusResponse.body.data).toMatchObject({
+      setupComplete: true,
+      sessionValid: true,
+      dekLoaded: false,
+      csrfToken: setupResponse.body.data.csrfToken,
+    });
+
+    const lockedResponse = await request(restartedApp).get('/api/cards').set('Cookie', cookie);
+    expect(lockedResponse.status).toBe(401);
+    expect(lockedResponse.body.error.code).toBe('LOCKED');
+  }, 45_000);
+
+  it('persists failed login attempts across app instances', async () => {
+    await setupOwner();
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const response = await request(app).post('/api/auth/login').send({
+        unlockSecret: `wrong unlock phrase ${attempt}`,
+      });
+      expect(response.status).toBe(401);
+    }
+
+    const restartedApp = createApp({ db });
+    for (let attempt = 3; attempt < 5; attempt += 1) {
+      const response = await request(restartedApp).post('/api/auth/login').send({
+        unlockSecret: `wrong unlock phrase ${attempt}`,
+      });
+      expect(response.status).toBe(401);
+    }
+
+    const attemptRow = db.prepare('SELECT failures FROM auth_login_attempts').get();
+    expect(attemptRow).toEqual({ failures: 5 });
+
+    const blockedResponse = await request(restartedApp).post('/api/auth/login').send({
       unlockSecret: 'wrong unlock phrase final',
     });
     expect(blockedResponse.status).toBe(429);

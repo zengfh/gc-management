@@ -284,6 +284,7 @@ Example:
 | Security headers | CSP, frame-ancestors, nosniff, HSTS in production config |
 | Logging | Request IDs, redaction, no sensitive payloads |
 | Migration | Upgrade seeded old DB to latest schema |
+| Hosted auth state | Persistent session metadata, memory-only DEK reload behavior, persistent failed-login counters |
 
 ## 9. Security-Specific Test Cases
 

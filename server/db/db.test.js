@@ -31,9 +31,12 @@ describe('database migrations', () => {
       .map((row) => row.name);
 
     expect(migrations.map((row) => row.id)).toContain('001_init.sql');
+    expect(migrations.map((row) => row.id)).toContain('002_hosted_hardening.sql');
     expect(tables).toContain('accounts');
     expect(tables).toContain('cards');
     expect(tables).toContain('audit_log');
+    expect(tables).toContain('web_sessions');
+    expect(tables).toContain('auth_login_attempts');
     expect(verifyDatabase(db)).toEqual({ ok: true, foreignKeyIssues: [] });
 
     db.close();

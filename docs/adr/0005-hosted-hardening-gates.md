@@ -20,7 +20,9 @@ Before hosted team use, the app must pass these gates:
 ## Implementation Status
 
 - `GC_PLAINTEXT_EXPORT_ENABLED=false` is implemented. It policy-locks plaintext JSON export off, prevents settings from enabling it, and returns 403 for plaintext export attempts.
-- Session and rate-limit persistence are documented gates, not yet implemented infrastructure choices.
+- SQLite-backed `web_sessions` is implemented for single-node hosted session metadata. DEK material intentionally remains process-memory-only; after a process restart, the session can remain valid but encrypted data requires unlocking again.
+- SQLite-backed `auth_login_attempts` is implemented for single-node persistent failed-login counters.
+- External shared session/rate-limit infrastructure is still required before multi-instance hosting.
 - Observability is still limited to request IDs, health checks, security headers, and audit rows. Production logging/metrics/error reporting remain future work.
 
 ## Consequences

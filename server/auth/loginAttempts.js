@@ -35,3 +35,50 @@ export function createLoginAttemptStore({
     },
   };
 }
+
+export function createSqliteLoginAttemptStore({
+  db,
+  maxAttempts = 5,
+  windowMs = 15 * 60 * 1000,
+  now = () => Date.now(),
+} = {}) {
+  function currentRecord(key) {
+    const record = db
+      .prepare('SELECT key, failures, resetAt FROM auth_login_attempts WHERE key = ?')
+      .get(key);
+    if (!record) {
+      return null;
+    }
+    if (record.resetAt <= now()) {
+      db.prepare('DELETE FROM auth_login_attempts WHERE key = ?').run(key);
+      return null;
+    }
+    return record;
+  }
+
+  return {
+    isBlocked(key) {
+      const record = currentRecord(key);
+      return Boolean(record && record.failures >= maxAttempts);
+    },
+
+    recordFailure(key) {
+      const record = currentRecord(key);
+      const failures = (record?.failures || 0) + 1;
+      const resetAt = record?.resetAt || now() + windowMs;
+      db.prepare(
+        `INSERT INTO auth_login_attempts (key, failures, resetAt, updatedAt)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(key) DO UPDATE SET
+           failures = excluded.failures,
+           resetAt = excluded.resetAt,
+           updatedAt = excluded.updatedAt`,
+      ).run(key, failures, resetAt, new Date(now()).toISOString());
+      return { key, failures, resetAt };
+    },
+
+    recordSuccess(key) {
+      db.prepare('DELETE FROM auth_login_attempts WHERE key = ?').run(key);
+    },
+  };
+}

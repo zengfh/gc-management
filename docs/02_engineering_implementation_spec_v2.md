@@ -58,6 +58,8 @@ Even in MVP, include:
 - idempotency_keys table.
 - import_jobs table.
 - app_settings table.
+- web_sessions table for persistent single-node session metadata.
+- auth_login_attempts table for persistent single-node login throttling.
 - clean repository/data-access layer so SQLite can later be replaced by Postgres.
 
 ### 2.3 When to Move Beyond SQLite

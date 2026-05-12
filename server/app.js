@@ -2,6 +2,8 @@ import express from 'express';
 import session from 'express-session';
 import helmet from 'helmet';
 import { nanoid } from 'nanoid';
+import { createSqliteLoginAttemptStore } from './auth/loginAttempts.js';
+import { createSqliteSessionStore } from './auth/sqliteSessionStore.js';
 import { verifyDatabase } from './db/index.js';
 import { errorResponse } from './http/response.js';
 import { createAuditRouter } from './routes/audit.js';
@@ -22,6 +24,7 @@ export function createApp({ db } = {}) {
   assertProductionConfig();
 
   const app = express();
+  const sessionStore = db ? createSqliteSessionStore({ db }) : undefined;
 
   app.disable('x-powered-by');
   app.use(
@@ -58,6 +61,7 @@ export function createApp({ db } = {}) {
   app.use(
     session({
       name: 'gc.sid',
+      ...(sessionStore ? { store: sessionStore } : {}),
       secret: process.env.SESSION_SECRET || 'dev-session-secret-change-me',
       resave: false,
       saveUninitialized: false,
@@ -92,7 +96,7 @@ export function createApp({ db } = {}) {
   });
 
   if (db) {
-    app.use('/api/auth', createAuthRouter({ db }));
+    app.use('/api/auth', createAuthRouter({ db, loginAttempts: createSqliteLoginAttemptStore({ db }) }));
     app.use('/api/audit', createAuditRouter({ db }));
     app.use('/api/backup', createBackupRouter({ db }));
     app.use('/api/cards', createCardsRouter({ db }));

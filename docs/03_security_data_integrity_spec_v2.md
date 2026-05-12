@@ -185,11 +185,11 @@ Freshness window should be short, e.g. immediate prompt or a 5-minute reauth tok
 
 MVP:
 
-- In-memory rate limiting is acceptable only for local/single-process usage.
+- SQLite-backed rate limiting is implemented for local and single-node hosted usage.
 
 Product mode:
 
-- Persistent rate-limit store such as Redis.
+- A shared persistent rate-limit store such as Redis or the production database is required for multi-instance deployments.
 - Scope by account, user, IP, and action type.
 - Alert on repeated failed login and repeated export attempts.
 

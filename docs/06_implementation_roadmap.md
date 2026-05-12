@@ -232,9 +232,9 @@ Tasks:
 - [x] Additional CSV import templates. Completed 2026-05-12 for GC Manager, marketplace, and prepaid templates.
 - [x] Automated accessibility smoke checks. Completed 2026-05-12 with Playwright + axe WCAG A/AA checks.
 - [x] Plaintext export deployment feature flag. Completed 2026-05-12 with `GC_PLAINTEXT_EXPORT_ENABLED=false`.
+- [x] Persistent session store for single-node hosted deployment. Completed 2026-05-12 with SQLite-backed `web_sessions`.
+- [x] Persistent login rate-limit store for single-node hosted deployment. Completed 2026-05-12 with SQLite-backed `auth_login_attempts`.
 - [ ] Real account/user admin if needed.
-- [ ] Persistent session store for hosted deployment.
-- [ ] Persistent rate limit store.
 - [ ] Observability: metrics, alerts, error reporting.
 - [ ] Data retention policy.
 - [ ] Privacy/security documentation.

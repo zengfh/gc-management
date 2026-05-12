@@ -316,7 +316,7 @@ Do not log sensitive field values.
 
 - Team account model.
 - Role-based access.
-- Persistent session/rate-limit store.
+- Persistent session/rate-limit store. Status: SQLite-backed single-node session and login-attempt stores implemented in Release 3 milestone 1 on 2026-05-12; external shared store remains required before multi-instance hosting.
 - Admin audit and support tooling.
 - Postgres migration spike if productization proceeds.
 
