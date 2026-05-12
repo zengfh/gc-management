@@ -218,6 +218,12 @@ textarea {
   resize: vertical;
 }
 
+.inline-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
 .check-row {
   grid-template-columns: 18px 1fr;
   align-items: start;
@@ -1170,11 +1176,15 @@ tbody tr:hover {
 
 .credential-row {
   display: grid;
-  grid-template-columns: minmax(90px, 0.8fr) minmax(120px, 1fr) auto;
+  grid-template-columns: minmax(92px, 0.72fr) minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
   border-top: 1px solid var(--color-border-subtle);
   padding-top: 8px;
+}
+
+.credential-row strong {
+  overflow-wrap: anywhere;
 }
 
 .credential-row span {
@@ -1299,6 +1309,10 @@ tbody tr:hover {
   }
 
   .credential-row {
+    grid-template-columns: 1fr;
+  }
+
+  .inline-fields {
     grid-template-columns: 1fr;
   }
 }

@@ -4,6 +4,7 @@ import { insertAuditEvent } from '../audit/index.js';
 import { requireUnlockedSession } from '../auth/requireAuth.js';
 import { requireAdminRole } from '../auth/roles.js';
 import { verifyFreshUnlockSecret } from '../auth/verifyUnlockSecret.js';
+import { parseCredentialSummary } from '../cards/credentials.js';
 import { asyncHandler, badRequest } from '../http/errors.js';
 import { objectResponse } from '../http/response.js';
 import {
@@ -169,7 +170,9 @@ function sanitizedCard(row) {
     faceValueCents: row.faceValueCents,
     remainingBalanceCents: row.remainingBalanceCents,
     purchaseCostCents: row.purchaseCostCents,
-    cardNumberLast4: row.cardNumberLast4,
+    cardNumberLast4: row.cardNumberLast4 ?? row.primaryCredentialLast4,
+    credentialProfile: row.credentialProfile,
+    credentialSummary: parseCredentialSummary(row),
     expirationDate: row.expirationDate,
     cardholderName: row.cardholderName,
     status: row.status,

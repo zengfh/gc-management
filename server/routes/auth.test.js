@@ -11,6 +11,7 @@ describe('auth routes', () => {
     rawDatabaseExport: true,
     csvImport: true,
     referenceValueHints: true,
+    networkSecurityCodeStorage: false,
   };
   let app;
   let db;

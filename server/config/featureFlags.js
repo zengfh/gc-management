@@ -29,6 +29,13 @@ export const featureFlagDefinitions = {
     public: true,
     description: 'Add Deal indexed typeahead and reference review.',
   },
+  networkSecurityCodeStorage: {
+    env: 'GC_FEATURE_NETWORK_SECURITY_CODE_STORAGE',
+    defaultEnabled: false,
+    disabledValue: 'false',
+    public: true,
+    description: 'Storage of network prepaid security codes such as CVV/CVC. Disabled by default.',
+  },
 };
 
 function readFlag(definition, env) {

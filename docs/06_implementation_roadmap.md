@@ -262,33 +262,35 @@ Design source:
 
 Backend tasks:
 
-- Add credential profile and credential-field migrations.
-- Backfill existing `cardNumber`/`pin`/`billingZip` rows into profile fields.
-- Add credential-field encryption, blind-index, masking, and reveal helpers.
-- Replace exact card-number search with exact credential search across indexed fields.
-- Add feature flag and server validation for network-card security-code storage.
-- Update create card, create deal, import CSV, backup import/export, sanitized export, and reveal endpoints.
-- Preserve legacy API compatibility for one release where practical.
+- [x] Add credential profile and credential-field migrations. Completed 2026-05-12.
+- [x] Backfill existing `cardNumber`/`pin`/`billingZip` rows into profile fields. Completed 2026-05-12.
+- [x] Add credential-field encryption, blind-index, masking, and reveal helpers. Completed 2026-05-12.
+- [x] Replace exact card-number search with exact credential search across indexed fields. Completed 2026-05-12.
+- [x] Add feature flag and server validation for network-card security-code storage. Completed 2026-05-12.
+- [x] Update create card, create deal, import CSV baseline, backup import/export, sanitized export, and reveal endpoints. Completed 2026-05-12.
+- [x] Preserve legacy API compatibility for one release where practical. Completed 2026-05-12.
 
 Frontend tasks:
 
-- Add credential profile picker and brand-template defaults in Add Deal/Add Card.
-- Render profile-specific fields instead of a single Card Number field.
-- Replace table "Last 4" with profile-aware credential summary.
-- Render structured credential reveal/copy UI, including barcode/QR display where applicable.
-- Add network-prepaid warnings and local-only security-code controls.
+- [x] Add credential profile picker and brand-template defaults in Add Deal. Completed 2026-05-12.
+- [x] Render profile-specific fields instead of a single Card Number field. Completed 2026-05-12.
+- [x] Replace table "Last 4" with profile-aware credential summary. Completed 2026-05-12.
+- [x] Render structured credential reveal/copy UI. Completed 2026-05-12.
+- [ ] Render scannable barcode/QR display after reveal.
+- [ ] Add full custom-field authoring UI.
+- [ ] Add visible network-prepaid local-only security-code warning/confirmation when the feature flag is enabled.
 
 QA tasks:
 
-- Cover code-only, number+PIN, barcode, network prepaid, and custom profiles.
-- Cover migration, encrypted backup/restore, CSV import, exact credential search, duplicate detection, reveal/copy, audit redaction, and feature-flag rejection.
+- [x] Cover migration, encrypted backup/restore, CSV import baseline, exact credential search, duplicate detection, reveal/copy, audit redaction, and feature-flag rejection in automated regression. Completed 2026-05-12.
+- [ ] Add UI-level coverage for barcode rendering and custom-field authoring after those UI pieces land.
 
 Exit criteria:
 
-- Mainstream gift-card credential profiles can be created, searched, revealed, imported, exported, backed up, and restored.
-- Product mode does not persist network-card CVV/CVC/CID/CSC.
-- Existing cards migrate without losing reveal or exact-search behavior.
-- Release 5 certification doc is added.
+- Mainstream gift-card credential profiles can be created, searched, revealed, imported, exported, backed up, and restored. Baseline met 2026-05-12.
+- Product mode does not persist network-card CVV/CVC/CID/CSC. Baseline met 2026-05-12 by default-disabled `GC_FEATURE_NETWORK_SECURITY_CODE_STORAGE`.
+- Existing cards migrate without losing reveal or exact-search behavior. Met 2026-05-12.
+- Release 5 certification doc is added. Met 2026-05-12 in `docs/13_release_5_status.md`.
 
 ## 10. Phase 6 - Commercial Product Track
 
@@ -315,7 +317,7 @@ Do not start Phase 6 until the product's target customer, compliance posture, an
 
 ### P0 Backlog
 
-- Credential profiles for mainstream card formats.
+- Credential profiles for mainstream card formats. Baseline completed 2026-05-12; barcode rendering/custom field UI remains P1 polish.
 - PRD v2 approval.
 - OpenAPI contract.
 - Database migrations.
@@ -333,6 +335,7 @@ Do not start Phase 6 until the product's target customer, compliance posture, an
 ### P1 Backlog
 
 - Barcode rendering/scanning support for barcode profile.
+- Custom credential field authoring UI.
 - CSV import preview/confirm.
 - Backup/export/import.
 - Audit UI.

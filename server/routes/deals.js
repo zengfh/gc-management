@@ -3,24 +3,66 @@ import { z } from 'zod';
 import { insertAuditEvent } from '../audit/index.js';
 import { requireUnlockedSession } from '../auth/requireAuth.js';
 import { requireOperatorRole } from '../auth/roles.js';
-import { asyncHandler, badRequest, conflict, notFound } from '../http/errors.js';
 import {
-  cardNumberHash as hashCardNumber,
-  cardNumberLast4,
-  encryptString,
-  normalizeCardNumber,
-} from '../security/crypto.js';
+  assertNoDuplicatePreparedCredentials,
+  assertNoExistingCredentialDuplicates,
+  barcodeFormats,
+  buildCredentialModel,
+  CredentialValidationError,
+  credentialFieldKinds,
+  credentialProfiles,
+  insertCredentialFields,
+  parseCredentialSummary,
+} from '../cards/credentials.js';
+import { featureEnabled } from '../config/featureFlags.js';
+import { asyncHandler, badRequest, conflict, notFound } from '../http/errors.js';
+
+const credentialFieldInputSchema = z
+  .object({
+    fieldKey: z.string().trim().min(1).max(80).optional(),
+    key: z.string().trim().min(1).max(80).optional(),
+    label: z.string().trim().min(1).max(80).optional(),
+    fieldKind: z.enum(credentialFieldKinds).optional(),
+    value: z.string().trim().max(4096).nullable().optional(),
+    barcodeFormat: z.enum(barcodeFormats).nullable().optional(),
+    sortOrder: z.number().int().optional(),
+    copyable: z.boolean().optional(),
+  })
+  .strict();
+
+const credentialsInputSchema = z
+  .object({
+    profile: z.enum(credentialProfiles).optional(),
+    fields: z.array(credentialFieldInputSchema).max(20).optional(),
+  })
+  .strict();
 
 const dealCardInputSchema = z
   .object({
     brand: z.string().trim().min(1).max(120),
     cardType: z.enum(['merchant', 'prepaid']),
     network: z.enum(['visa', 'mastercard', 'amex', 'discover', 'other']).nullable().optional(),
+    credentialProfile: z.enum(credentialProfiles).optional(),
+    credentials: credentialsInputSchema.optional(),
     faceValueCents: z.number().int().positive(),
     purchaseCostCents: z.number().int().nonnegative().optional(),
     cardNumber: z.string().trim().nullable().optional(),
     pin: z.string().trim().nullable().optional(),
     billingZip: z.string().trim().nullable().optional(),
+    primaryCode: z.string().trim().nullable().optional(),
+    claimCode: z.string().trim().nullable().optional(),
+    redemptionCode: z.string().trim().nullable().optional(),
+    giftCode: z.string().trim().nullable().optional(),
+    accessCode: z.string().trim().nullable().optional(),
+    barcodeValue: z.string().trim().nullable().optional(),
+    barcodeFormat: z.enum(barcodeFormats).nullable().optional(),
+    expirationMonth: z.string().trim().nullable().optional(),
+    expirationYear: z.string().trim().nullable().optional(),
+    networkSecurityCode: z.string().trim().nullable().optional(),
+    cvv: z.string().trim().nullable().optional(),
+    billingPostalCode: z.string().trim().nullable().optional(),
+    cardholderName: z.string().trim().nullable().optional(),
+    billingAddress: z.string().trim().nullable().optional(),
     expirationDate: z.string().trim().nullable().optional(),
     format: z.enum(['digital', 'physical']).nullable().optional(),
     source: z.string().trim().nullable().optional(),
@@ -104,6 +146,7 @@ function toDealResponse(row) {
 }
 
 function toCardResponse(row) {
+  const credentialSummary = parseCredentialSummary(row);
   return {
     id: row.id,
     accountId: row.accountId,
@@ -114,7 +157,9 @@ function toCardResponse(row) {
     faceValueCents: row.faceValueCents,
     remainingBalanceCents: row.remainingBalanceCents,
     purchaseCostCents: row.purchaseCostCents,
-    cardNumberLast4: row.cardNumberLast4,
+    cardNumberLast4: row.cardNumberLast4 ?? row.primaryCredentialLast4,
+    credentialProfile: row.credentialProfile,
+    credentialSummary,
     expirationDate: row.expirationDate,
     status: row.status,
     format: row.format,
@@ -154,10 +199,6 @@ function normalizeDealName(name, source) {
   }
 
   return 'Untitled deal';
-}
-
-function encryptedOrNull(value, key) {
-  return value ? encryptString(value, key) : null;
 }
 
 function allocateCardCosts(cards, rawCards, totalCostCents) {
@@ -219,35 +260,45 @@ function allocateCardCosts(cards, rawCards, totalCostCents) {
   });
 }
 
-function prepareCard(card, auth, dealId, fallbackSource) {
-  const normalizedCardNumber = normalizeCardNumber(card.cardNumber);
+function credentialValidationFailure(error) {
+  if (error instanceof CredentialValidationError) {
+    return badRequest('VALIDATION_FAILED', 'Request validation failed.', error.fieldErrors);
+  }
+  return error;
+}
 
+function duplicateCredentialConflict() {
+  return conflict('DUPLICATE_ACTIVE_CARD', 'Active duplicate credential for this brand already exists.');
+}
+
+function prepareCard(card, auth, dealId, fallbackSource) {
+  let model;
+  try {
+    model = buildCredentialModel(card, auth, {
+      allowNetworkSecurityCodeStorage: featureEnabled('networkSecurityCodeStorage'),
+    });
+  } catch (error) {
+    throw credentialValidationFailure(error);
+  }
   return {
     ...card,
     dealId,
     source: card.source ?? fallbackSource ?? null,
     status: 'available',
-    cardNumber: normalizedCardNumber ? encryptString(normalizedCardNumber, auth.dek) : null,
-    cardNumberHash: normalizedCardNumber ? hashCardNumber(normalizedCardNumber, auth.blindIndexKey) : null,
-    cardNumberLast4: normalizedCardNumber ? cardNumberLast4(normalizedCardNumber) : null,
-    pin: encryptedOrNull(card.pin, auth.dek),
-    billingZip: encryptedOrNull(card.billingZip, auth.dek),
+    credentialProfile: model.credentialProfile,
+    primaryCredentialLast4: model.primaryCredentialLast4,
+    credentialSummaryJson: model.credentialSummaryJson,
+    credentialFields: model.fields,
+    cardNumber: model.encryptedCardNumber,
+    cardNumberHash: model.cardNumberHash,
+    cardNumberLast4: model.cardNumberLast4,
+    pin: model.pin,
+    billingZip: model.billingZip,
   };
 }
 
 function assertNoDuplicateInputs(cards) {
-  const seen = new Set();
-  for (const card of cards) {
-    if (!card.cardNumberHash) {
-      continue;
-    }
-
-    const key = `${card.brand}\0${card.cardNumberHash}`;
-    if (seen.has(key)) {
-      throw conflict('DUPLICATE_ACTIVE_CARD', 'Active duplicate card number for this brand already exists.');
-    }
-    seen.add(key);
-  }
+  assertNoDuplicatePreparedCredentials(cards, duplicateCredentialConflict);
 }
 
 function createCardAuditValue(card) {
@@ -256,7 +307,9 @@ function createCardAuditValue(card) {
     cardType: card.cardType,
     faceValueCents: card.faceValueCents,
     purchaseCostCents: card.purchaseCostCents,
-    cardNumberLast4: card.cardNumberLast4,
+    cardNumberLast4: card.cardNumberLast4 ?? card.primaryCredentialLast4,
+    credentialProfile: card.credentialProfile,
+    credentialSummary: parseCredentialSummary(card),
     status: card.status,
   };
 }
@@ -391,6 +444,7 @@ export function createDealsRouter({ db }) {
             prepareCard(card, req.auth, deal.id, body.source),
           );
           assertNoDuplicateInputs(preparedCards);
+          assertNoExistingCredentialDuplicates(db, req.auth, preparedCards, duplicateCredentialConflict);
 
           const cards = preparedCards.map((card) => {
             const cardInfo = db
@@ -399,9 +453,10 @@ export function createDealsRouter({ db }) {
                   accountId, dealId, brand, cardType, network, faceValueCents,
                   remainingBalanceCents, purchaseCostCents, cardNumber,
                   cardNumberHash, cardNumberLast4, pin, billingZip,
+                  credentialProfile, primaryCredentialLast4, credentialSummaryJson,
                   expirationDate, status, format, source, notes, createdByUserId,
                   updatedByUserId, createdAt, updatedAt
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
               )
               .run(
                 req.auth.accountId,
@@ -417,6 +472,9 @@ export function createDealsRouter({ db }) {
                 card.cardNumberLast4,
                 card.pin,
                 card.billingZip,
+                card.credentialProfile,
+                card.primaryCredentialLast4,
+                card.credentialSummaryJson,
                 card.expirationDate ?? null,
                 card.status,
                 card.format ?? null,
@@ -429,6 +487,12 @@ export function createDealsRouter({ db }) {
               );
 
             const row = db.prepare('SELECT * FROM cards WHERE id = ?').get(cardInfo.lastInsertRowid);
+            insertCredentialFields(db, {
+              accountId: req.auth.accountId,
+              cardId: row.id,
+              fields: card.credentialFields,
+              timestamp,
+            });
             insertAuditEvent(db, {
               accountId: req.auth.accountId,
               userId: req.auth.userId,

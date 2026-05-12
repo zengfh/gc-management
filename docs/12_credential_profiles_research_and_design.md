@@ -1,6 +1,6 @@
 # Gift Card Credential Profiles - Research and Design
 
-Status: proposed Release 5 design
+Status: Release 5 baseline implemented; remaining polish tracked in `13_release_5_status.md`
 Date: 2026-05-12
 
 ## Problem
@@ -254,8 +254,8 @@ If `network_security_code` is submitted while storage is disabled, return:
 ```json
 {
   "error": {
-    "code": "NETWORK_SECURITY_CODE_NOT_STORED",
-    "message": "Network-card security codes are not stored by this deployment policy."
+    "code": "VALIDATION_FAILED",
+    "message": "Request validation failed."
   }
 }
 ```
@@ -435,11 +435,11 @@ Network card helpers:
 
 ## Release 5 Milestones
 
-1. Credential profile design and API contract.
-2. Migration and backend credential-field service.
-3. Add Deal/Add Card profile UI and card-detail reveal UI.
-4. CSV import/export/backup support.
-5. Tests, migration drill, and docs certification.
+1. Credential profile design and API contract. Completed 2026-05-12.
+2. Migration and backend credential-field service. Completed 2026-05-12.
+3. Add Deal profile UI and card-detail reveal UI. Completed 2026-05-12.
+4. CSV import/export/backup support. Baseline completed 2026-05-12; more templates remain.
+5. Tests, migration drill, and docs certification. Baseline completed 2026-05-12 with `npm test`, `npm run lint`, and `npm run build`.
 
 ## Non-Goals
 

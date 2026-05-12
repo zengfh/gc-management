@@ -221,11 +221,26 @@ describe('card routes', () => {
 
     expect(revealResponse.status).toBe(200);
     expect(revealResponse.headers['cache-control']).toContain('no-store');
-    expect(revealResponse.body.data).toEqual({
+    expect(revealResponse.body.data).toMatchObject({
       cardNumber: '4111111111111111',
       cardNumberLast4: '1111',
       pin: '1234',
       billingZip: '94105',
+      credentials: {
+        profile: 'merchant_number_pin',
+        fields: expect.arrayContaining([
+          expect.objectContaining({
+            fieldKey: 'card_number',
+            fieldKind: 'card_number',
+            value: '4111111111111111',
+          }),
+          expect.objectContaining({
+            fieldKey: 'pin',
+            fieldKind: 'pin',
+            value: '1234',
+          }),
+        ]),
+      },
     });
 
     const auditRows = db

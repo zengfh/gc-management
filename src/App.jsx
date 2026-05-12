@@ -71,6 +71,7 @@ const defaultFeatureFlags = {
   rawDatabaseExport: true,
   csvImport: true,
   referenceValueHints: true,
+  networkSecurityCodeStorage: false,
 };
 
 const csvImportTemplates = [
@@ -115,6 +116,62 @@ const statusLabels = {
 const terminalCardStatuses = new Set(['sold', 'used_up', 'void']);
 const adminRoleSet = new Set(['owner', 'admin']);
 const operatorRoleSet = new Set(['owner', 'admin', 'operator']);
+
+const credentialProfileLabels = {
+  claim_code: 'Redemption code',
+  merchant_number_pin: 'Number + PIN',
+  barcode: 'Barcode',
+  network_prepaid: 'Prepaid card',
+  custom: 'Custom',
+};
+
+const networkBrandPattern = /\b(visa|mastercard|master card|amex|american express|discover|vanilla|serve)\b/i;
+const claimCodeBrandPattern = /\b(amazon|apple|doordash|door dash|uber|ubereats|steam|google play|playstation|xbox)\b/i;
+const barcodeBrandPattern = /\b(starbucks|dunkin|chipotle|mcdonald|panera)\b/i;
+
+function inferCredentialProfileForBrand(brand) {
+  if (networkBrandPattern.test(brand)) {
+    return 'network_prepaid';
+  }
+  if (barcodeBrandPattern.test(brand)) {
+    return 'barcode';
+  }
+  if (claimCodeBrandPattern.test(brand)) {
+    return 'claim_code';
+  }
+  return 'merchant_number_pin';
+}
+
+function inferNetworkFromBrand(brand) {
+  const normalized = String(brand || '').toLowerCase();
+  if (normalized.includes('master')) {
+    return 'mastercard';
+  }
+  if (normalized.includes('amex') || normalized.includes('american express')) {
+    return 'amex';
+  }
+  if (normalized.includes('discover')) {
+    return 'discover';
+  }
+  if (normalized.includes('visa') || normalized.includes('vanilla')) {
+    return 'visa';
+  }
+  return 'other';
+}
+
+function credentialSummaryText(card) {
+  const summary = card?.credentialSummary;
+  if (summary?.primaryHint) {
+    return summary.primaryLabel ? `${summary.primaryLabel}: ${summary.primaryHint}` : summary.primaryHint;
+  }
+  if (summary?.primaryLast4) {
+    return summary.primaryLabel ? `${summary.primaryLabel}: **** ${summary.primaryLast4}` : `**** ${summary.primaryLast4}`;
+  }
+  if (card?.cardNumberLast4) {
+    return `Card number: **** ${card.cardNumberLast4}`;
+  }
+  return 'Hidden';
+}
 
 function authRole(auth) {
   return auth?.user?.role || 'owner';
@@ -868,7 +925,7 @@ function CardsTable({
             <th>Status</th>
             <th>Brand</th>
             <th>Reservation</th>
-            <th>Last 4</th>
+            <th>Credential</th>
             <th>Source</th>
             <th>Expiration</th>
             <th className="numeric">Face</th>
@@ -904,7 +961,7 @@ function CardsTable({
                   'Not reserved'
                 )}
               </td>
-              <td className="mono">{card.cardNumberLast4 ? `**** ${card.cardNumberLast4}` : 'Hidden'}</td>
+              <td className="mono">{credentialSummaryText(card)}</td>
               <td>{card.source || 'Not recorded'}</td>
               <td>{card.expirationDate || 'Not recorded'}</td>
               <td className="numeric">{formatMoney(card.faceValueCents)}</td>
@@ -2639,10 +2696,9 @@ function CardSearchForm({ deals, onSearchCards }) {
   return (
     <form className="card-search" onSubmit={submitSearch}>
       <label>
-        <span>Exact card number</span>
+        <span>Exact credential</span>
         <input
           type="password"
-          inputMode="numeric"
           autoComplete="off"
           value={cardNumber}
           onChange={(event) => setCardNumber(event.target.value)}
@@ -2858,11 +2914,9 @@ function CardDetailPanel({ detailState, canManage, onClose, onLogout, onUndoUsag
     }
   }
 
-  async function copyCredential(field, label) {
+  async function copyValue(value, label) {
     setCredentialError('');
     setCredentialMessage('');
-    const currentCredentials = credentials || (await revealCredentials());
-    const value = currentCredentials?.[field];
     if (!value) {
       setCredentialError(`${label} is not recorded.`);
       return;
@@ -2875,6 +2929,48 @@ function CardDetailPanel({ detailState, canManage, onClose, onLogout, onUndoUsag
     await clipboard.writeText(value);
     setCredentialMessage(`${label} copied.`);
   }
+
+  async function copyCredential(fieldKey, label) {
+    const currentCredentials = credentials || (await revealCredentials());
+    const field = currentCredentials?.credentials?.fields?.find((item) => item.fieldKey === fieldKey);
+    await copyValue(field?.value ?? currentCredentials?.[fieldKey], label);
+  }
+
+  async function copyPrimaryCredential() {
+    const currentCredentials = credentials || (await revealCredentials());
+    const field = currentCredentials?.credentials?.fields?.find((item) =>
+      ['card_number', 'primary_code', 'barcode_value'].includes(item.fieldKind),
+    ) || currentCredentials?.credentials?.fields?.[0];
+    await copyValue(field?.value ?? currentCredentials?.cardNumber, field?.label || 'Credential');
+  }
+
+  const revealedCredentialFields = credentials?.credentials?.fields?.length
+    ? credentials.credentials.fields
+    : credentials
+      ? [
+          {
+            fieldKey: 'cardNumber',
+            label: 'Card number',
+            fieldKind: 'card_number',
+            value: credentials.cardNumber,
+            copyable: true,
+          },
+          {
+            fieldKey: 'pin',
+            label: 'PIN',
+            fieldKind: 'pin',
+            value: credentials.pin,
+            copyable: true,
+          },
+          {
+            fieldKey: 'billingZip',
+            label: 'Billing ZIP',
+            fieldKind: 'billing_postal_code',
+            value: credentials.billingZip,
+            copyable: true,
+          },
+        ].filter((field) => field.value)
+      : [];
 
   return (
     <div className="modal-backdrop" role="presentation">
@@ -2911,10 +3007,8 @@ function CardDetailPanel({ detailState, canManage, onClose, onLogout, onUndoUsag
               <strong>{detailCard.reservedUntil || 'Not recorded'}</strong>
             </div>
             <div className="preview-box">
-              <span>Masked number</span>
-              <strong className="mono">
-                {detailCard.cardNumberLast4 ? `**** ${detailCard.cardNumberLast4}` : 'Hidden'}
-              </strong>
+              <span>Credential</span>
+              <strong className="mono">{credentialSummaryText(detailCard)}</strong>
             </div>
             <div className="preview-box">
               <span>Remaining</span>
@@ -2964,39 +3058,40 @@ function CardDetailPanel({ detailState, canManage, onClose, onLogout, onUndoUsag
               ) : null}
             </div>
             <div className="credential-grid">
-              <div className="credential-row">
-                <span>Card number</span>
-                <strong className="mono">
-                  {credentials?.cardNumber ||
-                    (detailCard.cardNumberLast4 ? `**** ${detailCard.cardNumberLast4}` : 'Hidden')}
-                </strong>
-                {canManage ? (
-                  <button type="button" className="table-action" onClick={() => copyCredential('cardNumber', 'Card number')}>
-                    <Copy aria-hidden="true" size={15} />
-                    Copy card number
-                  </button>
-                ) : null}
-              </div>
-              <div className="credential-row">
-                <span>PIN</span>
-                <strong className="mono">{credentials ? credentials.pin || 'Not recorded' : 'Hidden'}</strong>
-                {canManage ? (
-                  <button type="button" className="table-action" onClick={() => copyCredential('pin', 'PIN')}>
-                    <Copy aria-hidden="true" size={15} />
-                    Copy PIN
-                  </button>
-                ) : null}
-              </div>
-              <div className="credential-row">
-                <span>Billing ZIP</span>
-                <strong className="mono">{credentials ? credentials.billingZip || 'Not recorded' : 'Hidden'}</strong>
-                {canManage ? (
-                  <button type="button" className="table-action" onClick={() => copyCredential('billingZip', 'Billing ZIP')}>
-                    <Copy aria-hidden="true" size={15} />
-                    Copy ZIP
-                  </button>
-                ) : null}
-              </div>
+              {revealedCredentialFields.length > 0 ? (
+                revealedCredentialFields.map((field) => (
+                  <div className="credential-row" key={field.fieldKey}>
+                    <span>{field.label}</span>
+                    <strong className="mono">{field.value || 'Not recorded'}</strong>
+                    {canManage && field.copyable ? (
+                      <button
+                        type="button"
+                        className="table-action"
+                        aria-label={`Copy ${field.label}`}
+                        onClick={() => copyCredential(field.fieldKey, field.label)}
+                      >
+                        <Copy aria-hidden="true" size={15} />
+                        {`Copy ${field.label.toLowerCase()}`}
+                      </button>
+                    ) : null}
+                  </div>
+                ))
+              ) : (
+                <div className="credential-row">
+                  <span>{detailCard.credentialSummary?.primaryLabel || 'Primary'}</span>
+                  <strong className="mono">{credentialSummaryText(detailCard)}</strong>
+                  {canManage ? (
+                    <button
+                      type="button"
+                      className="table-action"
+                      onClick={copyPrimaryCredential}
+                    >
+                      <Copy aria-hidden="true" size={15} />
+                      {`Copy ${(detailCard.credentialSummary?.primaryLabel || 'card number').toLowerCase()}`}
+                    </button>
+                  ) : null}
+                </div>
+              )}
             </div>
             <FieldError message={credentialError} />
             {credentialMessage ? <p className="success-copy">{credentialMessage}</p> : null}
@@ -3154,7 +3249,7 @@ function DealDetailPanel({ detailState, onClose }) {
                     <tr>
                       <th>Status</th>
                       <th>Brand</th>
-                      <th>Last 4</th>
+                      <th>Credential</th>
                       <th className="numeric">Face</th>
                       <th className="numeric">Remaining</th>
                     </tr>
@@ -3166,7 +3261,7 @@ function DealDetailPanel({ detailState, onClose }) {
                           <StatusBadge status={card.status} />
                         </td>
                         <td>{card.brand}</td>
-                        <td className="mono">{card.cardNumberLast4 ? `**** ${card.cardNumberLast4}` : 'Hidden'}</td>
+                        <td className="mono">{credentialSummaryText(card)}</td>
                         <td className="numeric">{formatMoney(card.faceValueCents)}</td>
                         <td className="numeric">{formatMoney(card.remainingBalanceCents)}</td>
                       </tr>
@@ -3321,8 +3416,8 @@ function DeleteCardPanel({ card, onClose, onDeleteCard }) {
             Delete only if this card was entered by mistake and has no activity. This cannot be undone.
           </p>
           <div className="preview-box">
-            <span>Masked number</span>
-            <strong className="mono">{card.cardNumberLast4 ? `**** ${card.cardNumberLast4}` : 'Hidden'}</strong>
+            <span>Credential</span>
+            <strong className="mono">{credentialSummaryText(card)}</strong>
           </div>
           <div className="preview-box">
             <span>Face value</span>
@@ -3523,6 +3618,7 @@ function AddDealPanel({
   onLoadReferenceValues = async () => {},
   onUpsertReferenceValues = async () => {},
   referenceValueHintsEnabled = true,
+  features = defaultFeatureFlags,
 }) {
   const [form, setForm] = useState({
     name: '',
@@ -3530,7 +3626,20 @@ function AddDealPanel({
     totalCost: '',
     cardBrand: '',
     faceValue: '',
+    credentialProfile: 'merchant_number_pin',
+    profileTouched: false,
     cardNumber: '',
+    redemptionCode: '',
+    pin: '',
+    accessCode: '',
+    barcodeValue: '',
+    barcodeFormat: 'code128',
+    expirationMonth: '',
+    expirationYear: '',
+    networkSecurityCode: '',
+    billingZip: '',
+    cardholderName: '',
+    billingAddress: '',
   });
   const [error, setError] = useState('');
   const [referenceError, setReferenceError] = useState('');
@@ -3562,10 +3671,75 @@ function AddDealPanel({
     setForm((current) => ({
       ...current,
       [field]: value,
+      ...(field === 'cardBrand' && !current.profileTouched
+        ? { credentialProfile: inferCredentialProfileForBrand(value) }
+        : {}),
     }));
   }
 
+  function updateCredentialProfile(value) {
+    setForm((current) => ({
+      ...current,
+      credentialProfile: value,
+      profileTouched: true,
+    }));
+  }
+
+  function credentialFields() {
+    const fields = [];
+    const push = (fieldKey, label, fieldKind, value, extra = {}) => {
+      if (!String(value || '').trim()) {
+        return;
+      }
+      fields.push({
+        fieldKey,
+        label,
+        fieldKind,
+        value: String(value).trim(),
+        ...extra,
+      });
+    };
+
+    if (form.credentialProfile === 'claim_code') {
+      push('primary_code', 'Redemption code', 'primary_code', form.redemptionCode);
+      push('pin', 'PIN', 'pin', form.pin);
+      return fields;
+    }
+
+    if (form.credentialProfile === 'barcode') {
+      push('barcode_value', 'Barcode', 'barcode_value', form.barcodeValue, {
+        barcodeFormat: form.barcodeFormat,
+      });
+      push('pin', 'PIN', 'pin', form.pin);
+      return fields;
+    }
+
+    if (form.credentialProfile === 'network_prepaid') {
+      push('card_number', 'Card number', 'card_number', form.cardNumber);
+      push('expiration_month', 'Exp. month', 'expiration_month', form.expirationMonth);
+      push('expiration_year', 'Exp. year', 'expiration_year', form.expirationYear);
+      if (features.networkSecurityCodeStorage) {
+        push('network_security_code', 'Security code', 'network_security_code', form.networkSecurityCode);
+      }
+      push('billing_postal_code', 'Billing ZIP', 'billing_postal_code', form.billingZip);
+      push('cardholder_name', 'Cardholder name', 'cardholder_name', form.cardholderName);
+      push('billing_address', 'Billing address', 'billing_address', form.billingAddress);
+      return fields;
+    }
+
+    push('card_number', 'Card number', 'card_number', form.cardNumber);
+    push('pin', 'PIN', 'pin', form.pin);
+    push('access_code', 'Access code', 'access_code', form.accessCode);
+    push('billing_postal_code', 'Billing ZIP', 'billing_postal_code', form.billingZip);
+    return fields;
+  }
+
   function dealPayload(totalCostCents, faceValueCents) {
+    const profile = form.credentialProfile;
+    const fields = credentialFields();
+    const network = profile === 'network_prepaid'
+      ? inferNetworkFromBrand(form.cardBrand)
+      : null;
     return {
       ...(form.name.trim() ? { name: form.name.trim() } : {}),
       ...(form.source.trim() ? { source: form.source.trim() } : {}),
@@ -3573,9 +3747,19 @@ function AddDealPanel({
       cards: [
         {
           brand: form.cardBrand.trim(),
-          cardType: 'merchant',
+          cardType: profile === 'network_prepaid' ? 'prepaid' : 'merchant',
+          credentialProfile: profile,
+          credentials: {
+            profile,
+            fields,
+          },
+          ...(network ? { network } : {}),
+          ...(form.cardNumber.trim() && ['merchant_number_pin', 'network_prepaid'].includes(profile)
+            ? { cardNumber: form.cardNumber.trim() }
+            : {}),
+          ...(form.pin.trim() ? { pin: form.pin.trim() } : {}),
+          ...(form.billingZip.trim() ? { billingZip: form.billingZip.trim() } : {}),
           faceValueCents,
-          ...(form.cardNumber.trim() ? { cardNumber: form.cardNumber.trim() } : {}),
         },
       ],
     };
@@ -3591,7 +3775,6 @@ function AddDealPanel({
       setError('Card brand and face value are required.');
       return;
     }
-
     const missingReferenceItems = referenceValueHintsEnabled
       ? buildReferenceReviewItems(form, referenceValues)
       : [];
@@ -3626,6 +3809,177 @@ function AddDealPanel({
     updateField(item.field, suggestion.value);
     setReviewItems([]);
     setError('');
+  }
+
+  function renderCredentialInputs() {
+    if (form.credentialProfile === 'claim_code') {
+      return (
+        <>
+          <label>
+            <span>Redemption code</span>
+            <input
+              className="mono"
+              autoComplete="off"
+              value={form.redemptionCode}
+              onChange={(event) => updateField('redemptionCode', event.target.value)}
+            />
+          </label>
+          <label>
+            <span>PIN</span>
+            <input
+              className="mono"
+              autoComplete="off"
+              value={form.pin}
+              onChange={(event) => updateField('pin', event.target.value)}
+            />
+          </label>
+        </>
+      );
+    }
+
+    if (form.credentialProfile === 'barcode') {
+      return (
+        <>
+          <label>
+            <span>Barcode value</span>
+            <input
+              className="mono"
+              autoComplete="off"
+              value={form.barcodeValue}
+              onChange={(event) => updateField('barcodeValue', event.target.value)}
+            />
+          </label>
+          <label>
+            <span>Barcode format</span>
+            <select value={form.barcodeFormat} onChange={(event) => updateField('barcodeFormat', event.target.value)}>
+              <option value="code128">Code 128</option>
+              <option value="qr">QR</option>
+              <option value="ean13">EAN-13</option>
+              <option value="upca">UPC-A</option>
+              <option value="pdf417">PDF417</option>
+              <option value="other">Other</option>
+            </select>
+          </label>
+          <label>
+            <span>PIN</span>
+            <input
+              className="mono"
+              autoComplete="off"
+              value={form.pin}
+              onChange={(event) => updateField('pin', event.target.value)}
+            />
+          </label>
+        </>
+      );
+    }
+
+    if (form.credentialProfile === 'network_prepaid') {
+      return (
+        <>
+          <label>
+            <span>Card number</span>
+            <input
+              className="mono"
+              inputMode="numeric"
+              autoComplete="cc-number"
+              value={form.cardNumber}
+              onChange={(event) => updateField('cardNumber', event.target.value)}
+            />
+          </label>
+          <div className="inline-fields">
+            <label>
+              <span>Exp. month</span>
+              <input
+                inputMode="numeric"
+                autoComplete="cc-exp-month"
+                value={form.expirationMonth}
+                onChange={(event) => updateField('expirationMonth', event.target.value)}
+              />
+            </label>
+            <label>
+              <span>Exp. year</span>
+              <input
+                inputMode="numeric"
+                autoComplete="cc-exp-year"
+                value={form.expirationYear}
+                onChange={(event) => updateField('expirationYear', event.target.value)}
+              />
+            </label>
+          </div>
+          {features.networkSecurityCodeStorage ? (
+            <label>
+              <span>Security code</span>
+              <input
+                className="mono"
+                inputMode="numeric"
+                autoComplete="cc-csc"
+                value={form.networkSecurityCode}
+                onChange={(event) => updateField('networkSecurityCode', event.target.value)}
+              />
+            </label>
+          ) : null}
+          <label>
+            <span>Billing ZIP</span>
+            <input
+              autoComplete="postal-code"
+              value={form.billingZip}
+              onChange={(event) => updateField('billingZip', event.target.value)}
+            />
+          </label>
+          <label>
+            <span>Cardholder name</span>
+            <input
+              autoComplete="cc-name"
+              value={form.cardholderName}
+              onChange={(event) => updateField('cardholderName', event.target.value)}
+            />
+          </label>
+          <label>
+            <span>Billing address</span>
+            <textarea
+              value={form.billingAddress}
+              onChange={(event) => updateField('billingAddress', event.target.value)}
+            />
+          </label>
+        </>
+      );
+    }
+
+    return (
+      <>
+        <label>
+          <span>Card number</span>
+          <input
+            className="mono"
+            autoComplete="off"
+            value={form.cardNumber}
+            onChange={(event) => updateField('cardNumber', event.target.value)}
+          />
+        </label>
+        <label>
+          <span>PIN</span>
+          <input
+            className="mono"
+            autoComplete="off"
+            value={form.pin}
+            onChange={(event) => updateField('pin', event.target.value)}
+          />
+        </label>
+        <label>
+          <span>Access code</span>
+          <input
+            className="mono"
+            autoComplete="off"
+            value={form.accessCode}
+            onChange={(event) => updateField('accessCode', event.target.value)}
+          />
+        </label>
+        <label>
+          <span>Billing ZIP</span>
+          <input value={form.billingZip} onChange={(event) => updateField('billingZip', event.target.value)} />
+        </label>
+      </>
+    );
   }
 
   return (
@@ -3682,14 +4036,16 @@ function AddDealPanel({
             />
           </label>
           <label>
-            <span>Card number</span>
-            <input
-              className="mono"
-              inputMode="numeric"
-              value={form.cardNumber}
-              onChange={(event) => updateField('cardNumber', event.target.value)}
-            />
+            <span>Credential type</span>
+            <select value={form.credentialProfile} onChange={(event) => updateCredentialProfile(event.target.value)}>
+              {Object.entries(credentialProfileLabels).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
           </label>
+          {renderCredentialInputs()}
           {referenceError ? <FieldError message={`Suggestions unavailable: ${referenceError}`} /> : null}
           <FieldError message={error} />
           <div className="panel-actions">
@@ -4726,6 +5082,7 @@ function WorkSurface({
           onLoadReferenceValues={onLoadReferenceValues}
           onUpsertReferenceValues={onUpsertReferenceValues}
           referenceValueHintsEnabled={enabledFeatures.referenceValueHints}
+          features={enabledFeatures}
         />
       ) : null}
       {editDeal ? (
@@ -4901,7 +5258,7 @@ export default function App() {
       params.set('sortDir', sortDir);
     }
     if (cardNumber) {
-      params.set('cardNumber', cardNumber);
+      params.set('credential', cardNumber);
     }
     const query = params.toString() ? `?${params.toString()}` : '';
     setInventoryLoading(true);

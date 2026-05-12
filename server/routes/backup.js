@@ -8,18 +8,21 @@ import { insertAuditEvent } from '../audit/index.js';
 import { requireUnlockedSession } from '../auth/requireAuth.js';
 import { requireAdminRole } from '../auth/roles.js';
 import { verifyFreshUnlockSecret } from '../auth/verifyUnlockSecret.js';
-import { requireFeatureFlag } from '../config/featureFlags.js';
+import {
+  barcodeFormats,
+  buildCredentialModel,
+  CredentialValidationError,
+  credentialFieldKinds,
+  credentialProfiles,
+  insertCredentialFields,
+  parseCredentialSummary,
+} from '../cards/credentials.js';
+import { featureEnabled, requireFeatureFlag } from '../config/featureFlags.js';
 import { asyncHandler, badRequest, forbidden } from '../http/errors.js';
 import { runIdempotentJsonAsync, sendIdempotentJson } from '../http/idempotency.js';
 import { objectResponse } from '../http/response.js';
 import { readBackupSettings, recordBackupExport } from '../settings/backupSettings.js';
-import {
-  cardNumberHash as hashCardNumber,
-  cardNumberLast4 as computeCardNumberLast4,
-  decryptString,
-  encryptString,
-  normalizeCardNumber,
-} from '../security/crypto.js';
+import { decryptString } from '../security/crypto.js';
 
 const plaintextExportSchema = z
   .object({
@@ -118,6 +121,28 @@ const importDealSchema = z
   })
   .passthrough();
 
+const importCredentialFieldSchema = z
+  .object({
+    fieldKey: z.string().trim().min(1).max(80).optional(),
+    key: z.string().trim().min(1).max(80).optional(),
+    label: z.string().trim().min(1).max(80).optional(),
+    fieldKind: z.enum(credentialFieldKinds).optional(),
+    sensitivityClass: z.string().trim().nullable().optional(),
+    value: nullableString,
+    displayHint: nullableString,
+    barcodeFormat: z.enum(barcodeFormats).nullable().optional(),
+    sortOrder: z.number().int().optional(),
+    copyable: z.boolean().optional(),
+  })
+  .passthrough();
+
+const importCredentialsSchema = z
+  .object({
+    profile: z.enum(credentialProfiles).optional(),
+    fields: z.array(importCredentialFieldSchema).default([]),
+  })
+  .passthrough();
+
 const importCardSchema = z
   .object({
     id: positiveInteger.optional(),
@@ -128,6 +153,9 @@ const importCardSchema = z
     faceValueCents: positiveInteger,
     remainingBalanceCents: nonnegativeInteger,
     purchaseCostCents: nonnegativeInteger.default(0),
+    credentialProfile: z.enum(credentialProfiles).optional(),
+    credentialSummary: z.record(z.string(), z.any()).nullable().optional(),
+    credentials: importCredentialsSchema.optional(),
     cardNumber: nullableString,
     cardNumberLast4: nullableString,
     pin: nullableString,
@@ -285,10 +313,6 @@ function decryptNullable(value, key) {
   return value ? decryptString(value, key) : null;
 }
 
-function encryptNullable(value, key) {
-  return value ? encryptString(String(value), key) : null;
-}
-
 function toSqlBoolean(value) {
   return value ? 1 : 0;
 }
@@ -302,16 +326,27 @@ function rowVersionOrDefault(value) {
 }
 
 function buildImportedCredentialFields(card, auth) {
-  const normalizedCardNumber = normalizeCardNumber(card.cardNumber);
-  return {
-    encryptedCardNumber: normalizedCardNumber ? encryptString(normalizedCardNumber, auth.dek) : null,
-    cardNumberHash: normalizedCardNumber ? hashCardNumber(normalizedCardNumber, auth.blindIndexKey) : null,
-    cardNumberLast4: normalizedCardNumber
-      ? computeCardNumberLast4(normalizedCardNumber)
-      : card.cardNumberLast4 ?? null,
-    pin: encryptNullable(card.pin, auth.dek),
-    billingZip: encryptNullable(card.billingZip, auth.dek),
-  };
+  try {
+    const model = buildCredentialModel(card, auth, {
+      allowNetworkSecurityCodeStorage: featureEnabled('networkSecurityCodeStorage'),
+    });
+    return {
+      credentialProfile: model.credentialProfile,
+      primaryCredentialLast4: model.primaryCredentialLast4 ?? card.cardNumberLast4 ?? null,
+      credentialSummaryJson: model.credentialSummaryJson,
+      credentialFields: model.fields,
+      encryptedCardNumber: model.encryptedCardNumber,
+      cardNumberHash: model.cardNumberHash,
+      cardNumberLast4: model.cardNumberLast4 ?? card.cardNumberLast4 ?? null,
+      pin: model.pin,
+      billingZip: model.billingZip,
+    };
+  } catch (error) {
+    if (error instanceof CredentialValidationError) {
+      throw badRequest('VALIDATION_FAILED', 'Request validation failed.', error.fieldErrors);
+    }
+    throw error;
+  }
 }
 
 function toExportDeal(row) {
@@ -332,7 +367,24 @@ function toExportDeal(row) {
   };
 }
 
-function toExportCard(row, key) {
+function toExportCredentialField(row, key) {
+  return {
+    fieldKey: row.fieldKey,
+    label: row.label,
+    fieldKind: row.fieldKind,
+    sensitivityClass: row.sensitivityClass,
+    value: decryptNullable(row.encryptedValue, key),
+    displayHint: row.displayHint,
+    barcodeFormat: row.barcodeFormat,
+    sortOrder: row.sortOrder,
+    copyable: row.copyable === 1,
+  };
+}
+
+function toExportCard(row, key, credentialRows = []) {
+  const credentialFields = credentialRows.map((credentialRow) =>
+    toExportCredentialField(credentialRow, key),
+  );
   return {
     id: row.id,
     accountId: row.accountId,
@@ -343,6 +395,12 @@ function toExportCard(row, key) {
     faceValueCents: row.faceValueCents,
     remainingBalanceCents: row.remainingBalanceCents,
     purchaseCostCents: row.purchaseCostCents,
+    credentialProfile: row.credentialProfile,
+    credentialSummary: parseCredentialSummary(row),
+    credentials: {
+      profile: row.credentialProfile,
+      fields: credentialFields,
+    },
     cardNumber: decryptNullable(row.cardNumber, key),
     cardNumberLast4: row.cardNumberLast4,
     pin: decryptNullable(row.pin, key),
@@ -439,6 +497,9 @@ function buildPlaintextExport(db, auth, exportedAt) {
   const cardRows = db
     .prepare('SELECT * FROM cards WHERE accountId = ? ORDER BY id')
     .all(auth.accountId);
+  const credentialRows = db
+    .prepare('SELECT * FROM card_credential_fields WHERE accountId = ? ORDER BY cardId, sortOrder, id')
+    .all(auth.accountId);
   const transactionRows = db
     .prepare('SELECT * FROM transactions WHERE accountId = ? ORDER BY id')
     .all(auth.accountId);
@@ -451,6 +512,12 @@ function buildPlaintextExport(db, auth, exportedAt) {
   const referenceValueRows = db
     .prepare('SELECT * FROM reference_values WHERE accountId = ? ORDER BY id')
     .all(auth.accountId);
+  const credentialRowsByCardId = new Map();
+  for (const row of credentialRows) {
+    const rows = credentialRowsByCardId.get(row.cardId) || [];
+    rows.push(row);
+    credentialRowsByCardId.set(row.cardId, rows);
+  }
 
   return {
     schemaVersion: 1,
@@ -461,7 +528,7 @@ function buildPlaintextExport(db, auth, exportedAt) {
     appSettings: settingRows.map(toExportSetting),
     referenceValues: referenceValueRows.map(toExportReferenceValue),
     deals: dealRows.map(toExportDeal),
-    cards: cardRows.map((row) => toExportCard(row, auth.dek)),
+    cards: cardRows.map((row) => toExportCard(row, auth.dek, credentialRowsByCardId.get(row.id) || [])),
     transactions: transactionRows.map(toExportTransaction),
     usages: usageRows.map(toExportUsage),
   };
@@ -691,10 +758,11 @@ function insertImportedCards(db, auth, cards, dealIdMap, timestamp) {
     `INSERT INTO cards (
       accountId, dealId, brand, cardType, network, faceValueCents, remainingBalanceCents,
       purchaseCostCents, cardNumber, cardNumberHash, cardNumberLast4, pin, billingZip,
+      credentialProfile, primaryCredentialLast4, credentialSummaryJson,
       expirationDate, cardholderName, status, format, source, notes, keyVersion,
       reservedFor, reservedUntil, reservedNotes, createdByUserId, updatedByUserId,
       createdAt, updatedAt, rowVersion
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
 
   for (const card of cards) {
@@ -723,6 +791,9 @@ function insertImportedCards(db, auth, cards, dealIdMap, timestamp) {
       credentials.cardNumberLast4,
       credentials.pin,
       credentials.billingZip,
+      credentials.credentialProfile,
+      credentials.primaryCredentialLast4,
+      credentials.credentialSummaryJson,
       card.expirationDate ?? null,
       card.cardholderName ?? null,
       card.status,
@@ -739,6 +810,12 @@ function insertImportedCards(db, auth, cards, dealIdMap, timestamp) {
       timestampOrNow(card.updatedAt, timestamp),
       rowVersionOrDefault(card.rowVersion),
     );
+    insertCredentialFields(db, {
+      accountId: auth.accountId,
+      cardId: info.lastInsertRowid,
+      fields: credentials.credentialFields,
+      timestamp,
+    });
     if (card.id) {
       cardIdMap.set(card.id, info.lastInsertRowid);
     }

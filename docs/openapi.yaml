@@ -151,7 +151,12 @@ paths:
             type: string
         - name: cardNumber
           in: query
-          description: Exact full card-number search. Backend normalizes and blind-indexes input.
+          description: Legacy exact full card-number search. Backend normalizes and blind-indexes input.
+          schema:
+            type: string
+        - name: credential
+          in: query
+          description: Exact credential search across indexed card numbers, claim codes, and barcode values.
           schema:
             type: string
       responses:
@@ -1404,6 +1409,71 @@ components:
     CardType:
       type: string
       enum: [merchant, prepaid]
+    CredentialProfile:
+      type: string
+      enum: [claim_code, merchant_number_pin, barcode, network_prepaid, custom]
+    CredentialFieldKind:
+      type: string
+      enum:
+        - primary_code
+        - card_number
+        - pin
+        - access_code
+        - barcode_value
+        - expiration_month
+        - expiration_year
+        - network_security_code
+        - billing_postal_code
+        - cardholder_name
+        - billing_address
+        - metadata
+    CredentialSummary:
+      type: object
+      properties:
+        profile:
+          $ref: "#/components/schemas/CredentialProfile"
+        primaryLabel:
+          type: string
+          nullable: true
+        primaryLast4:
+          type: string
+          nullable: true
+        primaryHint:
+          type: string
+          nullable: true
+        fieldCount:
+          type: integer
+        hasPin:
+          type: boolean
+        hasBillingZip:
+          type: boolean
+        hasBarcode:
+          type: boolean
+    CredentialFieldInput:
+      type: object
+      properties:
+        fieldKey:
+          type: string
+        label:
+          type: string
+        fieldKind:
+          $ref: "#/components/schemas/CredentialFieldKind"
+        value:
+          type: string
+        barcodeFormat:
+          type: string
+          enum: [code128, qr, ean13, upca, pdf417, aztec, data_matrix, other]
+        copyable:
+          type: boolean
+    CredentialsInput:
+      type: object
+      properties:
+        profile:
+          $ref: "#/components/schemas/CredentialProfile"
+        fields:
+          type: array
+          items:
+            $ref: "#/components/schemas/CredentialFieldInput"
     Network:
       type: string
       enum: [visa, mastercard, amex, discover, other]
@@ -1445,6 +1515,10 @@ components:
         cardNumberLast4:
           type: string
           nullable: true
+        credentialProfile:
+          $ref: "#/components/schemas/CredentialProfile"
+        credentialSummary:
+          $ref: "#/components/schemas/CredentialSummary"
         source:
           type: string
           nullable: true
@@ -1477,6 +1551,10 @@ components:
           $ref: "#/components/schemas/CardType"
         network:
           $ref: "#/components/schemas/Network"
+        credentialProfile:
+          $ref: "#/components/schemas/CredentialProfile"
+        credentials:
+          $ref: "#/components/schemas/CredentialsInput"
         faceValueCents:
           type: integer
           minimum: 1
@@ -1488,6 +1566,27 @@ components:
         pin:
           type: string
         billingZip:
+          type: string
+        primaryCode:
+          type: string
+        accessCode:
+          type: string
+        barcodeValue:
+          type: string
+        barcodeFormat:
+          type: string
+        expirationMonth:
+          type: string
+        expirationYear:
+          type: string
+        networkSecurityCode:
+          type: string
+          description: Accepted only when deployment policy enables local network security-code storage.
+        billingPostalCode:
+          type: string
+        cardholderName:
+          type: string
+        billingAddress:
           type: string
         expirationDate:
           type: string

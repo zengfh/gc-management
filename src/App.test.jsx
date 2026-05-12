@@ -1733,8 +1733,20 @@ describe('App', () => {
             {
               brand: 'Target',
               cardType: 'merchant',
-              faceValueCents: 5000,
+              credentialProfile: 'merchant_number_pin',
+              credentials: {
+                profile: 'merchant_number_pin',
+                fields: [
+                  {
+                    fieldKey: 'card_number',
+                    label: 'Card number',
+                    fieldKind: 'card_number',
+                    value: '4111 1111 1111 1111',
+                  },
+                ],
+              },
               cardNumber: '4111 1111 1111 1111',
+              faceValueCents: 5000,
             },
           ],
         }),
@@ -1845,6 +1857,11 @@ describe('App', () => {
             {
               brand: 'Amazon',
               cardType: 'merchant',
+              credentialProfile: 'claim_code',
+              credentials: {
+                profile: 'claim_code',
+                fields: [],
+              },
               faceValueCents: 5000,
             },
           ],
@@ -2716,14 +2733,14 @@ describe('App', () => {
     await user.click(screen.getByRole('button', { name: /^cards$/i }));
     expect(screen.getByText(/amazon/i)).toBeInTheDocument();
 
-    await user.type(screen.getByLabelText(/^exact card number$/i), '4111 1111 1111 1111');
+    await user.type(screen.getByLabelText(/^exact credential$/i), '4111 1111 1111 1111');
     await user.click(screen.getByRole('button', { name: /^search cards$/i }));
 
     expect(await screen.findByText(/target/i)).toBeInTheDocument();
     expect(screen.queryByText(/amazon/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/4111 1111 1111 1111/i)).not.toBeInTheDocument();
     expect(globalThis.fetch).toHaveBeenLastCalledWith(
-      '/api/cards?cardNumber=4111+1111+1111+1111',
+      '/api/cards?credential=4111+1111+1111+1111',
       expect.objectContaining({
         method: 'GET',
       }),

@@ -33,8 +33,10 @@ describe('database migrations', () => {
     expect(migrations.map((row) => row.id)).toContain('001_init.sql');
     expect(migrations.map((row) => row.id)).toContain('002_hosted_hardening.sql');
     expect(migrations.map((row) => row.id)).toContain('004_reference_values.sql');
+    expect(migrations.map((row) => row.id)).toContain('005_credential_profiles.sql');
     expect(tables).toContain('accounts');
     expect(tables).toContain('cards');
+    expect(tables).toContain('card_credential_fields');
     expect(tables).toContain('reference_values');
     expect(tables).toContain('audit_log');
     expect(tables).toContain('web_sessions');
