@@ -1607,8 +1607,8 @@ function CsvPreviewTable({ rows }) {
             <th>Type</th>
             <th className="numeric">Face</th>
             <th className="numeric">Cost</th>
-            <th>Card</th>
-            <th>PIN</th>
+            <th>Credential</th>
+            <th>PIN/access</th>
             <th>ZIP</th>
             <th>Errors</th>
           </tr>
@@ -1622,7 +1622,11 @@ function CsvPreviewTable({ rows }) {
               <td>{row.parsed?.cardType || 'Not provided'}</td>
               <td className="numeric">{formatMoney(row.parsed?.faceValueCents || 0)}</td>
               <td className="numeric">{formatMoney(row.parsed?.purchaseCostCents || 0)}</td>
-              <td>{row.parsed?.cardNumberLast4 ? `****${row.parsed.cardNumberLast4}` : 'Not provided'}</td>
+              <td>
+                {row.parsed?.credentialHint
+                  ? `${row.parsed.credentialLabel || 'Credential'}: ${row.parsed.credentialHint}`
+                  : 'Not provided'}
+              </td>
               <td>{row.parsed?.hasPin ? 'Yes' : 'No'}</td>
               <td>{row.parsed?.hasBillingZip ? 'Yes' : 'No'}</td>
               <td>

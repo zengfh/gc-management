@@ -14,6 +14,7 @@ import {
   credentialProfiles,
   credentialSearchBlindIndexes,
   insertCredentialFields,
+  normalizeCredentialValue,
   parseCredentialSummary,
   revealCredentialPayload,
 } from '../cards/credentials.js';
@@ -385,6 +386,46 @@ function normalizeCsvCredentialProfile(value) {
   return credentialProfiles.includes(normalized) ? normalized : normalized;
 }
 
+function maskedCredentialHint(fieldKind, value) {
+  const normalized =
+    fieldKind === 'card_number'
+      ? normalizeCardNumber(value)
+      : normalizeCredentialValue(fieldKind, value);
+  return normalized ? `****${normalized.slice(-4)}` : null;
+}
+
+function csvPrimaryCredentialPreview({ normalizedCardNumber, primaryCode, barcodeValue, customFields }) {
+  if (normalizedCardNumber) {
+    return {
+      credentialLabel: 'Card number',
+      credentialHint: maskedCredentialHint('card_number', normalizedCardNumber),
+    };
+  }
+  if (primaryCode) {
+    return {
+      credentialLabel: 'Redemption code',
+      credentialHint: maskedCredentialHint('primary_code', primaryCode),
+    };
+  }
+  if (barcodeValue) {
+    return {
+      credentialLabel: 'Barcode',
+      credentialHint: maskedCredentialHint('barcode_value', barcodeValue),
+    };
+  }
+  const customPrimary = customFields.find((field) => field.value);
+  if (customPrimary) {
+    return {
+      credentialLabel: customPrimary.label,
+      credentialHint: maskedCredentialHint(customPrimary.fieldKind, customPrimary.value),
+    };
+  }
+  return {
+    credentialLabel: null,
+    credentialHint: null,
+  };
+}
+
 function rowError(field, code, message) {
   return { field, code, message };
 }
@@ -450,9 +491,18 @@ function previewCsvRow(record, rowNumber, auth, importHashes) {
   const normalizedCardNumber = normalizeCardNumber(csvValue(record, csvColumnAliases.cardNumber));
   const primaryCode = csvValue(record, csvColumnAliases.primaryCode);
   const pin = csvValue(record, csvColumnAliases.pin);
+  const accessCode = csvValue(record, csvColumnAliases.accessCode);
+  const barcodeValue = csvValue(record, csvColumnAliases.barcodeValue);
+  const customFields = csvCustomCredentialFields(record);
   const billingZip = csvValue(record, csvColumnAliases.billingZip);
   const expirationDate = csvValue(record, csvColumnAliases.expirationDate);
   const format = normalizeCsvFormat(csvValue(record, csvColumnAliases.format));
+  const credentialPreview = csvPrimaryCredentialPreview({
+    normalizedCardNumber,
+    primaryCode,
+    barcodeValue,
+    customFields,
+  });
 
   if (!brand) {
     errors.push(rowError('brand', 'required', 'Brand is required.'));
@@ -500,7 +550,9 @@ function previewCsvRow(record, rowNumber, auth, importHashes) {
       faceValueCents: faceValue.cents,
       purchaseCostCents: purchaseCost.cents,
       cardNumberLast4: normalizedCardNumber ? cardNumberLast4(normalizedCardNumber) : null,
-      hasPin: Boolean(pin || primaryCode),
+      credentialLabel: credentialPreview.credentialLabel,
+      credentialHint: credentialPreview.credentialHint,
+      hasPin: Boolean(pin || accessCode || (normalizedCardNumber && primaryCode)),
       hasBillingZip: Boolean(billingZip),
       expirationDate: expirationDate || null,
       format: ['digital', 'physical'].includes(format) ? format : null,

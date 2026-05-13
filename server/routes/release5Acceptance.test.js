@@ -45,6 +45,23 @@ describe('Release 5 synthetic credential acceptance data', () => {
       validCount: 6,
       invalidCount: 0,
     });
+    const previewRowsByBrand = Object.fromEntries(
+      previewResponse.body.data.rows.map((row) => [row.parsed.brand, row.parsed]),
+    );
+    expect(previewRowsByBrand.Uber).toMatchObject({
+      credentialLabel: 'Redemption code',
+      credentialHint: '****605A',
+      hasPin: false,
+    });
+    expect(previewRowsByBrand.Target).toMatchObject({
+      credentialLabel: 'Card number',
+      credentialHint: '****0502',
+      hasPin: true,
+    });
+    expect(previewRowsByBrand.Starbucks).toMatchObject({
+      credentialLabel: 'Barcode',
+      credentialHint: '****5678',
+    });
 
     const confirmResponse = await postWithCsrf('/api/cards/import-csv/confirm', csrfToken).send({ csv });
     expect(confirmResponse.status).toBe(201);

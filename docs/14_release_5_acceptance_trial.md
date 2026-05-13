@@ -41,6 +41,18 @@ Automated check:
 npm run test:release5-acceptance
 ```
 
+Browser acceptance check:
+
+```bash
+npm run test:e2e:release5
+```
+
+If your normal dev server is already using ports 5173 and 3001, the Release 5 e2e script uses ports 5174 and 3002. The full browser suite can also run on alternate ports:
+
+```bash
+E2E_CLIENT_PORT=5174 E2E_API_PORT=3002 npm run test:e2e
+```
+
 Manual UI check:
 
 1. Start the app with `npm run dev`.
@@ -52,7 +64,11 @@ Manual UI check:
 7. Search exact credentials for `UBERTEST202605A`, `9900000000001001`, `7788899900012345678`, and `GCMEMBER-12345`.
 8. Open Starbucks and reveal credentials; the barcode should render after reveal.
 9. Open Vanilla Visa and reveal credentials; no network security code should be present by default.
+10. Export an encrypted JSON backup with a separate backup passphrase.
+11. Import that encrypted backup in replace mode and confirm the imported credentials still search and reveal correctly.
 
 ## Current Result
 
-The acceptance test imports all six rows, confirms expected profiles, verifies exact credential search across indexed credential kinds, confirms CSV barcode format persistence, and confirms default network-prepaid security-code omission.
+The backend acceptance test imports all six rows, confirms expected profiles, verifies exact credential search across indexed credential kinds, confirms CSV barcode format persistence, and confirms default network-prepaid security-code omission.
+
+The browser acceptance test imports the fixture through the UI, confirms profile-aware masked import preview rows, verifies exact credential search, renders the Starbucks barcode after reveal, confirms the Vanilla Visa security-code field is not shown by default, exports an encrypted portable backup, restores it with replace import, and rechecks exact search after restore.

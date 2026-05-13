@@ -15,7 +15,8 @@
     "test:load": "node scripts/performance-load.mjs",
     "test:perf": "node scripts/performance-smoke.mjs",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:e2e:release5": "E2E_CLIENT_PORT=5174 E2E_API_PORT=3002 playwright test e2e/release5-acceptance.spec.js"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.90.12",

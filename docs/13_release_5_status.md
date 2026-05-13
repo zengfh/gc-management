@@ -21,6 +21,9 @@ Status: Release 5 complete
 - Updated OpenAPI docs for credential profiles and exact credential search.
 - Added a synthetic Release 5 acceptance CSV and automated import/search/reveal test covering claim-code, number-plus-PIN/access, barcode, network-prepaid, and custom credential profiles.
 - Fixed CSV barcode imports so the requested `barcodeFormat` is persisted and used by reveal/render flows.
+- Added a browser-level Release 5 acceptance test that imports the synthetic CSV through the UI, verifies exact credential search, reveals a scannable barcode, confirms network-prepaid security codes are omitted by default, exports an encrypted backup, and restores it through replace import.
+- Updated CSV import preview to show a profile-aware masked credential summary and PIN/access status instead of implying code-only credentials have a PIN.
+- Made Playwright ports configurable so browser tests can run on alternate ports without disturbing a local dev server.
 
 ## Verification
 
@@ -28,6 +31,8 @@ Status: Release 5 complete
 - `npm run lint` passed.
 - `npm run build` passed.
 - `npm run test:release5-acceptance` passed.
+- `npm run test:e2e:release5` passed.
+- `E2E_CLIENT_PORT=5174 E2E_API_PORT=3002 npm run test:e2e` passed.
 
 ## Follow-Up Opportunities
 
