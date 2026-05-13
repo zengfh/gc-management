@@ -25,6 +25,7 @@ Files:
 17. `12_credential_profiles_research_and_design.md` - Research and Release 5 design for multiple gift-card credential formats.
 18. `13_release_5_status.md` - Release 5 credential-profile implementation status, verification, and remaining polish.
 19. `14_release_5_acceptance_trial.md` - Synthetic acceptance dataset, source research, and manual/automated Release 5 trial steps.
+20. `15_release_5_private_trial_and_5_1_backlog.md` - Private trial runbook, backup discipline, and Release 5.1 polish backlog.
 
 Scope note:
 
