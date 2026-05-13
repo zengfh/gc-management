@@ -1,0 +1,7 @@
+brand,cardType,network,credentialProfile,faceValue,purchaseCost,cardNumber,redemptionCode,pin,accessCode,barcodeValue,barcodeFormat,expirationMonth,expirationYear,billingZip,cardholderName,billingAddress,format,source,notes,custom:Member ID,custom:Security Phrase
+Uber,merchant,,claim_code,25.00,22.50,,UBERTEST202605A,,,,,,,,,,digital,Release 5 synthetic research,Code-only profile based on app gift-code redemption; synthetic non-redeemable value.,,
+Best Buy,merchant,,merchant_number_pin,100.00,90.00,9900000000001001,,4821,,,,,,,,,physical,Release 5 synthetic research,Number plus 4-digit PIN profile; synthetic non-redeemable value.,,
+Target,merchant,,merchant_number_pin,50.00,47.50,990000000000502,,,05512345,,,,,,,,physical,Release 5 synthetic research,15-digit number plus access/PIN profile; synthetic non-redeemable value.,,
+Starbucks,merchant,,barcode,15.00,13.50,,,,,7788899900012345678,code128,,,,,,digital,Release 5 synthetic research,Barcode/display profile; synthetic non-redeemable value.,,
+Vanilla Visa,prepaid,visa,network_prepaid,100.00,95.95,4111111111111111,,,,,,12,2031,94105,GC Test User,"1 Test Market St, San Francisco, CA",physical,Release 5 synthetic research,Network prepaid profile. Security code is intentionally omitted because default product policy blocks storage.,,
+Local Boutique,merchant,,custom,30.00,24.00,,,,,,,,,,,,digital,Release 5 synthetic research,Custom odd-issuer profile with extra indexed fields.,GCMEMBER-12345,BLUE-ENVELOPE

@@ -19,12 +19,15 @@ Status: Release 5 complete
 - Added local-only warning and explicit checkbox before storing network prepaid security codes when the flag is enabled.
 - Plaintext JSON exports now omit `network_security_code` fields and state the omission in the warning; encrypted portable backups keep stored fields.
 - Updated OpenAPI docs for credential profiles and exact credential search.
+- Added a synthetic Release 5 acceptance CSV and automated import/search/reveal test covering claim-code, number-plus-PIN/access, barcode, network-prepaid, and custom credential profiles.
+- Fixed CSV barcode imports so the requested `barcodeFormat` is persisted and used by reveal/render flows.
 
 ## Verification
 
 - `npm test` passed.
 - `npm run lint` passed.
 - `npm run build` passed.
+- `npm run test:release5-acceptance` passed.
 
 ## Follow-Up Opportunities
 

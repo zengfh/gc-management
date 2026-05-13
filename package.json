@@ -11,6 +11,7 @@
     "preview": "vite preview --host 0.0.0.0",
     "lint": "eslint .",
     "test": "vitest run",
+    "test:release5-acceptance": "vitest run server/routes/release5Acceptance.test.js",
     "test:load": "node scripts/performance-load.mjs",
     "test:perf": "node scripts/performance-smoke.mjs",
     "test:watch": "vitest",

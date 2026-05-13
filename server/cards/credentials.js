@@ -311,11 +311,11 @@ function inferProfile(input) {
 
 function legacyFieldsFromInput(input, profile) {
   const fields = [];
-  const push = (fieldKey, fieldKind, value, label, sortOrder) => {
+  const push = (fieldKey, fieldKind, value, label, sortOrder, extra = {}) => {
     if (value == null || String(value).trim() === '') {
       return;
     }
-    fields.push({ fieldKey, fieldKind, value, label, sortOrder });
+    fields.push({ fieldKey, fieldKind, value, label, sortOrder, ...extra });
   };
 
   const primaryCode =
@@ -332,7 +332,9 @@ function legacyFieldsFromInput(input, profile) {
   }
 
   if (profile === 'barcode') {
-    push('barcode_value', 'barcode_value', input.barcodeValue ?? input.cardNumber, 'Barcode', 10);
+    push('barcode_value', 'barcode_value', input.barcodeValue ?? input.cardNumber, 'Barcode', 10, {
+      barcodeFormat: input.barcodeFormat,
+    });
     push('pin', 'pin', input.pin, 'PIN', 20);
     return fields;
   }
@@ -341,7 +343,9 @@ function legacyFieldsFromInput(input, profile) {
   push('primary_code', 'primary_code', primaryCode, 'Redemption code', 15);
   push('pin', 'pin', input.pin, 'PIN', 20);
   push('access_code', 'access_code', input.accessCode, 'Access code', 30);
-  push('barcode_value', 'barcode_value', input.barcodeValue, 'Barcode', 40);
+  push('barcode_value', 'barcode_value', input.barcodeValue, 'Barcode', 40, {
+    barcodeFormat: input.barcodeFormat,
+  });
   push('expiration_month', 'expiration_month', input.expirationMonth, 'Exp. month', 50);
   push('expiration_year', 'expiration_year', input.expirationYear, 'Exp. year', 60);
   push('network_security_code', 'network_security_code', input.networkSecurityCode ?? input.cvv, 'Security code', 70);
