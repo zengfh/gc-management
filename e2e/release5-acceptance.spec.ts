@@ -1,12 +1,12 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { expect, test } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 
 const unlockSecret = 'a strong unlock phrase';
 const backupPassphrase = 'release five portable backup';
 const fixturePath = path.join(process.cwd(), 'test-data/release5_acceptance_cards.csv');
 
-async function setupOrUnlockVault(page) {
+async function setupOrUnlockVault(page: Page) {
   await page.goto('/');
   const setupHeading = page.getByRole('heading', { name: /create unlock secret/i });
   const unlockHeading = page.getByRole('heading', { name: /unlock card data/i });
@@ -27,7 +27,7 @@ async function setupOrUnlockVault(page) {
   await expect(page.getByRole('heading', { name: /dashboard/i })).toBeVisible();
 }
 
-async function importAcceptanceCsv(page) {
+async function importAcceptanceCsv(page: Page) {
   const csv = await fs.readFile(fixturePath);
   await page.getByRole('button', { name: /^backup$/i }).click();
   await page.getByLabel(/^csv file$/i).setInputFiles({
@@ -46,21 +46,21 @@ async function importAcceptanceCsv(page) {
   await expect(page.getByText(/imported 6 cards/i)).toBeVisible();
 }
 
-async function searchCredential(page, credential, brandPattern) {
+async function searchCredential(page: Page, credential: string, brandPattern: RegExp) {
   await page.getByRole('button', { name: /^cards$/i }).click();
   await page.getByLabel(/^exact credential$/i).fill(credential);
   await page.getByRole('button', { name: /^search cards$/i }).click();
   await expect(page.getByRole('row', { name: brandPattern })).toBeVisible();
 }
 
-async function openCardDetails(page, brandPattern) {
+async function openCardDetails(page: Page, brandPattern: RegExp): Promise<Locator> {
   await page.getByRole('button', { name: brandPattern }).click();
   const dialog = page.getByRole('dialog', { name: /card details/i });
   await expect(dialog).toBeVisible();
   return dialog;
 }
 
-async function exportEncryptedBackup(page) {
+async function exportEncryptedBackup(page: Page) {
   await page.getByRole('button', { name: /^backup$/i }).click();
   await page.getByLabel(/^encrypted export unlock secret$/i).fill(unlockSecret);
   await page.getByLabel(/^backup passphrase$/i).fill(backupPassphrase);
@@ -78,7 +78,10 @@ async function exportEncryptedBackup(page) {
   };
 }
 
-async function restoreEncryptedBackup(page, backup) {
+async function restoreEncryptedBackup(
+  page: Page,
+  backup: { filename: string; buffer: Buffer },
+) {
   await page.getByLabel(/^encrypted json backup file$/i).setInputFiles({
     name: backup.filename,
     mimeType: 'application/json',

@@ -1,6 +1,15 @@
 import { conflict } from '../http/errors.js';
 
-const transitions = {
+type CardTransitionAction = 'reserve' | 'unreserve' | 'sell' | 'undo-sale' | 'use' | 'void' | 'undo-usage';
+type CardStatus = 'available' | 'reserved' | 'in_use' | 'sold' | 'used_up' | 'void';
+
+interface CardTransitionDefinition {
+  from: Set<CardStatus>;
+  to: CardStatus | null;
+  action: string;
+}
+
+const transitions: Record<CardTransitionAction, CardTransitionDefinition> = {
   reserve: {
     from: new Set(['available']),
     to: 'reserved',
@@ -38,13 +47,13 @@ const transitions = {
   },
 };
 
-export function transitionFor(action, currentStatus) {
-  const transition = transitions[action];
-  if (!transition) {
+export function transitionFor(action: string, currentStatus: CardStatus | string) {
+  if (!isTransitionAction(action)) {
     throw conflict('INVALID_CARD_TRANSITION', 'Unsupported card transition.');
   }
+  const transition = transitions[action];
 
-  if (!transition.from.has(currentStatus)) {
+  if (!transition.from.has(currentStatus as CardStatus)) {
     throw conflict(
       'INVALID_CARD_TRANSITION',
       `Cannot ${action} a card with status ${currentStatus}.`,
@@ -55,4 +64,8 @@ export function transitionFor(action, currentStatus) {
     status: transition.to,
     action: transition.action,
   };
+}
+
+function isTransitionAction(action: string): action is CardTransitionAction {
+  return Object.prototype.hasOwnProperty.call(transitions, action);
 }

@@ -1,10 +1,10 @@
 import crypto from 'node:crypto';
 
-export function normalizeOneTimeSecret(value) {
+export function normalizeOneTimeSecret(value: unknown): string {
   return String(value || '').trim().replace(/\s+/g, '').toUpperCase();
 }
 
-export function generateOneTimeSecret(prefix) {
+export function generateOneTimeSecret(prefix: string): string {
   const body = crypto
     .randomBytes(18)
     .toString('base64url')

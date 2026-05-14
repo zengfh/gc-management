@@ -1,4 +1,6 @@
 import { performance } from 'node:perf_hooks';
+import type Database from 'better-sqlite3';
+import type supertest from 'supertest';
 
 process.env.NODE_ENV = process.env.NODE_ENV || 'test';
 process.env.BCRYPT_COST = process.env.BCRYPT_COST || '4';
@@ -8,6 +10,16 @@ const [{ default: request }, { createApp }, { openDatabase }] = await Promise.al
   import('../server/app.js'),
   import('../server/db/index.js'),
 ]);
+
+type TestAgent = ReturnType<typeof request.agent>;
+
+interface Measurement<T = unknown> {
+  label: string;
+  durationMs: number;
+  thresholdMs: number;
+  passed: boolean;
+  result: T;
+}
 
 const appOrigin = 'http://localhost:5173';
 const cardCount = Number(process.env.PERF_CARD_COUNT || 20_000);
@@ -25,7 +37,7 @@ function nowIso(offsetSeconds = 0) {
   return new Date(Date.UTC(2026, 0, 1, 0, 0, offsetSeconds)).toISOString();
 }
 
-async function setupOwner(agent) {
+async function setupOwner(agent: TestAgent) {
   const response = await agent.post('/api/auth/setup').send({
     unlockSecret: 'a strong unlock phrase',
   });
@@ -33,7 +45,7 @@ async function setupOwner(agent) {
   return response.body.data.csrfToken;
 }
 
-function assertStatus(response, expectedStatus, label) {
+function assertStatus(response: supertest.Response, expectedStatus: number, label: string) {
   if (response.status !== expectedStatus) {
     throw new Error(
       `${label} returned ${response.status}, expected ${expectedStatus}: ${JSON.stringify(response.body)}`,
@@ -41,7 +53,7 @@ function assertStatus(response, expectedStatus, label) {
   }
 }
 
-function seedCards(db, count) {
+function seedCards(db: Database.Database, count: number) {
   const insertCard = db.prepare(
     `INSERT INTO cards (
       accountId, brand, cardType, faceValueCents, remainingBalanceCents,
@@ -104,7 +116,7 @@ function seedCards(db, count) {
   seed();
 }
 
-function buildCsv(rowCount) {
+function buildCsv(rowCount: number) {
   const rows = [
     'brand,cardType,faceValue,purchaseCost,cardNumber,pin,billingZip,expirationDate,format,source,notes',
   ];
@@ -128,7 +140,7 @@ function buildCsv(rowCount) {
   return rows.join('\n');
 }
 
-async function measure(label, thresholdMs, action) {
+async function measure<T>(label: string, thresholdMs: number, action: () => Promise<T> | T): Promise<Measurement<T>> {
   const start = performance.now();
   const result = await action();
   const durationMs = performance.now() - start;
@@ -141,7 +153,7 @@ async function measure(label, thresholdMs, action) {
   };
 }
 
-function printMeasurement(measurement) {
+function printMeasurement(measurement: Measurement) {
   const duration = `${measurement.durationMs.toFixed(1)}ms`;
   const threshold = `${measurement.thresholdMs.toFixed(0)}ms`;
   console.log(`${measurement.passed ? 'PASS' : 'FAIL'} ${measurement.label}: ${duration} / ${threshold}`);
@@ -158,7 +170,7 @@ async function main() {
     const seedDurationMs = performance.now() - seedStart;
     console.log(`Seeded ${cardCount.toLocaleString()} cards in ${seedDurationMs.toFixed(1)}ms`);
 
-    const measurements = [];
+    const measurements: Measurement[] = [];
     measurements.push(
       await measure('20k card first page', thresholdsMs.firstPage, async () => {
         const response = await agent.get('/api/cards?limit=100&offset=0');
@@ -174,7 +186,7 @@ async function main() {
       await measure('20k card status filter', thresholdsMs.statusFilter, async () => {
         const response = await agent.get('/api/cards?status=available&limit=100&offset=0');
         assertStatus(response, 200, 'status filter');
-        if (response.body.data.some((card) => card.status !== 'available')) {
+        if ((response.body.data as Array<{ status: string }>).some((card) => card.status !== 'available')) {
           throw new Error('status filter returned a non-available card');
         }
         return response.body.page;
@@ -199,7 +211,7 @@ async function main() {
             `/api/cards?status=reserved&limit=100&offset=${(index * 20) % 1_000}`,
           );
           assertStatus(response, 200, `burst read ${index + 1}`);
-          if (response.body.data.some((card) => card.status !== 'reserved')) {
+          if ((response.body.data as Array<{ status: string }>).some((card) => card.status !== 'reserved')) {
             throw new Error('burst status filter returned a non-reserved card');
           }
         }

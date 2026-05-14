@@ -46,7 +46,7 @@ export function rateLimited(code: string, message: string) {
 }
 
 export function asyncHandler(handler: (req: Request, res: Response, next: NextFunction) => Promise<unknown> | unknown) {
-  return (req, res, next) => {
+  return (req: Request, res: Response, next: NextFunction) => {
     Promise.resolve(handler(req, res, next)).catch(next);
   };
 }

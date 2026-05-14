@@ -9,26 +9,32 @@ const commonSecrets = new Set([
   'correcthorsebatterystaple',
 ]);
 
-function onlyDigits(value) {
+interface UnlockSecretFieldError {
+  field: string;
+  code: string;
+  message: string;
+}
+
+function onlyDigits(value: string): boolean {
   return /^\d+$/.test(value);
 }
 
-function isRepeated(value) {
+function isRepeated(value: string): boolean {
   return /^(.)(\1)+$/.test(value);
 }
 
-function isAscendingSequence(value) {
+function isAscendingSequence(value: string): boolean {
   return '01234567890123456789'.includes(value);
 }
 
-function isDescendingSequence(value) {
+function isDescendingSequence(value: string): boolean {
   return '98765432109876543210'.includes(value);
 }
 
-export function validateUnlockSecret(unlockSecret) {
+export function validateUnlockSecret(unlockSecret: unknown): { valid: boolean; fieldErrors: UnlockSecretFieldError[] } {
   const value = String(unlockSecret || '');
   const compact = value.toLowerCase().replace(/\s+/g, '');
-  const fieldErrors = [];
+  const fieldErrors: UnlockSecretFieldError[] = [];
 
   if (!value) {
     fieldErrors.push({

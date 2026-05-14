@@ -1,4 +1,6 @@
 import { performance } from 'node:perf_hooks';
+import type Database from 'better-sqlite3';
+import type supertest from 'supertest';
 
 process.env.NODE_ENV = process.env.NODE_ENV || 'test';
 process.env.BCRYPT_COST = process.env.BCRYPT_COST || '4';
@@ -8,6 +10,23 @@ const [{ default: request }, { createApp }, { openDatabase }] = await Promise.al
   import('../server/app.js'),
   import('../server/db/index.js'),
 ]);
+
+type TestAgent = ReturnType<typeof request.agent>;
+
+interface Measurement<T = unknown> {
+  label: string;
+  durationMs: number;
+  thresholdMs: number;
+  passed: boolean;
+  result: T;
+}
+
+interface SeriesSummary {
+  minMs: number;
+  p50Ms: number;
+  p95Ms: number;
+  maxMs: number;
+}
 
 const appOrigin = 'http://localhost:5173';
 const cardCount = Number(process.env.PERF_LOAD_CARD_COUNT || 50_000);
@@ -30,7 +49,7 @@ function nowIso(offsetSeconds = 0) {
   return new Date(Date.UTC(2026, 0, 1, 0, 0, offsetSeconds)).toISOString();
 }
 
-function assertStatus(response, expectedStatus, label) {
+function assertStatus(response: supertest.Response, expectedStatus: number, label: string) {
   if (response.status !== expectedStatus) {
     throw new Error(
       `${label} returned ${response.status}, expected ${expectedStatus}: ${JSON.stringify(response.body)}`,
@@ -38,7 +57,7 @@ function assertStatus(response, expectedStatus, label) {
   }
 }
 
-async function setupOwner(agent) {
+async function setupOwner(agent: TestAgent) {
   const response = await agent.post('/api/auth/setup').send({
     unlockSecret: 'a strong unlock phrase',
   });
@@ -46,7 +65,7 @@ async function setupOwner(agent) {
   return response.body.data.csrfToken;
 }
 
-function seedCards(db, count) {
+function seedCards(db: Database.Database, count: number) {
   const insertCard = db.prepare(
     `INSERT INTO cards (
       accountId, brand, cardType, faceValueCents, remainingBalanceCents,
@@ -86,7 +105,7 @@ function seedCards(db, count) {
   seed();
 }
 
-function seedReferenceValues(db, count) {
+function seedReferenceValues(db: Database.Database, count: number) {
   const insertReference = db.prepare(
     `INSERT INTO reference_values (
       accountId, type, value, normalizedValue, usageCount, lastUsedAt, createdAt, updatedAt
@@ -114,7 +133,7 @@ function seedReferenceValues(db, count) {
   seed();
 }
 
-function buildCsv(rowCount) {
+function buildCsv(rowCount: number) {
   const rows = [
     'brand,cardType,faceValue,purchaseCost,cardNumber,pin,billingZip,expirationDate,format,source,notes',
   ];
@@ -138,13 +157,13 @@ function buildCsv(rowCount) {
   return rows.join('\n');
 }
 
-function percentile(values, ratio) {
+function percentile(values: number[], ratio: number) {
   const sorted = [...values].sort((left, right) => left - right);
   const index = Math.min(sorted.length - 1, Math.ceil(sorted.length * ratio) - 1);
   return sorted[index];
 }
 
-async function measureOne(label, thresholdMs, action) {
+async function measureOne<T>(label: string, thresholdMs: number, action: () => Promise<T> | T): Promise<Measurement<T>> {
   const start = performance.now();
   const result = await action();
   const durationMs = performance.now() - start;
@@ -157,8 +176,13 @@ async function measureOne(label, thresholdMs, action) {
   };
 }
 
-async function measureSeries(label, iterations, thresholdMs, action) {
-  const durations = [];
+async function measureSeries(
+  label: string,
+  iterations: number,
+  thresholdMs: number,
+  action: (index: number) => Promise<void> | void,
+): Promise<Measurement<SeriesSummary>> {
+  const durations: number[] = [];
   for (let index = 0; index < iterations; index += 1) {
     const start = performance.now();
     await action(index);
@@ -179,11 +203,12 @@ async function measureSeries(label, iterations, thresholdMs, action) {
   };
 }
 
-function printMeasurement(measurement) {
+function printMeasurement(measurement: Measurement) {
   const duration = `${measurement.durationMs.toFixed(1)}ms`;
   const threshold = `${measurement.thresholdMs.toFixed(0)}ms`;
-  const details = measurement.result?.p95Ms
-    ? ` p50=${measurement.result.p50Ms.toFixed(1)}ms max=${measurement.result.maxMs.toFixed(1)}ms`
+  const result = measurement.result as Partial<SeriesSummary> | undefined;
+  const details = result?.p95Ms
+    ? ` p50=${result.p50Ms?.toFixed(1)}ms max=${result.maxMs?.toFixed(1)}ms`
     : '';
   console.log(`${measurement.passed ? 'PASS' : 'FAIL'} ${measurement.label}: ${duration} / ${threshold}${details}`);
 }
@@ -202,7 +227,7 @@ async function main() {
       `Seeded ${cardCount.toLocaleString()} cards and ${(referenceCount * 3).toLocaleString()} reference values in ${seedDurationMs.toFixed(1)}ms`,
     );
 
-    const measurements = [];
+    const measurements: Measurement[] = [];
     measurements.push(
       await measureSeries(`${cardCount.toLocaleString()} cards first page p95`, readIterations, thresholdsMs.firstPageP95, async (index) => {
         const response = await agent.get(`/api/cards?limit=100&offset=${(index * 37) % 5_000}`);
@@ -216,7 +241,7 @@ async function main() {
       await measureSeries(`${cardCount.toLocaleString()} cards status filter p95`, readIterations, thresholdsMs.statusFilterP95, async (index) => {
         const response = await agent.get(`/api/cards?status=available&limit=100&offset=${(index * 11) % 2_000}`);
         assertStatus(response, 200, `status filter ${index}`);
-        if (response.body.data.some((card) => card.status !== 'available')) {
+        if ((response.body.data as Array<{ status: string }>).some((card) => card.status !== 'available')) {
           throw new Error('status filter returned a non-available card');
         }
       }),
@@ -250,7 +275,7 @@ async function main() {
         for (let start = 0; start < concurrentReads; start += concurrentBatchSize) {
           const batchSize = Math.min(concurrentBatchSize, concurrentReads - start);
           const responses = await Promise.all(
-            Array.from({ length: batchSize }, (_unused, batchIndex) => {
+            Array.from({ length: batchSize }, (_unused: unknown, batchIndex: number) => {
               const index = start + batchIndex;
               if (index % 3 === 0) {
                 return agent.get(`/api/cards?limit=50&offset=${(index * 13) % 5_000}`);
@@ -261,7 +286,9 @@ async function main() {
               return agent.get(`/api/reference-values?types=source&q=${index % 20}&limit=10`);
             }),
           );
-          responses.forEach((response, index) => assertStatus(response, 200, `concurrent read ${start + index}`));
+          responses.forEach((response: supertest.Response, index: number) =>
+            assertStatus(response, 200, `concurrent read ${start + index}`),
+          );
         }
       }),
     );

@@ -1,10 +1,26 @@
 import { Router } from 'express';
+import type Database from 'better-sqlite3';
 import { requireUnlockedSession } from '../auth/requireAuth.js';
 import { asyncHandler, badRequest } from '../http/errors.js';
 
 const entityTypes = new Set(['card', 'deal', 'transaction', 'usage', 'auth', 'backup', 'import', 'system']);
 
-function queryValidationError(field, code, message) {
+interface AuditRow {
+  id: number;
+  accountId: number;
+  userId: number | null;
+  requestId: string | null;
+  entityType: string;
+  entityId: number | null;
+  action: string;
+  timestamp: string;
+}
+
+interface CountRow {
+  count: number;
+}
+
+function queryValidationError(field: string, code: string, message: string) {
   return badRequest('VALIDATION_FAILED', 'Request validation failed.', [
     {
       field,
@@ -14,7 +30,11 @@ function queryValidationError(field, code, message) {
   ]);
 }
 
-function parsePositiveInt(value, fallback, { min = 0, max = Number.MAX_SAFE_INTEGER } = {}) {
+function parsePositiveInt<T extends number | null>(
+  value: unknown,
+  fallback: T,
+  { min = 0, max = Number.MAX_SAFE_INTEGER }: { min?: number; max?: number } = {},
+): number | T {
   if (value == null || value === '') {
     return fallback;
   }
@@ -26,7 +46,7 @@ function parsePositiveInt(value, fallback, { min = 0, max = Number.MAX_SAFE_INTE
   return parsed;
 }
 
-function parseDateTimeFilter(value, field) {
+function parseDateTimeFilter(value: unknown, field: string): string | null {
   if (value == null || value === '') {
     return null;
   }
@@ -38,7 +58,7 @@ function parseDateTimeFilter(value, field) {
   return normalized;
 }
 
-function toAuditResponse(row) {
+function toAuditResponse(row: AuditRow) {
   return {
     id: row.id,
     accountId: row.accountId,
@@ -51,7 +71,7 @@ function toAuditResponse(row) {
   };
 }
 
-function pageResponse(data, { limit, offset, total }) {
+function pageResponse<T>(data: T[], { limit, offset, total }: { limit: number; offset: number; total: number }) {
   return {
     data,
     page: {
@@ -63,7 +83,7 @@ function pageResponse(data, { limit, offset, total }) {
   };
 }
 
-export function createAuditRouter({ db }) {
+export function createAuditRouter({ db }: { db: Database.Database }) {
   const router = Router();
 
   router.use(requireUnlockedSession);
@@ -74,7 +94,7 @@ export function createAuditRouter({ db }) {
       const limit = parsePositiveInt(req.query.limit, 50, { min: 1, max: 100 });
       const offset = parsePositiveInt(req.query.offset, 0, { min: 0 });
       const where = ['accountId = ?'];
-      const params: any[] = [req.auth.accountId];
+      const params: unknown[] = [req.auth.accountId];
 
       if (req.query.entityType) {
         const entityType = String(req.query.entityType).trim();
@@ -108,7 +128,7 @@ export function createAuditRouter({ db }) {
       }
 
       const whereClause = where.join(' AND ');
-      const total = db.prepare(`SELECT COUNT(*) AS count FROM audit_log WHERE ${whereClause}`).get(...params).count;
+      const total = (db.prepare(`SELECT COUNT(*) AS count FROM audit_log WHERE ${whereClause}`).get(...params) as CountRow).count;
       const rows = db
         .prepare(
           `SELECT id, accountId, userId, requestId, entityType, entityId, action, timestamp
@@ -117,7 +137,7 @@ export function createAuditRouter({ db }) {
            ORDER BY timestamp DESC, id DESC
            LIMIT ? OFFSET ?`,
         )
-        .all(...params, limit, offset);
+        .all(...params, limit, offset) as AuditRow[];
 
       res.json(pageResponse(rows.map(toAuditResponse), { limit, offset, total }));
     }),

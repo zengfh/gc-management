@@ -1,25 +1,45 @@
 import crypto from 'node:crypto';
+import type Database from 'better-sqlite3';
+import type { Request, Response } from 'express';
 import { badRequest, conflict } from './errors.js';
 
 const idempotencyKeyPattern = /^[A-Za-z0-9._:-]{1,128}$/;
 const idempotencyTtlMs = 24 * 60 * 60 * 1000;
 
-function stableStringify(value) {
+interface IdempotentResponse {
+  status: number;
+  body: unknown;
+}
+
+interface IdempotentResult extends IdempotentResponse {
+  replayed: boolean;
+}
+
+interface IdempotencyRow {
+  method: string;
+  path: string;
+  requestHash: string;
+  responseStatus: number | null;
+  responseBody: string | null;
+}
+
+function stableStringify(value: unknown): string {
   if (Array.isArray(value)) {
     return `[${value.map(stableStringify).join(',')}]`;
   }
 
   if (value && typeof value === 'object') {
-    return `{${Object.keys(value)
+    const objectValue = value as Record<string, unknown>;
+    return `{${Object.keys(objectValue)
       .sort()
-      .map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`)
+      .map((key) => `${JSON.stringify(key)}:${stableStringify(objectValue[key])}`)
       .join(',')}}`;
   }
 
   return JSON.stringify(value);
 }
 
-function requestHash(req) {
+function requestHash(req: Request): string {
   return crypto
     .createHash('sha256')
     .update(
@@ -32,7 +52,7 @@ function requestHash(req) {
     .digest('hex');
 }
 
-function readIdempotencyKey(req) {
+function readIdempotencyKey(req: Request): string | null {
   const key = req.get('Idempotency-Key');
   if (key == null || key === '') {
     return null;
@@ -45,17 +65,21 @@ function readIdempotencyKey(req) {
   return normalized;
 }
 
-function loadExisting(db, accountId, key) {
+function loadExisting(db: Database.Database, accountId: number, key: string): IdempotencyRow | undefined {
   return db
     .prepare(
       `SELECT *
        FROM idempotency_keys
        WHERE accountId = ? AND key = ?`,
     )
-    .get(accountId, key);
+    .get(accountId, key) as IdempotencyRow | undefined;
 }
 
-export function runIdempotentJson(db, req, buildResponse) {
+export function runIdempotentJson(
+  db: Database.Database,
+  req: Request,
+  buildResponse: () => IdempotentResponse,
+): IdempotentResult {
   const key = readIdempotencyKey(req);
   if (!key) {
     return {
@@ -112,7 +136,11 @@ export function runIdempotentJson(db, req, buildResponse) {
   }
 }
 
-export async function runIdempotentJsonAsync(db, req, buildResponse) {
+export async function runIdempotentJsonAsync(
+  db: Database.Database,
+  req: Request,
+  buildResponse: () => Promise<IdempotentResponse>,
+): Promise<IdempotentResult> {
   const key = readIdempotencyKey(req);
   if (!key) {
     return {
@@ -169,7 +197,7 @@ export async function runIdempotentJsonAsync(db, req, buildResponse) {
   }
 }
 
-export function sendIdempotentJson(res, response) {
+export function sendIdempotentJson(res: Response, response: IdempotentResult) {
   if (response.replayed) {
     res.set('Idempotency-Replayed', 'true');
   }

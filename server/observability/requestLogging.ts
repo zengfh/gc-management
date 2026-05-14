@@ -1,21 +1,29 @@
-function defaultLogEnabled() {
+import type { NextFunction, Request, Response } from 'express';
+
+type LogMethod = 'info' | 'error';
+type Logger = Pick<Console, LogMethod>;
+
+function defaultLogEnabled(): boolean {
   if (process.env.GC_REQUEST_LOGS != null) {
     return process.env.GC_REQUEST_LOGS === 'true';
   }
   return process.env.NODE_ENV === 'production';
 }
 
-function safeLogPath(req) {
+function safeLogPath(req: Request): string {
   return req.path || req.originalUrl?.split('?')[0] || 'unknown';
 }
 
-function writeLog(logger, method, payload) {
+function writeLog(logger: Partial<Logger> | undefined, method: LogMethod, payload: unknown) {
   const writer = typeof logger?.[method] === 'function' ? logger[method] : console[method];
   writer.call(logger || console, JSON.stringify(payload));
 }
 
-export function createRequestLogger({ logger = console, enabled = defaultLogEnabled() } = {}) {
-  return function requestLogger(req, res, next) {
+export function createRequestLogger({
+  logger = console,
+  enabled = defaultLogEnabled(),
+}: { logger?: Partial<Logger>; enabled?: boolean } = {}) {
+  return function requestLogger(req: Request, res: Response, next: NextFunction) {
     if (!enabled) {
       next();
       return;
@@ -41,7 +49,7 @@ export function createRequestLogger({ logger = console, enabled = defaultLogEnab
   };
 }
 
-export function logRequestError({ logger = console, req, err }) {
+export function logRequestError({ logger = console, req, err }: { logger?: Partial<Logger>; req: Request; err: unknown }) {
   if (!defaultLogEnabled()) {
     return;
   }
@@ -52,8 +60,8 @@ export function logRequestError({ logger = console, req, err }) {
     requestId: req.requestId,
     method: req.method,
     path: safeLogPath(req),
-    status: err.status || 500,
-    errorCode: err.code || 'INTERNAL_ERROR',
-    errorName: err.name || 'Error',
+    status: typeof (err as { status?: unknown })?.status === 'number' ? (err as { status: number }).status : 500,
+    errorCode: typeof (err as { code?: unknown })?.code === 'string' ? (err as { code: string }).code : 'INTERNAL_ERROR',
+    errorName: err instanceof Error ? err.name : 'Error',
   });
 }

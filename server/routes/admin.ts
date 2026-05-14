@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import type Database from 'better-sqlite3';
 import { z } from 'zod';
 import { insertAuditEvent } from '../audit/index.js';
 import { requireUnlockedSession } from '../auth/requireAuth.js';
@@ -13,6 +14,72 @@ import {
   updateDataPolicy,
   updateSupportPolicy,
 } from '../settings/adminSettings.js';
+import type { AuthContext } from '../types/express.js';
+
+interface CountRow {
+  count: number;
+}
+
+interface RetentionPolicy {
+  auditRetentionDays: number;
+  idempotencyRetentionDays: number;
+  sessionRetentionDays: number;
+  loginAttemptRetentionDays: number;
+}
+
+interface RetentionCounts {
+  auditLog: number;
+  idempotencyKeys: number;
+  webSessions: number;
+  loginAttempts: number;
+}
+
+interface SanitizedCardRow {
+  id: number;
+  accountId: number;
+  dealId: number | null;
+  brand: string;
+  cardType: string;
+  network: string | null;
+  faceValueCents: number;
+  remainingBalanceCents: number;
+  purchaseCostCents: number;
+  cardNumberLast4?: string | null;
+  primaryCredentialLast4?: string | null;
+  credentialProfile?: string | null;
+  credentialSummaryJson?: string | null;
+  cardNumber?: string | null;
+  pin?: string | null;
+  billingZip?: string | null;
+  expirationDate: string | null;
+  cardholderName: string | null;
+  status: string;
+  format: string | null;
+  source: string | null;
+  notes: string | null;
+  keyVersion: number;
+  reservedFor: string | null;
+  reservedUntil: string | null;
+  reservedNotes: string | null;
+  createdByUserId: number | null;
+  updatedByUserId: number | null;
+  createdAt: string;
+  updatedAt: string;
+  rowVersion: number;
+}
+
+interface SanitizedExportPayload {
+  [key: string]: unknown;
+  counts: {
+    users: number;
+    cards: number;
+    deals: number;
+    transactions: number;
+    usages: number;
+    referenceValues: number;
+    auditEvents: number;
+  };
+}
 
 const retentionDays = z.number().int().min(1).max(3650);
 
@@ -67,8 +134,8 @@ const deleteInventorySchema = z
   })
   .strict();
 
-function zodFieldErrors(error) {
-  return error.issues.map((issue) => ({
+function zodFieldErrors(error: z.ZodError) {
+  return error.issues.map((issue: z.core.$ZodIssue) => ({
     field: issue.path.join('.') || 'body',
     code: issue.code,
     message: issue.message,
@@ -83,19 +150,24 @@ function validateBody<T extends z.ZodTypeAny>(schema: T, body: unknown): z.infer
   return result.data;
 }
 
-function cutoffIso(nowMs, days) {
+function cutoffIso(nowMs: number, days: number) {
   return new Date(nowMs - days * 24 * 60 * 60 * 1000).toISOString();
 }
 
-function cutoffMs(nowMs, days) {
+function cutoffMs(nowMs: number, days: number) {
   return nowMs - days * 24 * 60 * 60 * 1000;
 }
 
-function runCount(db, sql, params) {
-  return db.prepare(sql).get(...params).count;
+function runCount(db: Database.Database, sql: string, params: unknown[]) {
+  return (db.prepare(sql).get(...params) as CountRow).count;
 }
 
-function retentionCounts(db, accountId, policy, nowMs) {
+function retentionCounts(
+  db: Database.Database,
+  accountId: number,
+  policy: RetentionPolicy,
+  nowMs: number,
+): RetentionCounts {
   return {
     auditLog: runCount(
       db,
@@ -126,7 +198,12 @@ function retentionCounts(db, accountId, policy, nowMs) {
   };
 }
 
-function purgeRetention(db, accountId, policy, nowMs) {
+function purgeRetention(
+  db: Database.Database,
+  accountId: number,
+  policy: RetentionPolicy,
+  nowMs: number,
+): RetentionCounts {
   return db.transaction(() => {
     const counts = retentionCounts(db, accountId, policy, nowMs);
     db.prepare('DELETE FROM audit_log WHERE accountId = ? AND timestamp < ?').run(
@@ -151,15 +228,15 @@ function purgeRetention(db, accountId, policy, nowMs) {
   })();
 }
 
-function exportDate(timestamp) {
+function exportDate(timestamp: string) {
   return timestamp.slice(0, 10);
 }
 
-function selectRows(db, sql, params) {
-  return db.prepare(sql).all(...params);
+function selectRows<Row>(db: Database.Database, sql: string, params: unknown[]): Row[] {
+  return db.prepare(sql).all(...params) as Row[];
 }
 
-function sanitizedCard(row) {
+function sanitizedCard(row: SanitizedCardRow) {
   return {
     id: row.id,
     accountId: row.accountId,
@@ -191,9 +268,13 @@ function sanitizedCard(row) {
   };
 }
 
-function buildSanitizedExport(db, auth, exportedAt) {
-  const accountRows = selectRows(db, 'SELECT * FROM accounts WHERE id = ?', [auth.accountId]);
-  const userRows = selectRows(
+function buildSanitizedExport(
+  db: Database.Database,
+  auth: AuthContext,
+  exportedAt: string,
+): SanitizedExportPayload {
+  const accountRows = selectRows<Record<string, unknown>>(db, 'SELECT * FROM accounts WHERE id = ?', [auth.accountId]);
+  const userRows = selectRows<Record<string, unknown>>(
     db,
     `SELECT id, accountId, email, displayName, role, keyVersion, disabledAt,
             lastLoginAt, createdAt, updatedAt
@@ -202,22 +283,22 @@ function buildSanitizedExport(db, auth, exportedAt) {
      ORDER BY id`,
     [auth.accountId],
   );
-  const cardRows = selectRows(db, 'SELECT * FROM cards WHERE accountId = ? ORDER BY id', [auth.accountId]);
-  const dealRows = selectRows(db, 'SELECT * FROM deals WHERE accountId = ? ORDER BY id', [auth.accountId]);
-  const transactionRows = selectRows(db, 'SELECT * FROM transactions WHERE accountId = ? ORDER BY id', [
+  const cardRows = selectRows<SanitizedCardRow>(db, 'SELECT * FROM cards WHERE accountId = ? ORDER BY id', [auth.accountId]);
+  const dealRows = selectRows<Record<string, unknown>>(db, 'SELECT * FROM deals WHERE accountId = ? ORDER BY id', [auth.accountId]);
+  const transactionRows = selectRows<Record<string, unknown>>(db, 'SELECT * FROM transactions WHERE accountId = ? ORDER BY id', [
     auth.accountId,
   ]);
-  const usageRows = selectRows(db, 'SELECT * FROM usages WHERE accountId = ? ORDER BY id', [auth.accountId]);
-  const settingRows = selectRows(db, 'SELECT * FROM app_settings WHERE accountId = ? ORDER BY id', [
+  const usageRows = selectRows<Record<string, unknown>>(db, 'SELECT * FROM usages WHERE accountId = ? ORDER BY id', [auth.accountId]);
+  const settingRows = selectRows<Record<string, unknown>>(db, 'SELECT * FROM app_settings WHERE accountId = ? ORDER BY id', [
     auth.accountId,
   ]);
-  const referenceValueRows = selectRows(db, 'SELECT * FROM reference_values WHERE accountId = ? ORDER BY id', [
+  const referenceValueRows = selectRows<Record<string, unknown>>(db, 'SELECT * FROM reference_values WHERE accountId = ? ORDER BY id', [
     auth.accountId,
   ]);
-  const importJobRows = selectRows(db, 'SELECT * FROM import_jobs WHERE accountId = ? ORDER BY id', [
+  const importJobRows = selectRows<Record<string, unknown>>(db, 'SELECT * FROM import_jobs WHERE accountId = ? ORDER BY id', [
     auth.accountId,
   ]);
-  const auditRows = selectRows(db, 'SELECT * FROM audit_log WHERE accountId = ? ORDER BY id', [auth.accountId]);
+  const auditRows = selectRows<Record<string, unknown>>(db, 'SELECT * FROM audit_log WHERE accountId = ? ORDER BY id', [auth.accountId]);
 
   return {
     schemaVersion: 1,
@@ -247,7 +328,7 @@ function buildSanitizedExport(db, auth, exportedAt) {
   };
 }
 
-function deleteInventoryData(db, auth, timestamp, requestId) {
+function deleteInventoryData(db: Database.Database, auth: AuthContext, timestamp: string, requestId: string) {
   return db.transaction(() => {
     const counts = {
       usages: db.prepare('DELETE FROM usages WHERE accountId = ?').run(auth.accountId).changes,
@@ -273,7 +354,7 @@ function deleteInventoryData(db, auth, timestamp, requestId) {
   })();
 }
 
-export function createAdminRouter({ db }) {
+export function createAdminRouter({ db }: { db: Database.Database }) {
   const router = Router();
 
   router.use(requireUnlockedSession);

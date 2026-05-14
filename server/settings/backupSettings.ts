@@ -1,3 +1,4 @@
+import type Database from 'better-sqlite3';
 import { featureEnabled } from '../config/featureFlags.js';
 
 const backupSettingKeys = {
@@ -8,7 +9,19 @@ const backupSettingKeys = {
   lastRawDatabaseExportAt: 'backup.lastRawDatabaseExportAt',
 };
 
-const defaultBackupSettings = {
+interface SettingRow {
+  key: string;
+  value: string;
+}
+
+interface BackupSettingsUpdate {
+  allowPlaintextExport: boolean;
+  backupReminderDays: number;
+}
+
+type BackupExportType = 'plaintext_json' | 'encrypted_portable_json' | 'raw_sqlite';
+
+const defaultBackupSettings: BackupSettingsUpdate = {
   allowPlaintextExport: true,
   backupReminderDays: 30,
 };
@@ -17,7 +30,7 @@ export function plaintextExportPolicyLocked() {
   return !featureEnabled('plaintextJsonExport');
 }
 
-function parseBooleanSetting(value, fallback) {
+function parseBooleanSetting(value: string | undefined, fallback: boolean): boolean {
   if (value === 'true') {
     return true;
   }
@@ -27,32 +40,32 @@ function parseBooleanSetting(value, fallback) {
   return fallback;
 }
 
-function parseIntegerSetting(value, fallback) {
+function parseIntegerSetting(value: string | undefined, fallback: number): number {
   const parsed = Number(value);
   return Number.isInteger(parsed) ? parsed : fallback;
 }
 
-function validTimestamp(value) {
+function validTimestamp(value: string | undefined): string | null {
   if (!value || Number.isNaN(Date.parse(value))) {
     return null;
   }
   return value;
 }
 
-function mostRecentTimestamp(timestamps) {
+function mostRecentTimestamp(timestamps: Array<string | null>): string | null {
   return timestamps
     .filter(Boolean)
     .sort((left, right) => Date.parse(right) - Date.parse(left))[0] || null;
 }
 
-function nextBackupDueAt(lastBackupAt, backupReminderDays) {
+function nextBackupDueAt(lastBackupAt: string | null, backupReminderDays: number): string | null {
   if (!lastBackupAt || backupReminderDays <= 0) {
     return null;
   }
   return new Date(Date.parse(lastBackupAt) + backupReminderDays * 24 * 60 * 60 * 1000).toISOString();
 }
 
-function backupDue(lastBackupAt, backupReminderDays, now) {
+function backupDue(lastBackupAt: string | null, backupReminderDays: number, now: string): boolean {
   if (backupReminderDays <= 0) {
     return false;
   }
@@ -62,14 +75,14 @@ function backupDue(lastBackupAt, backupReminderDays, now) {
   return Date.parse(now) >= Date.parse(lastBackupAt) + backupReminderDays * 24 * 60 * 60 * 1000;
 }
 
-function settingMap(db, accountId) {
+function settingMap(db: Database.Database, accountId: number): Map<string, string> {
   const rows = db
     .prepare('SELECT key, value FROM app_settings WHERE accountId = ?')
-    .all(accountId);
+    .all(accountId) as SettingRow[];
   return new Map(rows.map((row) => [row.key, row.value]));
 }
 
-export function readBackupSettings(db, accountId, now = new Date().toISOString()) {
+export function readBackupSettings(db: Database.Database, accountId: number, now = new Date().toISOString()) {
   const settings = settingMap(db, accountId);
   const policyLocked = plaintextExportPolicyLocked();
   const lastPlaintextExportAt = validTimestamp(settings.get(backupSettingKeys.lastPlaintextExportAt));
@@ -103,7 +116,7 @@ export function readBackupSettings(db, accountId, now = new Date().toISOString()
   };
 }
 
-function upsertSetting(db, accountId, key, value, timestamp) {
+function upsertSetting(db: Database.Database, accountId: number, key: string, value: string, timestamp: string) {
   db.prepare(
     `INSERT INTO app_settings (accountId, key, value, createdAt, updatedAt)
      VALUES (?, ?, ?, ?, ?)
@@ -113,7 +126,12 @@ function upsertSetting(db, accountId, key, value, timestamp) {
   ).run(accountId, key, value, timestamp, timestamp);
 }
 
-export function updateBackupSettings(db, accountId, settings, timestamp) {
+export function updateBackupSettings(
+  db: Database.Database,
+  accountId: number,
+  settings: BackupSettingsUpdate,
+  timestamp: string,
+) {
   db.transaction(() => {
     upsertSetting(
       db,
@@ -132,8 +150,8 @@ export function updateBackupSettings(db, accountId, settings, timestamp) {
   })();
 }
 
-export function recordBackupExport(db, accountId, exportType, timestamp) {
-  const keyByExportType = {
+export function recordBackupExport(db: Database.Database, accountId: number, exportType: BackupExportType, timestamp: string) {
+  const keyByExportType: Record<BackupExportType, string> = {
     plaintext_json: backupSettingKeys.lastPlaintextExportAt,
     encrypted_portable_json: backupSettingKeys.lastEncryptedExportAt,
     raw_sqlite: backupSettingKeys.lastRawDatabaseExportAt,

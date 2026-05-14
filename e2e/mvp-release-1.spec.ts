@@ -1,10 +1,10 @@
 import fs from 'node:fs/promises';
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
 const unlockSecret = 'a strong unlock phrase';
 const backupPassphrase = 'portable backup passphrase';
 
-async function unlockExistingVault(page) {
+async function unlockExistingVault(page: Page) {
   await page.goto('/');
   const unlockHeading = page.getByRole('heading', { name: /unlock card data/i });
   const dashboardHeading = page.getByRole('heading', { name: /dashboard/i });
@@ -16,7 +16,7 @@ async function unlockExistingVault(page) {
   await expect(dashboardHeading).toBeVisible();
 }
 
-async function setupOrUnlockVault(page) {
+async function setupOrUnlockVault(page: Page) {
   await page.goto('/');
   const setupHeading = page.getByRole('heading', { name: /create unlock secret/i });
   const unlockHeading = page.getByRole('heading', { name: /unlock card data/i });

@@ -1,3 +1,4 @@
+import type { NextFunction, Request, Response } from 'express';
 import { forbidden } from '../http/errors.js';
 
 export const featureFlagDefinitions = {
@@ -36,9 +37,13 @@ export const featureFlagDefinitions = {
     public: true,
     description: 'Storage of network prepaid security codes such as CVV/CVC. Disabled by default.',
   },
-};
+} as const;
 
-function readFlag(definition, env) {
+type FeatureFlagName = keyof typeof featureFlagDefinitions;
+type FeatureFlagDefinition = (typeof featureFlagDefinitions)[FeatureFlagName];
+type EnvLike = NodeJS.ProcessEnv;
+
+function readFlag(definition: FeatureFlagDefinition, env: EnvLike): boolean {
   const value = env[definition.env];
   if (value == null || value === '') {
     return definition.defaultEnabled;
@@ -46,7 +51,7 @@ function readFlag(definition, env) {
   return value !== definition.disabledValue;
 }
 
-export function featureEnabled(flagName, env = process.env) {
+export function featureEnabled(flagName: FeatureFlagName, env: EnvLike = process.env): boolean {
   const definition = featureFlagDefinitions[flagName];
   if (!definition) {
     throw new Error(`Unknown feature flag: ${flagName}`);
@@ -54,16 +59,16 @@ export function featureEnabled(flagName, env = process.env) {
   return readFlag(definition, env);
 }
 
-export function getFeatureFlags(env = process.env) {
+export function getFeatureFlags(env: EnvLike = process.env): Record<FeatureFlagName, boolean> {
   return Object.fromEntries(
     Object.entries(featureFlagDefinitions).map(([name, definition]) => [
       name,
       readFlag(definition, env),
     ]),
-  );
+  ) as Record<FeatureFlagName, boolean>;
 }
 
-export function getPublicFeatureFlags(env = process.env) {
+export function getPublicFeatureFlags(env: EnvLike = process.env): Partial<Record<FeatureFlagName, boolean>> {
   return Object.fromEntries(
     Object.entries(featureFlagDefinitions)
       .filter(([, definition]) => definition.public)
@@ -71,8 +76,8 @@ export function getPublicFeatureFlags(env = process.env) {
   );
 }
 
-export function requireFeatureFlag(flagName) {
-  return function featureFlagMiddleware(_req, _res, next) {
+export function requireFeatureFlag(flagName: FeatureFlagName) {
+  return function featureFlagMiddleware(_req: Request, _res: Response, next: NextFunction) {
     if (!featureEnabled(flagName)) {
       next(forbidden('FEATURE_DISABLED', 'This feature is disabled by deployment policy.'));
       return;

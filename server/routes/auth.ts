@@ -1,5 +1,6 @@
 import bcrypt from 'bcryptjs';
-import { Router } from 'express';
+import { Router, type Request } from 'express';
+import type Database from 'better-sqlite3';
 import { nanoid } from 'nanoid';
 import {
   deriveBlindIndexKey,
@@ -28,6 +29,46 @@ import {
   unauthorized,
 } from '../http/errors.js';
 import { objectResponse } from '../http/response.js';
+import type { Role } from '../auth/roles.js';
+
+type LoginAttemptStore = ReturnType<typeof createLoginAttemptStore>;
+
+interface CountRow {
+  count: number;
+}
+
+interface AuthUserRow {
+  id: number;
+  accountId: number;
+  accountMode?: string;
+  email: string | null;
+  displayName: string | null;
+  role: Role;
+  unlockSecretHash: string;
+  encryptionSalt: string;
+  encryptedDEK: string;
+  keyVersion: number;
+}
+
+interface InviteRow {
+  id: number;
+  accountId: number;
+  email: string;
+  displayName: string | null;
+  role: Role;
+  inviteCodeHash: string;
+  encryptionSalt: string;
+  encryptedDEK: string;
+}
+
+interface RecoveryCodeRow {
+  id: number;
+  accountId: number;
+  userId: number;
+  codeHash: string;
+  encryptionSalt: string;
+  encryptedDEK: string;
+}
 
 const bcryptCost = Number(process.env.BCRYPT_COST || (process.env.NODE_ENV === 'test' ? 4 : 12));
 
@@ -35,34 +76,34 @@ function nowIso() {
   return new Date().toISOString();
 }
 
-function regenerateSession(req) {
+function regenerateSession(req: Request) {
   return new Promise<void>((resolve, reject) => {
-    req.session.regenerate((err) => {
+    req.session.regenerate((err: unknown) => {
       if (err) reject(err);
       else resolve();
     });
   });
 }
 
-function destroySession(req) {
+function destroySession(req: Request) {
   return new Promise<void>((resolve, reject) => {
-    req.session.destroy((err) => {
+    req.session.destroy((err: unknown) => {
       if (err) reject(err);
       else resolve();
     });
   });
 }
 
-function saveSession(req) {
+function saveSession(req: Request) {
   return new Promise<void>((resolve, reject) => {
-    req.session.save((err) => {
+    req.session.save((err: unknown) => {
       if (err) reject(err);
       else resolve();
     });
   });
 }
 
-function getPrimaryUser(db) {
+function getPrimaryUser(db: Database.Database): AuthUserRow | undefined {
   return db
     .prepare(
       `SELECT users.*, accounts.mode AS accountMode
@@ -72,15 +113,15 @@ function getPrimaryUser(db) {
        ORDER BY users.id
        LIMIT 1`,
     )
-    .get();
+    .get() as AuthUserRow | undefined;
 }
 
-function normalizeEmail(email) {
+function normalizeEmail(email: unknown): string | null {
   const normalized = String(email || '').trim().toLowerCase();
   return normalized || null;
 }
 
-function getLoginUser(db, email) {
+function getLoginUser(db: Database.Database, email: unknown): AuthUserRow | undefined {
   const normalizedEmail = normalizeEmail(email);
   if (normalizedEmail) {
     return db
@@ -92,21 +133,21 @@ function getLoginUser(db, email) {
          ORDER BY users.id
          LIMIT 1`,
       )
-      .get(normalizedEmail);
+      .get(normalizedEmail) as AuthUserRow | undefined;
   }
 
-  const userCount = db.prepare('SELECT COUNT(*) AS count FROM users WHERE disabledAt IS NULL').get().count;
+  const userCount = (db.prepare('SELECT COUNT(*) AS count FROM users WHERE disabledAt IS NULL').get() as CountRow).count;
   if (userCount > 1) {
     throw badRequest('EMAIL_REQUIRED', 'Email is required when multiple users exist.');
   }
   return getPrimaryUser(db);
 }
 
-function setupComplete(db) {
-  return db.prepare('SELECT COUNT(*) AS count FROM users').get().count > 0;
+function setupComplete(db: Database.Database) {
+  return (db.prepare('SELECT COUNT(*) AS count FROM users').get() as CountRow).count > 0;
 }
 
-function ensureCsrfToken(req) {
+function ensureCsrfToken(req: Request) {
   if (!req.session.csrfToken) {
     req.session.csrfToken = cryptoRandomToken();
   }
@@ -117,8 +158,13 @@ function cryptoRandomToken() {
   return `csrf_${nanoid(32)}`;
 }
 
-function activeRecoveryCodeCount(db, accountId, userId, timestamp = nowIso()) {
-  return db
+function activeRecoveryCodeCount(
+  db: Database.Database,
+  accountId: number,
+  userId: number,
+  timestamp = nowIso(),
+) {
+  return (db
     .prepare(
       `SELECT COUNT(*) AS count
        FROM user_recovery_codes
@@ -128,10 +174,10 @@ function activeRecoveryCodeCount(db, accountId, userId, timestamp = nowIso()) {
          AND revokedAt IS NULL
          AND (expiresAt IS NULL OR expiresAt > ?)`,
     )
-    .get(accountId, userId, timestamp).count;
+    .get(accountId, userId, timestamp) as CountRow).count;
 }
 
-function authStatus(db, req) {
+function authStatus(db: Database.Database, req: Request) {
   const sessionValid = Boolean(req.session?.userId);
   const unlocked = sessionValid ? getUnlockedSession(req.sessionID) : null;
   return {
@@ -169,7 +215,7 @@ function genericRecoveryError() {
   return unauthorized('INVALID_RECOVERY_CODE', 'Recovery code is invalid or expired.');
 }
 
-function loadInviteCandidates(db, email, timestamp) {
+function loadInviteCandidates(db: Database.Database, email: string, timestamp: string): InviteRow[] {
   return db
     .prepare(
       `SELECT *
@@ -180,16 +226,16 @@ function loadInviteCandidates(db, email, timestamp) {
          AND expiresAt > ?
        ORDER BY createdAt DESC`,
     )
-    .all(email, timestamp);
+    .all(email, timestamp) as InviteRow[];
 }
 
-function activeUserEmailExists(db, accountId, email) {
+function activeUserEmailExists(db: Database.Database, accountId: number, email: string): AuthUserRow | undefined {
   return db
     .prepare('SELECT id FROM users WHERE accountId = ? AND LOWER(email) = LOWER(?) AND disabledAt IS NULL')
-    .get(accountId, email);
+    .get(accountId, email) as AuthUserRow | undefined;
 }
 
-function loadRecoveryUser(db, email) {
+function loadRecoveryUser(db: Database.Database, email: unknown): AuthUserRow | null {
   const normalizedEmail = normalizeEmail(email);
   if (normalizedEmail) {
     return db
@@ -201,14 +247,20 @@ function loadRecoveryUser(db, email) {
          ORDER BY users.id
          LIMIT 1`,
       )
-      .get(normalizedEmail);
+      .get(normalizedEmail) as AuthUserRow | undefined || null;
   }
 
-  const activeUsers = db.prepare('SELECT * FROM users WHERE disabledAt IS NULL ORDER BY id').all();
+  const activeUsers = db.prepare('SELECT * FROM users WHERE disabledAt IS NULL ORDER BY id').all() as AuthUserRow[];
   return activeUsers.length === 1 ? activeUsers[0] : null;
 }
 
-export function createAuthRouter({ db, loginAttempts = createLoginAttemptStore() }) {
+export function createAuthRouter({
+  db,
+  loginAttempts = createLoginAttemptStore(),
+}: {
+  db: Database.Database;
+  loginAttempts?: LoginAttemptStore;
+}) {
   const router = Router();
 
   router.get('/status', (req, res) => {
@@ -306,7 +358,7 @@ export function createAuthRouter({ db, loginAttempts = createLoginAttemptStore()
       const timestamp = nowIso();
       const normalizedInviteCode = normalizeOneTimeSecret(inviteCode);
       const candidates = loadInviteCandidates(db, normalizedEmail, timestamp);
-      let matchedInvite = null;
+      let matchedInvite: InviteRow | null = null;
       for (const candidate of candidates) {
         if (await bcrypt.compare(normalizedInviteCode, candidate.inviteCodeHash)) {
           matchedInvite = candidate;
@@ -350,7 +402,7 @@ export function createAuthRouter({ db, loginAttempts = createLoginAttemptStore()
             timestamp,
             timestamp,
           );
-        const created = db.prepare('SELECT * FROM users WHERE id = ?').get(info.lastInsertRowid);
+        const created = db.prepare('SELECT * FROM users WHERE id = ?').get(info.lastInsertRowid) as AuthUserRow;
         db.prepare('UPDATE user_invites SET usedAt = ?, acceptedByUserId = ?, updatedAt = ? WHERE id = ?').run(
           timestamp,
           created.id,
@@ -564,10 +616,10 @@ export function createAuthRouter({ db, loginAttempts = createLoginAttemptStore()
                  AND (expiresAt IS NULL OR expiresAt > ?)
                ORDER BY createdAt DESC`,
             )
-            .all(user.accountId, user.id, timestamp)
+            .all(user.accountId, user.id, timestamp) as RecoveryCodeRow[]
         : [];
 
-      let matchedCode = null;
+      let matchedCode: RecoveryCodeRow | null = null;
       for (const candidate of candidates) {
         if (await bcrypt.compare(normalizedCode, candidate.codeHash)) {
           matchedCode = candidate;
@@ -618,7 +670,10 @@ export function createAuthRouter({ db, loginAttempts = createLoginAttemptStore()
       const { oldUnlockSecret, newUnlockSecret } = req.body || {};
       const user = db
         .prepare('SELECT * FROM users WHERE id = ? AND accountId = ?')
-        .get(req.session.userId, req.session.accountId);
+        .get(req.session.userId, req.session.accountId) as AuthUserRow | undefined;
+      if (!user) {
+        throw unauthorized('LOCKED', 'Encrypted data is locked.');
+      }
       const passwordMatches = await bcrypt.compare(oldUnlockSecret || '', user.unlockSecretHash);
       if (!passwordMatches) {
         throw unauthorized('INVALID_UNLOCK_SECRET', 'Invalid unlock secret.');

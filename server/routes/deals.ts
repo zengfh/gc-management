@@ -1,4 +1,5 @@
-import { Router } from 'express';
+import { Router, type Request } from 'express';
+import type Database from 'better-sqlite3';
 import { z } from 'zod';
 import { insertAuditEvent } from '../audit/index.js';
 import { requireUnlockedSession } from '../auth/requireAuth.js';
@@ -9,13 +10,86 @@ import {
   barcodeFormats,
   buildCredentialModel,
   CredentialValidationError,
+  type CredentialInput,
+  type CredentialProfile,
   credentialFieldKinds,
   credentialProfiles,
   insertCredentialFields,
   parseCredentialSummary,
+  type PreparedCredentialField,
 } from '../cards/credentials.js';
 import { featureEnabled } from '../config/featureFlags.js';
 import { asyncHandler, badRequest, conflict, notFound } from '../http/errors.js';
+import type { AuthContext } from '../types/express.js';
+
+type DealCardInput = z.infer<typeof dealCardInputSchema>;
+type DealCardWithCost = DealCardInput & { purchaseCostCents: number };
+type CreateDealBody = z.infer<typeof createDealSchema>;
+
+interface CountRow {
+  count: number;
+}
+
+interface DealRow {
+  id: number;
+  accountId: number;
+  name: string;
+  source: string | null;
+  purchaseDate: string | null;
+  inputTotalCostCents: number | null;
+  notes: string | null;
+  archivedAt: string | null;
+  rowVersion: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface CardRow {
+  id: number;
+  accountId: number;
+  dealId: number | null;
+  brand: string;
+  cardType: string;
+  network: string | null;
+  faceValueCents: number;
+  remainingBalanceCents: number;
+  purchaseCostCents: number;
+  cardNumberLast4?: string | null;
+  primaryCredentialLast4?: string | null;
+  credentialProfile?: string | null;
+  credentialSummaryJson?: string | null;
+  cardNumber?: string | null;
+  pin?: string | null;
+  billingZip?: string | null;
+  expirationDate: string | null;
+  status: string;
+  format: string | null;
+  source: string | null;
+  notes: string | null;
+  rowVersion: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface PreparedDealCard extends DealCardWithCost {
+  dealId: number;
+  source: string | null;
+  status: 'available';
+  credentialProfile: CredentialProfile;
+  primaryCredentialLast4: string | null;
+  credentialSummaryJson: string;
+  credentialFields: PreparedCredentialField[];
+  cardNumber: string | null;
+  cardNumberHash: string | null;
+  cardNumberLast4: string | null;
+  pin: string | null;
+  billingZip: string | null;
+}
+
+interface SqliteErrorLike {
+  code?: string;
+  message?: string;
+}
 
 const credentialFieldInputSchema = z
   .object({
@@ -95,8 +169,8 @@ function nowIso() {
   return new Date().toISOString();
 }
 
-function zodFieldErrors(error) {
-  return error.issues.map((issue) => ({
+function zodFieldErrors(error: z.ZodError) {
+  return error.issues.map((issue: z.core.$ZodIssue) => ({
     field: issue.path.join('.') || 'body',
     code: issue.code,
     message: issue.message,
@@ -111,7 +185,11 @@ function validateBody<T extends z.ZodTypeAny>(schema: T, body: unknown): z.infer
   return result.data;
 }
 
-function parsePositiveInt(value, fallback, { min = 0, max = Number.MAX_SAFE_INTEGER } = {}) {
+function parsePositiveInt<T extends number | null>(
+  value: unknown,
+  fallback: T,
+  { min = 0, max = Number.MAX_SAFE_INTEGER }: { min?: number; max?: number } = {},
+): number | T {
   if (value == null || value === '') {
     return fallback;
   }
@@ -129,7 +207,7 @@ function parsePositiveInt(value, fallback, { min = 0, max = Number.MAX_SAFE_INTE
   return parsed;
 }
 
-function toDealResponse(row) {
+function toDealResponse(row: DealRow) {
   return {
     id: row.id,
     accountId: row.accountId,
@@ -145,7 +223,7 @@ function toDealResponse(row) {
   };
 }
 
-function toCardResponse(row) {
+function toCardResponse(row: CardRow) {
   const credentialSummary = parseCredentialSummary(row);
   return {
     id: row.id,
@@ -171,7 +249,7 @@ function toCardResponse(row) {
   };
 }
 
-function pageResponse(data, { limit, offset, total }) {
+function pageResponse<T>(data: T[], { limit, offset, total }: { limit: number; offset: number; total: number }) {
   return {
     data,
     page: {
@@ -183,11 +261,11 @@ function pageResponse(data, { limit, offset, total }) {
   };
 }
 
-function objectResponse(data) {
+function objectResponse<T>(data: T) {
   return { data };
 }
 
-function normalizeDealName(name, source) {
+function normalizeDealName(name: string | null | undefined, source: string | null | undefined) {
   const trimmedName = name?.trim();
   if (trimmedName) {
     return trimmedName;
@@ -201,29 +279,36 @@ function normalizeDealName(name, source) {
   return 'Untitled deal';
 }
 
-function allocateCardCosts(cards, rawCards, totalCostCents) {
+function allocateCardCosts(
+  cards: DealCardInput[],
+  rawCards: unknown[],
+  totalCostCents: CreateDealBody['totalCostCents'],
+): DealCardWithCost[] {
+  const cardsWithCosts = cards.map((card) => ({
+    ...card,
+    purchaseCostCents: card.purchaseCostCents ?? 0,
+  }));
+
   if (totalCostCents == null) {
-    return cards.map((card) => ({
-      ...card,
-      purchaseCostCents: card.purchaseCostCents ?? 0,
-    }));
+    return cardsWithCosts;
   }
 
-  if (cards.length === 0) {
-    return cards;
+  if (cardsWithCosts.length === 0) {
+    return cardsWithCosts;
   }
 
-  const explicitIndexes = [];
-  const proportionalIndexes = [];
-  cards.forEach((_card, index) => {
-    if (Object.hasOwn(rawCards[index] || {}, 'purchaseCostCents')) {
+  const explicitIndexes: number[] = [];
+  const proportionalIndexes: number[] = [];
+  cardsWithCosts.forEach((_card, index) => {
+    const rawCard = rawCards[index];
+    if (rawCard && typeof rawCard === 'object' && Object.hasOwn(rawCard, 'purchaseCostCents')) {
       explicitIndexes.push(index);
     } else {
       proportionalIndexes.push(index);
     }
   });
 
-  const explicitSum = explicitIndexes.reduce((sum, index) => sum + cards[index].purchaseCostCents, 0);
+  const explicitSum = explicitIndexes.reduce((sum, index) => sum + cardsWithCosts[index].purchaseCostCents, 0);
   if (explicitSum > totalCostCents) {
     throw badRequest('COST_ALLOCATION_INVALID', 'Explicit card costs exceed total deal cost.');
   }
@@ -232,17 +317,17 @@ function allocateCardCosts(cards, rawCards, totalCostCents) {
     if (explicitSum !== totalCostCents) {
       throw badRequest('COST_ALLOCATION_INVALID', 'Explicit card costs must equal total deal cost.');
     }
-    return cards;
+    return cardsWithCosts;
   }
 
   const remainingCost = totalCostCents - explicitSum;
   const totalFaceValue = proportionalIndexes.reduce(
-    (sum, index) => sum + cards[index].faceValueCents,
+    (sum, index) => sum + cardsWithCosts[index].faceValueCents,
     0,
   );
   let allocated = 0;
 
-  return cards.map((card, index) => {
+  return cardsWithCosts.map((card, index) => {
     if (!proportionalIndexes.includes(index)) {
       return card;
     }
@@ -260,7 +345,7 @@ function allocateCardCosts(cards, rawCards, totalCostCents) {
   });
 }
 
-function credentialValidationFailure(error) {
+function credentialValidationFailure(error: unknown) {
   if (error instanceof CredentialValidationError) {
     return badRequest('VALIDATION_FAILED', 'Request validation failed.', error.fieldErrors);
   }
@@ -271,10 +356,15 @@ function duplicateCredentialConflict() {
   return conflict('DUPLICATE_ACTIVE_CARD', 'Active duplicate credential for this brand already exists.');
 }
 
-function prepareCard(card, auth, dealId, fallbackSource) {
+function prepareCard(
+  card: DealCardWithCost,
+  auth: AuthContext,
+  dealId: number,
+  fallbackSource: string | null | undefined,
+): PreparedDealCard {
   let model;
   try {
-    model = buildCredentialModel(card, auth, {
+    model = buildCredentialModel(card as CredentialInput, auth, {
       allowNetworkSecurityCodeStorage: featureEnabled('networkSecurityCodeStorage'),
     });
   } catch (error) {
@@ -297,11 +387,11 @@ function prepareCard(card, auth, dealId, fallbackSource) {
   };
 }
 
-function assertNoDuplicateInputs(cards) {
+function assertNoDuplicateInputs(cards: PreparedDealCard[]) {
   assertNoDuplicatePreparedCredentials(cards, duplicateCredentialConflict);
 }
 
-function createCardAuditValue(card) {
+function createCardAuditValue(card: CardRow) {
   return {
     brand: card.brand,
     cardType: card.cardType,
@@ -314,7 +404,7 @@ function createCardAuditValue(card) {
   };
 }
 
-function dealAuditValue(deal) {
+function dealAuditValue(deal: DealRow) {
   return {
     name: deal.name,
     source: deal.source,
@@ -325,31 +415,32 @@ function dealAuditValue(deal) {
   };
 }
 
-function hasOwnValue(object, key) {
+function hasOwnValue(object: object, key: PropertyKey) {
   return Object.hasOwn(object, key);
 }
 
-function translateSqliteError(error) {
-  if (error.code === 'SQLITE_CONSTRAINT_UNIQUE' || error.message?.includes('idx_cards_active_dedupe')) {
+function translateSqliteError(error: unknown) {
+  const sqliteError = error as SqliteErrorLike;
+  if (sqliteError.code === 'SQLITE_CONSTRAINT_UNIQUE' || sqliteError.message?.includes('idx_cards_active_dedupe')) {
     return conflict('DUPLICATE_ACTIVE_CARD', 'Active duplicate card number for this brand already exists.');
   }
 
-  if (error.code?.startsWith('SQLITE_CONSTRAINT')) {
+  if (sqliteError.code?.startsWith('SQLITE_CONSTRAINT')) {
     return badRequest('VALIDATION_FAILED', 'Request validation failed.');
   }
 
   return error;
 }
 
-export function createDealsRouter({ db }) {
+export function createDealsRouter({ db }: { db: Database.Database }) {
   const router = Router();
 
   router.use(requireUnlockedSession);
 
-  function loadDeal(auth, dealId) {
+  function loadDeal(auth: AuthContext, dealId: number): DealRow {
     const deal = db
       .prepare('SELECT * FROM deals WHERE accountId = ? AND id = ?')
-      .get(auth.accountId, dealId);
+      .get(auth.accountId, dealId) as DealRow | undefined;
 
     if (!deal) {
       throw notFound('DEAL_NOT_FOUND', 'Deal not found.');
@@ -358,11 +449,11 @@ export function createDealsRouter({ db }) {
     return deal;
   }
 
-  function dealDetail(auth, dealId) {
+  function dealDetail(auth: AuthContext, dealId: number) {
     const deal = loadDeal(auth, dealId);
     const cards = db
       .prepare('SELECT * FROM cards WHERE accountId = ? AND dealId = ? ORDER BY id')
-      .all(auth.accountId, dealId);
+      .all(auth.accountId, dealId) as CardRow[];
 
     return {
       deal: toDealResponse(deal),
@@ -377,7 +468,7 @@ export function createDealsRouter({ db }) {
       const offset = parsePositiveInt(req.query.offset, 0, { min: 0 });
       const includeArchived = req.query.includeArchived === 'true';
       const whereClause = includeArchived ? 'accountId = ?' : 'accountId = ? AND archivedAt IS NULL';
-      const total = db.prepare(`SELECT COUNT(*) AS count FROM deals WHERE ${whereClause}`).get(req.auth.accountId).count;
+      const total = (db.prepare(`SELECT COUNT(*) AS count FROM deals WHERE ${whereClause}`).get(req.auth.accountId) as CountRow).count;
       const rows = db
         .prepare(
           `SELECT *
@@ -386,7 +477,7 @@ export function createDealsRouter({ db }) {
            ORDER BY updatedAt DESC, id DESC
            LIMIT ? OFFSET ?`,
         )
-        .all(req.auth.accountId, limit, offset);
+        .all(req.auth.accountId, limit, offset) as DealRow[];
 
       res.json(pageResponse(rows.map(toDealResponse), { limit, offset, total }));
     }),
@@ -396,7 +487,7 @@ export function createDealsRouter({ db }) {
     '/',
     requireOperatorRole,
     asyncHandler(async (req, res) => {
-      const rawCards = Array.isArray(req.body?.cards) ? req.body.cards : [];
+      const rawCards: unknown[] = Array.isArray(req.body?.cards) ? req.body.cards : [];
       const body = validateBody(createDealSchema, req.body || {});
       const timestamp = nowIso();
       const cardsWithCosts = allocateCardCosts(body.cards || [], rawCards, body.totalCostCents);
@@ -422,7 +513,7 @@ export function createDealsRouter({ db }) {
               timestamp,
               timestamp,
             );
-          const deal = db.prepare('SELECT * FROM deals WHERE id = ?').get(dealInfo.lastInsertRowid);
+          const deal = db.prepare('SELECT * FROM deals WHERE id = ?').get(dealInfo.lastInsertRowid) as DealRow;
 
           insertAuditEvent(db, {
             accountId: req.auth.accountId,
@@ -486,7 +577,7 @@ export function createDealsRouter({ db }) {
                 timestamp,
               );
 
-            const row = db.prepare('SELECT * FROM cards WHERE id = ?').get(cardInfo.lastInsertRowid);
+            const row = db.prepare('SELECT * FROM cards WHERE id = ?').get(cardInfo.lastInsertRowid) as CardRow;
             insertCredentialFields(db, {
               accountId: req.auth.accountId,
               cardId: row.id,
@@ -581,7 +672,7 @@ export function createDealsRouter({ db }) {
     }),
   );
 
-  function archiveDeal({ req, dealId, archivedAt }) {
+  function archiveDeal({ req, dealId, archivedAt }: { req: Request; dealId: number; archivedAt: string | null }) {
     const timestamp = nowIso();
 
     return db.transaction(() => {

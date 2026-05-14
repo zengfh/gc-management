@@ -1,11 +1,16 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type Database from 'better-sqlite3';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const migrationsDir = path.join(__dirname, 'migrations');
 
-export function ensureMigrationTable(db) {
+interface MigrationRow {
+  id: string;
+}
+
+export function ensureMigrationTable(db: Database.Database) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
       id TEXT PRIMARY KEY,
@@ -14,7 +19,7 @@ export function ensureMigrationTable(db) {
   `);
 }
 
-export function listMigrationFiles(directory = migrationsDir) {
+export function listMigrationFiles(directory = migrationsDir): string[] {
   return fs
     .readdirSync(directory)
     .filter((file) => /^\d+_.+\.sql$/.test(file))
@@ -25,16 +30,16 @@ interface MigrationOptions {
   directory?: string;
 }
 
-export function runMigrations(db, options: MigrationOptions = {}) {
+export function runMigrations(db: Database.Database, options: MigrationOptions = {}) {
   const directory = options.directory || migrationsDir;
   ensureMigrationTable(db);
 
   const applied = new Set(
-    db.prepare('SELECT id FROM schema_migrations').all().map((row) => row.id),
+    (db.prepare('SELECT id FROM schema_migrations').all() as MigrationRow[]).map((row) => row.id),
   );
 
   const files = listMigrationFiles(directory);
-  const applyMigration = db.transaction((file) => {
+  const applyMigration = db.transaction((file: string) => {
     const sql = fs.readFileSync(path.join(directory, file), 'utf8');
     db.exec(sql);
     db.prepare(

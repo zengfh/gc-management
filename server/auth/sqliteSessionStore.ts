@@ -47,7 +47,7 @@ export class SqliteSessionStore extends session.Store {
     this.db.prepare('DELETE FROM web_sessions WHERE expiresAt <= ?').run(this.now());
   }
 
-  override get(sid: string, callback: (err: any, session?: session.SessionData | null) => void) {
+  override get(sid: string, callback: (err: unknown, session?: session.SessionData | null) => void) {
     try {
       const row = this.db.prepare('SELECT sessionJson, expiresAt FROM web_sessions WHERE sid = ?').get(sid) as SessionRow | undefined;
       if (!row) {
@@ -65,7 +65,7 @@ export class SqliteSessionStore extends session.Store {
     }
   }
 
-  override set(sid: string, sessionData: session.SessionData, callback: (err?: any) => void = () => {}) {
+  override set(sid: string, sessionData: session.SessionData, callback: (err?: unknown) => void = () => {}) {
     try {
       this.db
         .prepare(
@@ -88,7 +88,7 @@ export class SqliteSessionStore extends session.Store {
     }
   }
 
-  override touch(sid: string, sessionData: session.SessionData, callback: (err?: any) => void = () => {}) {
+  override touch(sid: string, sessionData: session.SessionData, callback: (err?: unknown) => void = () => {}) {
     try {
       this.db
         .prepare('UPDATE web_sessions SET expiresAt = ?, updatedAt = ? WHERE sid = ?')
@@ -99,7 +99,7 @@ export class SqliteSessionStore extends session.Store {
     }
   }
 
-  override destroy(sid: string, callback: (err?: any) => void = () => {}) {
+  override destroy(sid: string, callback: (err?: unknown) => void = () => {}) {
     try {
       this.db.prepare('DELETE FROM web_sessions WHERE sid = ?').run(sid);
       callback(null);

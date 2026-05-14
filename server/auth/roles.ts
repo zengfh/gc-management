@@ -1,3 +1,4 @@
+import type { NextFunction, Request, Response } from 'express';
 import { forbidden } from '../http/errors.js';
 
 export const roles = {
@@ -13,8 +14,8 @@ export const adminRoles = new Set([roles.owner, roles.admin]);
 export const operatorRoles = new Set([roles.owner, roles.admin, roles.operator]);
 export const viewerRoles = new Set([roles.owner, roles.admin, roles.operator, roles.viewer]);
 
-export function requireRole(allowedRoles) {
-  return function roleMiddleware(req, _res, next) {
+export function requireRole(allowedRoles: Set<Role>) {
+  return function roleMiddleware(req: Request, _res: Response, next: NextFunction) {
     if (!allowedRoles.has(req.auth?.role)) {
       next(forbidden('INSUFFICIENT_ROLE', 'Your role does not allow this action.'));
       return;

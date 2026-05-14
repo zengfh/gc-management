@@ -1,9 +1,12 @@
-import { Router } from 'express';
+import { Router, type Request, type Response } from 'express';
 import { requireUnlockedSession } from '../auth/requireAuth.js';
 import { requireAdminRole } from '../auth/roles.js';
 import { objectResponse } from '../http/response.js';
+import type { RequestMetrics } from '../observability/requestMetrics.js';
 
-function hasValidMetricsToken(req) {
+type MetricsSnapshot = ReturnType<RequestMetrics['snapshot']>;
+
+function hasValidMetricsToken(req: Request): boolean {
   const configuredToken = process.env.GC_METRICS_TOKEN;
   if (!configuredToken) {
     return false;
@@ -11,7 +14,7 @@ function hasValidMetricsToken(req) {
   return req.get('authorization') === `Bearer ${configuredToken}`;
 }
 
-function metricLine(name, value, labels = null) {
+function metricLine(name: string, value: number, labels: Record<string, string> | null = null): string {
   const renderedLabels = labels
     ? `{${Object.entries(labels)
         .map(([key, labelValue]) => `${key}="${String(labelValue).replaceAll('"', '\\"')}"`)
@@ -20,7 +23,7 @@ function metricLine(name, value, labels = null) {
   return `${name}${renderedLabels} ${value}`;
 }
 
-function renderPrometheusMetrics(snapshot) {
+function renderPrometheusMetrics(snapshot: MetricsSnapshot): string {
   const lines = [
     '# HELP gc_http_requests_total Total HTTP requests observed by this process.',
     '# TYPE gc_http_requests_total counter',
@@ -57,11 +60,11 @@ function renderPrometheusMetrics(snapshot) {
   return `${lines.join('\n')}\n`;
 }
 
-function sendMetrics(metrics, res) {
+function sendMetrics(metrics: RequestMetrics, res: Response) {
   res.type('text/plain; version=0.0.4; charset=utf-8').send(renderPrometheusMetrics(metrics.snapshot()));
 }
 
-export function createObservabilityRouter({ metrics }) {
+export function createObservabilityRouter({ metrics }: { metrics: RequestMetrics }) {
   const router = Router();
 
   router.get(

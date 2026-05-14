@@ -18,11 +18,11 @@ export function generateSalt() {
   return crypto.randomBytes(16).toString('base64');
 }
 
-export function deriveKEK(unlockSecret, salt) {
+export function deriveKEK(unlockSecret: string, salt: string): Buffer {
   return crypto.scryptSync(unlockSecret, Buffer.from(salt, 'base64'), dekBytes, scryptOptions);
 }
 
-export function encryptString(plaintext, key) {
+export function encryptString(plaintext: unknown, key: Buffer): string | null {
   if (plaintext == null) {
     return null;
   }
@@ -42,7 +42,7 @@ export function encryptString(plaintext, key) {
     .join(':');
 }
 
-export function decryptString(payload, key) {
+export function decryptString(payload: string | null | undefined, key: Buffer): string | null {
   if (payload == null) {
     return null;
   }
@@ -66,30 +66,30 @@ export function decryptString(payload, key) {
   ]).toString('utf8');
 }
 
-export function wrapDEK(dek, kek) {
+export function wrapDEK(dek: Buffer, kek: Buffer): string | null {
   return encryptString(dek.toString('base64'), kek);
 }
 
-export function unwrapDEK(encryptedDEK, kek) {
+export function unwrapDEK(encryptedDEK: string, kek: Buffer): Buffer {
   return Buffer.from(decryptString(encryptedDEK, kek), 'base64');
 }
 
-export function deriveBlindIndexKey(dek) {
+export function deriveBlindIndexKey(dek: Buffer): Buffer {
   return Buffer.from(
     crypto.hkdfSync('sha256', dek, Buffer.alloc(0), 'blind-index-hmac', dekBytes),
   );
 }
 
-export function normalizeCardNumber(input) {
+export function normalizeCardNumber(input: unknown): string | null {
   return input ? String(input).replace(/\D/g, '') : null;
 }
 
-export function cardNumberLast4(input) {
+export function cardNumberLast4(input: unknown): string | null {
   const normalized = normalizeCardNumber(input);
   return normalized ? normalized.slice(-4) : null;
 }
 
-export function cardNumberHash(input, hmacKey) {
+export function cardNumberHash(input: unknown, hmacKey: Buffer): string | null {
   const normalized = normalizeCardNumber(input);
   if (!normalized) {
     return null;

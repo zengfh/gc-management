@@ -1,4 +1,5 @@
-import { Router } from 'express';
+import { Router, type Request } from 'express';
+import type Database from 'better-sqlite3';
 import { parse as parseCsv } from 'csv-parse/sync';
 import { z } from 'zod';
 import { insertAuditEvent } from '../audit/index.js';
@@ -10,13 +11,17 @@ import {
   barcodeFormats,
   buildCredentialModel,
   CredentialValidationError,
+  type CredentialFieldKind,
+  type CredentialInput,
   credentialFieldKinds,
   credentialProfiles,
   credentialSearchBlindIndexes,
   insertCredentialFields,
   normalizeCredentialValue,
   parseCredentialSummary,
+  type PreparedCredentialField,
   revealCredentialPayload,
+  type CredentialProfile,
 } from '../cards/credentials.js';
 import { transitionFor } from '../cards/stateMachine.js';
 import { featureEnabled, requireFeatureFlag } from '../config/featureFlags.js';
@@ -28,8 +33,173 @@ import {
   cardNumberLast4,
   normalizeCardNumber,
 } from '../security/crypto.js';
+import type { AuthContext } from '../types/express.js';
 
 const activeStatuses = new Set(['available', 'reserved', 'in_use']);
+
+interface CardStatusMutationBody {
+  reservedFor?: string | null;
+  reservedUntil?: string | null;
+  reservedNotes?: string | null;
+}
+
+interface CountRow {
+  count: number;
+}
+
+interface ActivityCountRow {
+  transactionCount: number;
+  usageCount: number;
+}
+
+interface AmountRow {
+  amountCents: number | null;
+}
+
+interface ImportJobRow {
+  id: number;
+  accountId: number;
+  userId: number;
+  type: string;
+  status: string;
+  rowCount: number;
+  validCount: number;
+  invalidCount: number;
+  summaryJson: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface CardRow {
+  id: number;
+  accountId: number;
+  dealId: number | null;
+  brand: string;
+  cardType: string;
+  network: string | null;
+  faceValueCents: number;
+  remainingBalanceCents: number;
+  purchaseCostCents: number;
+  cardNumberLast4?: string | null;
+  primaryCredentialLast4?: string | null;
+  credentialProfile?: string | null;
+  credentialSummaryJson?: string | null;
+  cardNumber?: string | null;
+  pin?: string | null;
+  billingZip?: string | null;
+  expirationDate: string | null;
+  status: string;
+  format: string | null;
+  source: string | null;
+  notes: string | null;
+  reservedFor: string | null;
+  reservedUntil: string | null;
+  reservedNotes: string | null;
+  latestSalePriceCents?: number | null;
+  rowVersion: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface TransactionRow {
+  id: number;
+  accountId: number;
+  cardId: number;
+  type: string;
+  remainingBalanceAtSaleCents: number | null;
+  statusAtSale: string | null;
+}
+
+interface UsageRow {
+  id: number;
+  accountId: number;
+  cardId: number;
+  amountCents: number;
+  isReversed: number;
+  isWriteOff: number;
+}
+
+interface AuditRow {
+  id: number;
+  accountId: number;
+  entityType: string;
+  entityId: number | null;
+  action: string;
+  timestamp: string;
+}
+
+interface RowValidationError {
+  field: string;
+  code: string;
+  message: string;
+}
+
+interface CsvParsedCard {
+  brand: string | null;
+  cardType: string | null;
+  network: string | null;
+  credentialProfile: string | null;
+  faceValueCents: number | null;
+  purchaseCostCents: number | null;
+  cardNumberLast4: string | null;
+  credentialLabel: string | null;
+  credentialHint: string | null;
+  hasPin: boolean;
+  hasBillingZip: boolean;
+  expirationDate: string | null;
+  format: string | null;
+  source: string | null;
+  notes: string | null;
+}
+
+interface CsvPreviewRow {
+  rowNumber: number;
+  valid: boolean;
+  parsed: CsvParsedCard;
+  cardNumberHash?: string | null;
+  errors: RowValidationError[];
+}
+
+interface CsvPreview {
+  importType: 'csv';
+  summary: {
+    rowCount: number;
+    validCount: number;
+    invalidCount: number;
+  };
+  rows: Omit<CsvPreviewRow, 'cardNumberHash'>[];
+}
+
+interface CsvCustomCredentialField {
+  fieldKey: string;
+  label: string;
+  fieldKind: CredentialFieldKind;
+  value: string;
+  sortOrder: number;
+}
+
+interface PreparedCard extends z.infer<typeof cardInputSchema> {
+  status: 'available';
+  credentialProfile: CredentialProfile;
+  primaryCredentialLast4: string | null;
+  credentialSummaryJson: string;
+  credentialFields: PreparedCredentialField[];
+  encryptedCardNumber: string | null;
+  cardNumberHash: string | null;
+  cardNumberLast4: string | null;
+  pin: string | null;
+  billingZip: string | null;
+}
+
+interface SqliteErrorLike {
+  code?: string;
+  message?: string;
+}
+
+function isCredentialProfile(value: string): value is CredentialProfile {
+  return credentialProfiles.includes(value as CredentialProfile);
+}
+
 const credentialFieldInputSchema = z
   .object({
     fieldKey: z.string().trim().min(1).max(80).optional(),
@@ -221,8 +391,8 @@ function nowIso() {
   return new Date().toISOString();
 }
 
-function zodFieldErrors(error) {
-  return error.issues.map((issue) => ({
+function zodFieldErrors(error: z.ZodError) {
+  return error.issues.map((issue: z.core.$ZodIssue) => ({
     field: issue.path.join('.') || 'body',
     code: issue.code,
     message: issue.message,
@@ -237,7 +407,11 @@ function validateBody<T extends z.ZodTypeAny>(schema: T, body: unknown): z.infer
   return result.data;
 }
 
-function parsePositiveInt(value, fallback, { min = 0, max = Number.MAX_SAFE_INTEGER } = {}) {
+function parsePositiveInt<T extends number | null>(
+  value: unknown,
+  fallback: T,
+  { min = 0, max = Number.MAX_SAFE_INTEGER }: { min?: number; max?: number } = {},
+): number | T {
   if (value == null || value === '') {
     return fallback;
   }
@@ -255,7 +429,7 @@ function parsePositiveInt(value, fallback, { min = 0, max = Number.MAX_SAFE_INTE
   return parsed;
 }
 
-function queryValidationError(field, code, message) {
+function queryValidationError(field: string, code: string, message: string) {
   return badRequest('VALIDATION_FAILED', 'Request validation failed.', [
     {
       field,
@@ -265,7 +439,7 @@ function queryValidationError(field, code, message) {
   ]);
 }
 
-function parseDateFilter(value, field) {
+function parseDateFilter(value: unknown, field: string) {
   if (value == null || value === '') {
     return null;
   }
@@ -277,13 +451,17 @@ function parseDateFilter(value, field) {
   return normalized;
 }
 
-function parseCardSort(query) {
+function isCardSortColumn(value: string): value is keyof typeof cardSortColumns {
+  return Object.hasOwn(cardSortColumns, value);
+}
+
+function parseCardSort(query: Request['query']) {
   const rawSortBy = query.sortBy == null || query.sortBy === '' ? null : String(query.sortBy);
   const sortBy = rawSortBy || 'updatedAt';
-  const sortColumn = cardSortColumns[sortBy];
-  if (!sortColumn) {
+  if (!isCardSortColumn(sortBy)) {
     throw queryValidationError('sortBy', 'invalid_enum', 'Unsupported card sort field.');
   }
+  const sortColumn = cardSortColumns[sortBy];
 
   const rawSortDir = query.sortDir == null || query.sortDir === '' ? null : String(query.sortDir).toLowerCase();
   const sortDir = rawSortDir || (rawSortBy ? 'asc' : 'desc');
@@ -297,11 +475,11 @@ function parseCardSort(query) {
   };
 }
 
-function normalizeHeader(value) {
+function normalizeHeader(value: unknown) {
   return String(value).toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
-function csvValue(record, aliases) {
+function csvValue(record: Record<string, unknown>, aliases: string[]) {
   const normalizedAliases = aliases.map(normalizeHeader);
   const entry = Object.entries(record).find(([key]) => normalizedAliases.includes(normalizeHeader(key)));
   if (!entry) {
@@ -310,7 +488,7 @@ function csvValue(record, aliases) {
   return String(entry[1] ?? '').trim();
 }
 
-function csvCustomCredentialFields(record) {
+function csvCustomCredentialFields(record: Record<string, unknown>): CsvCustomCredentialField[] {
   return Object.entries(record)
     .map(([key, rawValue], index) => {
       const match = String(key).match(/^custom\s*[:_-]\s*(.+)$/i);
@@ -330,10 +508,10 @@ function csvCustomCredentialFields(record) {
         sortOrder: (index + 1) * 10,
       };
     })
-    .filter(Boolean);
+    .filter((field): field is CsvCustomCredentialField => Boolean(field));
 }
 
-function normalizeCsvCardType(value) {
+function normalizeCsvCardType(value: unknown) {
   const normalized = String(value || '').trim().toLowerCase();
   if (!normalized) {
     return 'merchant';
@@ -347,12 +525,12 @@ function normalizeCsvCardType(value) {
   return normalized;
 }
 
-function normalizeCsvNetwork(value) {
+function normalizeCsvNetwork(value: unknown) {
   const normalized = String(value || '').trim().toLowerCase();
   return csvNetworkValues.has(normalized) ? normalized : normalized || null;
 }
 
-function normalizeCsvFormat(value) {
+function normalizeCsvFormat(value: unknown) {
   const normalized = String(value || '').trim().toLowerCase();
   if (!normalized) {
     return null;
@@ -366,7 +544,7 @@ function normalizeCsvFormat(value) {
   return normalized;
 }
 
-function normalizeCsvCredentialProfile(value) {
+function normalizeCsvCredentialProfile(value: unknown) {
   const normalized = String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '_');
   if (!normalized) {
     return null;
@@ -383,10 +561,10 @@ function normalizeCsvCredentialProfile(value) {
   if (['network_prepaid', 'prepaid', 'visa_mastercard', 'payment_card'].includes(normalized)) {
     return 'network_prepaid';
   }
-  return credentialProfiles.includes(normalized) ? normalized : normalized;
+  return normalized;
 }
 
-function maskedCredentialHint(fieldKind, value) {
+function maskedCredentialHint(fieldKind: CredentialFieldKind, value: string) {
   const normalized =
     fieldKind === 'card_number'
       ? normalizeCardNumber(value)
@@ -394,7 +572,17 @@ function maskedCredentialHint(fieldKind, value) {
   return normalized ? `****${normalized.slice(-4)}` : null;
 }
 
-function csvPrimaryCredentialPreview({ normalizedCardNumber, primaryCode, barcodeValue, customFields }) {
+function csvPrimaryCredentialPreview({
+  normalizedCardNumber,
+  primaryCode,
+  barcodeValue,
+  customFields,
+}: {
+  normalizedCardNumber: string;
+  primaryCode: string;
+  barcodeValue: string;
+  customFields: CsvCustomCredentialField[];
+}) {
   if (normalizedCardNumber) {
     return {
       credentialLabel: 'Card number',
@@ -426,11 +614,15 @@ function csvPrimaryCredentialPreview({ normalizedCardNumber, primaryCode, barcod
   };
 }
 
-function rowError(field, code, message) {
+function rowError(field: string, code: string, message: string): RowValidationError {
   return { field, code, message };
 }
 
-function parseMoneyInput(raw, field, { required = false, positive = false } = {}) {
+function parseMoneyInput(
+  raw: unknown,
+  field: string,
+  { required = false, positive = false }: { required?: boolean; positive?: boolean } = {},
+) {
   const value = String(raw || '').trim();
   if (!value) {
     return {
@@ -457,7 +649,7 @@ function parseMoneyInput(raw, field, { required = false, positive = false } = {}
   return { cents, error: null };
 }
 
-function parseCsvRecords(csv) {
+function parseCsvRecords(csv: string): Record<string, unknown>[] {
   try {
     return parseCsv(csv, {
       bom: true,
@@ -465,16 +657,22 @@ function parseCsvRecords(csv) {
       relaxColumnCount: true,
       skipEmptyLines: true,
       trim: true,
-    });
+    }) as Record<string, unknown>[];
   } catch (error) {
+    const message = error instanceof Error ? error.message : 'CSV could not be parsed.';
     throw badRequest('CSV_PARSE_FAILED', 'CSV could not be parsed.', [
-      rowError('csv', 'invalid_csv', error.message),
+      rowError('csv', 'invalid_csv', message),
     ]);
   }
 }
 
-function previewCsvRow(record, rowNumber, auth, importHashes) {
-  const errors = [];
+function previewCsvRow(
+  record: Record<string, unknown>,
+  rowNumber: number,
+  auth: AuthContext,
+  importHashes: Set<string>,
+): CsvPreviewRow {
+  const errors: RowValidationError[] = [];
   const brand = csvValue(record, csvColumnAliases.brand);
   const cardType = normalizeCsvCardType(csvValue(record, csvColumnAliases.cardType));
   const network = normalizeCsvNetwork(csvValue(record, csvColumnAliases.network));
@@ -513,7 +711,7 @@ function previewCsvRow(record, rowNumber, auth, importHashes) {
   if (network && !csvNetworkValues.has(network)) {
     errors.push(rowError('network', 'invalid_enum', 'Network must be visa, mastercard, amex, discover, or other.'));
   }
-  if (credentialProfile && !credentialProfiles.includes(credentialProfile)) {
+  if (credentialProfile && !isCredentialProfile(credentialProfile)) {
     errors.push(rowError('credentialProfile', 'invalid_enum', 'Credential profile is not supported.'));
   }
   if (faceValue.error) {
@@ -546,7 +744,7 @@ function previewCsvRow(record, rowNumber, auth, importHashes) {
       brand: brand || null,
       cardType: ['merchant', 'prepaid'].includes(cardType) ? cardType : null,
       network: csvNetworkValues.has(network) ? network : null,
-      credentialProfile: credentialProfiles.includes(credentialProfile) ? credentialProfile : null,
+      credentialProfile: isCredentialProfile(credentialProfile) ? credentialProfile : null,
       faceValueCents: faceValue.cents,
       purchaseCostCents: purchaseCost.cents,
       cardNumberLast4: normalizedCardNumber ? cardNumberLast4(normalizedCardNumber) : null,
@@ -564,7 +762,11 @@ function previewCsvRow(record, rowNumber, auth, importHashes) {
   };
 }
 
-function applyCsvConflicts(db, auth, rows) {
+function applyCsvConflicts(
+  db: Database.Database,
+  auth: AuthContext,
+  rows: CsvPreviewRow[],
+): Omit<CsvPreviewRow, 'cardNumberHash'>[] {
   const lookup = db.prepare(
     `SELECT id
      FROM cards
@@ -582,7 +784,7 @@ function applyCsvConflicts(db, auth, rows) {
       return responseRow;
     }
 
-    const conflictRow = lookup.get(auth.accountId, row.parsed.brand, row.cardNumberHash);
+    const conflictRow = lookup.get(auth.accountId, row.parsed.brand, row.cardNumberHash) as { id: number } | undefined;
     const errors = conflictRow
       ? [
           ...row.errors,
@@ -599,9 +801,9 @@ function applyCsvConflicts(db, auth, rows) {
   });
 }
 
-function buildCsvPreview(db, auth, csv) {
+function buildCsvPreview(db: Database.Database, auth: AuthContext, csv: string): CsvPreview {
   const records = parseCsvRecords(csv);
-  const importHashes = new Set();
+  const importHashes = new Set<string>();
   const previewRows = records.map((record, index) =>
     previewCsvRow(record, index + 2, auth, importHashes),
   );
@@ -619,14 +821,14 @@ function buildCsvPreview(db, auth, csv) {
   };
 }
 
-function csvRecordToCardInput(record) {
+function csvRecordToCardInput(record: Record<string, unknown>): z.infer<typeof cardInputSchema> {
   const credentialProfile = normalizeCsvCredentialProfile(csvValue(record, csvColumnAliases.credentialProfile));
   const customFields = csvCustomCredentialFields(record);
   return {
     brand: csvValue(record, csvColumnAliases.brand),
-    cardType: normalizeCsvCardType(csvValue(record, csvColumnAliases.cardType)),
-    network: normalizeCsvNetwork(csvValue(record, csvColumnAliases.network)),
-    ...(credentialProfiles.includes(credentialProfile) ? { credentialProfile } : {}),
+    cardType: normalizeCsvCardType(csvValue(record, csvColumnAliases.cardType)) as z.infer<typeof cardInputSchema>['cardType'],
+    network: normalizeCsvNetwork(csvValue(record, csvColumnAliases.network)) as z.infer<typeof cardInputSchema>['network'],
+    ...(isCredentialProfile(credentialProfile) ? { credentialProfile } : {}),
     faceValueCents: parseMoneyInput(
       csvValue(record, csvColumnAliases.faceValue),
       'faceValue',
@@ -641,7 +843,7 @@ function csvRecordToCardInput(record) {
     pin: csvValue(record, csvColumnAliases.pin) || null,
     accessCode: csvValue(record, csvColumnAliases.accessCode) || null,
     barcodeValue: csvValue(record, csvColumnAliases.barcodeValue) || null,
-    barcodeFormat: csvValue(record, csvColumnAliases.barcodeFormat) || null,
+    barcodeFormat: (csvValue(record, csvColumnAliases.barcodeFormat) || null) as z.infer<typeof cardInputSchema>['barcodeFormat'],
     expirationMonth: csvValue(record, csvColumnAliases.expirationMonth) || null,
     expirationYear: csvValue(record, csvColumnAliases.expirationYear) || null,
     networkSecurityCode: csvValue(record, csvColumnAliases.networkSecurityCode) || null,
@@ -649,14 +851,14 @@ function csvRecordToCardInput(record) {
     cardholderName: csvValue(record, csvColumnAliases.cardholderName) || null,
     billingAddress: csvValue(record, csvColumnAliases.billingAddress) || null,
     expirationDate: csvValue(record, csvColumnAliases.expirationDate) || null,
-    format: normalizeCsvFormat(csvValue(record, csvColumnAliases.format)),
+    format: normalizeCsvFormat(csvValue(record, csvColumnAliases.format)) as z.infer<typeof cardInputSchema>['format'],
     source: csvValue(record, csvColumnAliases.source) || null,
     notes: csvValue(record, csvColumnAliases.notes) || null,
     ...(customFields.length > 0
       ? {
-          credentialProfile: credentialProfiles.includes(credentialProfile) ? credentialProfile : 'custom',
+          credentialProfile: isCredentialProfile(credentialProfile) ? credentialProfile : 'custom',
           credentials: {
-            profile: credentialProfiles.includes(credentialProfile) ? credentialProfile : 'custom',
+            profile: isCredentialProfile(credentialProfile) ? credentialProfile : 'custom',
             fields: customFields,
           },
         }
@@ -664,7 +866,7 @@ function csvRecordToCardInput(record) {
   };
 }
 
-function toImportJobResponse(row) {
+function toImportJobResponse(row: ImportJobRow) {
   return {
     id: row.id,
     accountId: row.accountId,
@@ -680,7 +882,7 @@ function toImportJobResponse(row) {
   };
 }
 
-function credentialValidationFailure(error) {
+function credentialValidationFailure(error: unknown) {
   if (error instanceof CredentialValidationError) {
     return badRequest('VALIDATION_FAILED', 'Request validation failed.', error.fieldErrors);
   }
@@ -691,7 +893,7 @@ function duplicateCredentialConflict() {
   return conflict('DUPLICATE_ACTIVE_CARD', 'Active duplicate credential for this brand already exists.');
 }
 
-function buildCardCredentialFields(input, auth) {
+function buildCardCredentialFields(input: CredentialInput, auth: AuthContext) {
   try {
     const model = buildCredentialModel(input, auth, {
       allowNetworkSecurityCodeStorage: featureEnabled('networkSecurityCodeStorage'),
@@ -712,7 +914,7 @@ function buildCardCredentialFields(input, auth) {
   }
 }
 
-function toCardResponse(row) {
+function toCardResponse(row: CardRow) {
   const credentialSummary = parseCredentialSummary(row);
   return {
     id: row.id,
@@ -742,7 +944,7 @@ function toCardResponse(row) {
   };
 }
 
-function toAuditResponse(row) {
+function toAuditResponse(row: AuditRow) {
   return {
     id: row.id,
     accountId: row.accountId,
@@ -753,7 +955,7 @@ function toAuditResponse(row) {
   };
 }
 
-function pageResponse(data, { limit, offset, total }) {
+function pageResponse<T>(data: T[], { limit, offset, total }: { limit: number; offset: number; total: number }) {
   return {
     data,
     page: {
@@ -765,7 +967,7 @@ function pageResponse(data, { limit, offset, total }) {
   };
 }
 
-function createCardAuditValue(card) {
+function createCardAuditValue(card: CardRow) {
   return {
     brand: card.brand,
     cardType: card.cardType,
@@ -778,7 +980,7 @@ function createCardAuditValue(card) {
   };
 }
 
-function mutationAuditValue(card) {
+function mutationAuditValue(card: CardRow) {
   return {
     brand: card.brand,
     status: card.status,
@@ -787,23 +989,24 @@ function mutationAuditValue(card) {
   };
 }
 
-function assertNoDuplicateInputs(cards) {
+function assertNoDuplicateInputs(cards: PreparedCard[]) {
   assertNoDuplicatePreparedCredentials(cards, duplicateCredentialConflict);
 }
 
-function translateSqliteError(error) {
-  if (error.code === 'SQLITE_CONSTRAINT_UNIQUE' || error.message?.includes('idx_cards_active_dedupe')) {
+function translateSqliteError(error: unknown) {
+  const sqliteError = error as SqliteErrorLike;
+  if (sqliteError.code === 'SQLITE_CONSTRAINT_UNIQUE' || sqliteError.message?.includes('idx_cards_active_dedupe')) {
     return conflict('DUPLICATE_ACTIVE_CARD', 'Active duplicate card number for this brand already exists.');
   }
 
-  if (error.code?.startsWith('SQLITE_CONSTRAINT')) {
+  if (sqliteError.code?.startsWith('SQLITE_CONSTRAINT')) {
     return badRequest('VALIDATION_FAILED', 'Request validation failed.');
   }
 
   return error;
 }
 
-export function createCardsRouter({ db }) {
+export function createCardsRouter({ db }: { db: Database.Database }) {
   const router = Router();
 
   router.use(requireUnlockedSession);
@@ -815,7 +1018,7 @@ export function createCardsRouter({ db }) {
       const offset = parsePositiveInt(req.query.offset, 0, { min: 0 });
       const sort = parseCardSort(req.query);
       const where = ['accountId = ?'];
-      const params: any[] = [req.auth.accountId];
+      const params: unknown[] = [req.auth.accountId];
 
       if (req.query.status) {
         const status = String(req.query.status);
@@ -908,7 +1111,7 @@ export function createCardsRouter({ db }) {
       }
 
       const whereClause = where.join(' AND ');
-      const total = db.prepare(`SELECT COUNT(*) AS count FROM cards WHERE ${whereClause}`).get(...params).count;
+      const total = (db.prepare(`SELECT COUNT(*) AS count FROM cards WHERE ${whereClause}`).get(...params) as CountRow).count;
       const rows = db
         .prepare(
           `SELECT cards.*,
@@ -934,7 +1137,7 @@ export function createCardsRouter({ db }) {
            ORDER BY ${sort.column} ${sort.direction}, id ${sort.direction}
            LIMIT ? OFFSET ?`,
         )
-        .all(...params, limit, offset);
+        .all(...params, limit, offset) as CardRow[];
 
       res.json(pageResponse(rows.map(toCardResponse), { limit, offset, total }));
     }),
@@ -949,7 +1152,7 @@ export function createCardsRouter({ db }) {
       const preparedCards = cards.map((card) => ({
         ...card,
         ...buildCardCredentialFields(card, req.auth),
-        status: 'available',
+        status: 'available' as const,
       }));
       assertNoDuplicateInputs(preparedCards);
 
@@ -996,7 +1199,7 @@ export function createCardsRouter({ db }) {
                 timestamp,
               );
 
-            const row = db.prepare('SELECT * FROM cards WHERE id = ?').get(info.lastInsertRowid);
+            const row = db.prepare('SELECT * FROM cards WHERE id = ?').get(info.lastInsertRowid) as CardRow;
             insertCredentialFields(db, {
               accountId: req.auth.accountId,
               cardId: row.id,
@@ -1056,7 +1259,7 @@ export function createCardsRouter({ db }) {
       const preparedCards = cards.map((card) => ({
         ...card,
         ...buildCardCredentialFields(card, req.auth),
-        status: 'available',
+        status: 'available' as const,
       }));
       assertNoDuplicateInputs(preparedCards);
 
@@ -1122,7 +1325,7 @@ export function createCardsRouter({ db }) {
                   timestamp,
                 );
 
-              const row = db.prepare('SELECT * FROM cards WHERE id = ?').get(info.lastInsertRowid);
+              const row = db.prepare('SELECT * FROM cards WHERE id = ?').get(info.lastInsertRowid) as CardRow;
               insertCredentialFields(db, {
                 accountId: req.auth.accountId,
                 cardId: row.id,
@@ -1142,7 +1345,7 @@ export function createCardsRouter({ db }) {
               return row;
             });
 
-            const importJob = db.prepare('SELECT * FROM import_jobs WHERE id = ?').get(jobInfo.lastInsertRowid);
+            const importJob = db.prepare('SELECT * FROM import_jobs WHERE id = ?').get(jobInfo.lastInsertRowid) as ImportJobRow;
             insertAuditEvent(db, {
               accountId: req.auth.accountId,
               userId: req.auth.userId,
@@ -1182,10 +1385,10 @@ export function createCardsRouter({ db }) {
     }),
   );
 
-  function loadCard(auth, cardId) {
+  function loadCard(auth: AuthContext, cardId: number): CardRow {
     const card = db
       .prepare('SELECT * FROM cards WHERE accountId = ? AND id = ?')
-      .get(auth.accountId, cardId);
+      .get(auth.accountId, cardId) as CardRow | undefined;
 
     if (!card) {
       throw notFound('CARD_NOT_FOUND', 'Card not found.');
@@ -1194,14 +1397,14 @@ export function createCardsRouter({ db }) {
     return card;
   }
 
-  function cardDetail(auth, cardId) {
+  function cardDetail(auth: AuthContext, cardId: number) {
     const card = loadCard(auth, cardId);
     const transactions = db
       .prepare('SELECT * FROM transactions WHERE accountId = ? AND cardId = ? ORDER BY createdAt DESC, id DESC')
-      .all(auth.accountId, cardId);
+      .all(auth.accountId, cardId) as TransactionRow[];
     const usages = db
       .prepare('SELECT * FROM usages WHERE accountId = ? AND cardId = ? ORDER BY createdAt DESC, id DESC')
-      .all(auth.accountId, cardId);
+      .all(auth.accountId, cardId) as UsageRow[];
     const audit = db
       .prepare(
         `SELECT id, accountId, entityType, entityId, action, timestamp
@@ -1209,7 +1412,7 @@ export function createCardsRouter({ db }) {
          WHERE accountId = ? AND entityType = 'card' AND entityId = ?
          ORDER BY timestamp DESC, id DESC`,
       )
-      .all(auth.accountId, cardId);
+      .all(auth.accountId, cardId) as AuditRow[];
 
     return {
       card: toCardResponse(card),
@@ -1261,7 +1464,17 @@ export function createCardsRouter({ db }) {
     }),
   );
 
-  function mutateCardStatus({ req, cardId, transitionAction, body = {} as any }) {
+  function mutateCardStatus({
+    req,
+    cardId,
+    transitionAction,
+    body = {},
+  }: {
+    req: Request;
+    cardId: number;
+    transitionAction: string;
+    body?: CardStatusMutationBody;
+  }) {
     const timestamp = nowIso();
 
     return db.transaction(() => {
@@ -1394,7 +1607,7 @@ export function createCardsRouter({ db }) {
               (SELECT COUNT(*) FROM transactions WHERE accountId = ? AND cardId = ?) AS transactionCount,
               (SELECT COUNT(*) FROM usages WHERE accountId = ? AND cardId = ?) AS usageCount`,
           )
-          .get(req.auth.accountId, cardId, req.auth.accountId, cardId);
+          .get(req.auth.accountId, cardId, req.auth.accountId, cardId) as ActivityCountRow;
 
         if (card.status !== 'available' || activity.transactionCount > 0 || activity.usageCount > 0) {
           throw conflict('CARD_DELETE_RESTRICTED', 'Only never-touched available cards can be deleted.');
@@ -1553,7 +1766,7 @@ export function createCardsRouter({ db }) {
                ORDER BY id DESC
                LIMIT 1`,
             )
-            .get(req.auth.accountId, cardId);
+            .get(req.auth.accountId, cardId) as TransactionRow | undefined;
 
           if (!sale) {
             throw conflict('SALE_NOT_FOUND', 'No sale transaction is available to undo.');
@@ -1566,7 +1779,7 @@ export function createCardsRouter({ db }) {
                WHERE accountId = ? AND cardId = ? AND type = 'sale_reversal' AND id > ?
                LIMIT 1`,
             )
-            .get(req.auth.accountId, cardId, sale.id);
+            .get(req.auth.accountId, cardId, sale.id) as { id: number } | undefined;
           if (laterReversal) {
             throw conflict('SALE_ALREADY_REVERSED', 'Sale has already been reversed.');
           }
@@ -1716,7 +1929,7 @@ export function createCardsRouter({ db }) {
           const before = loadCard(req.auth, cardId);
           const usage = db
             .prepare('SELECT * FROM usages WHERE accountId = ? AND cardId = ? AND id = ?')
-            .get(req.auth.accountId, cardId, body.usageId);
+            .get(req.auth.accountId, cardId, body.usageId) as UsageRow | undefined;
 
           if (!usage) {
             throw notFound('USAGE_NOT_FOUND', 'Usage not found.');
@@ -1741,7 +1954,7 @@ export function createCardsRouter({ db }) {
           ).run(body.reason, timestamp, usage.id, req.auth.accountId, cardId);
 
           const activeUsageTotal =
-            db
+            (db
               .prepare(
                 `SELECT COALESCE(SUM(amountCents), 0) AS amountCents
                  FROM usages
@@ -1750,7 +1963,7 @@ export function createCardsRouter({ db }) {
                    AND isReversed = 0
                    AND isWriteOff = 0`,
               )
-              .get(req.auth.accountId, cardId).amountCents || 0;
+              .get(req.auth.accountId, cardId) as AmountRow).amountCents || 0;
           const remainingBalanceCents = before.faceValueCents - activeUsageTotal;
           const nextStatus =
             activeUsageTotal === 0 ? 'available' : remainingBalanceCents === 0 ? 'used_up' : 'in_use';

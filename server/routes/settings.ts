@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import type Database from 'better-sqlite3';
 import { z } from 'zod';
 import { insertAuditEvent } from '../audit/index.js';
 import { requireUnlockedSession } from '../auth/requireAuth.js';
@@ -20,7 +21,7 @@ const backupSettingsUpdateSchema = z
   })
   .strict();
 
-function zodFieldErrors(error) {
+function zodFieldErrors(error: z.ZodError) {
   return error.issues.map((issue) => ({
     field: issue.path.join('.') || 'body',
     code: issue.code,
@@ -36,7 +37,7 @@ function validateBody<T extends z.ZodTypeAny>(schema: T, body: unknown): z.infer
   return result.data;
 }
 
-export function createSettingsRouter({ db }) {
+export function createSettingsRouter({ db }: { db: Database.Database }) {
   const router = Router();
 
   router.use(requireUnlockedSession);

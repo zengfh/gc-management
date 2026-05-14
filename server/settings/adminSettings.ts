@@ -14,7 +14,7 @@ const dataSettingKeys = {
   loginAttemptRetentionDays: 'data.loginAttemptRetentionDays',
 };
 
-const defaultSupportPolicy = {
+const defaultSupportPolicy: SupportPolicy = {
   supportAccessEnabled: false,
   supportContact: '',
   supportPolicyUrl: '',
@@ -23,14 +23,14 @@ const defaultSupportPolicy = {
   supportUpdatedByUserId: null,
 };
 
-const defaultDataPolicy = {
+const defaultDataPolicy: DataPolicy = {
   auditRetentionDays: 365,
   idempotencyRetentionDays: 7,
   sessionRetentionDays: 7,
   loginAttemptRetentionDays: 30,
 };
 
-function parseBooleanSetting(value, fallback) {
+function parseBooleanSetting(value: string | undefined, fallback: boolean): boolean {
   if (value === 'true') {
     return true;
   }
@@ -40,19 +40,19 @@ function parseBooleanSetting(value, fallback) {
   return fallback;
 }
 
-function parseIntegerSetting(value, fallback) {
+function parseIntegerSetting(value: string | undefined, fallback: number | null): number | null {
   const parsed = Number(value);
   return Number.isInteger(parsed) ? parsed : fallback;
 }
 
-function settingMap(db, accountId) {
+function settingMap(db: Database.Database, accountId: number): Map<string, string> {
   const rows = db
     .prepare('SELECT key, value FROM app_settings WHERE accountId = ?')
-    .all(accountId);
+    .all(accountId) as SettingRow[];
   return new Map(rows.map((row) => [row.key, row.value]));
 }
 
-function upsertSetting(db, accountId, key, value, timestamp) {
+function upsertSetting(db: Database.Database, accountId: number, key: string, value: string, timestamp: string) {
   db.prepare(
     `INSERT INTO app_settings (accountId, key, value, createdAt, updatedAt)
      VALUES (?, ?, ?, ?, ?)
@@ -62,7 +62,7 @@ function upsertSetting(db, accountId, key, value, timestamp) {
   ).run(accountId, key, value, timestamp, timestamp);
 }
 
-export function readSupportPolicy(db, accountId) {
+export function readSupportPolicy(db: Database.Database, accountId: number): SupportPolicy {
   const settings = settingMap(db, accountId);
   return {
     supportAccessEnabled: parseBooleanSetting(
@@ -81,7 +81,13 @@ export function readSupportPolicy(db, accountId) {
   };
 }
 
-export function updateSupportPolicy(db, accountId, userId, policy, timestamp) {
+export function updateSupportPolicy(
+  db: Database.Database,
+  accountId: number,
+  userId: number,
+  policy: Pick<SupportPolicy, 'supportAccessEnabled' | 'supportContact' | 'supportPolicyUrl' | 'supportNotes'>,
+  timestamp: string,
+) {
   db.transaction(() => {
     upsertSetting(
       db,
@@ -98,7 +104,7 @@ export function updateSupportPolicy(db, accountId, userId, policy, timestamp) {
   })();
 }
 
-export function readDataPolicy(db, accountId) {
+export function readDataPolicy(db: Database.Database, accountId: number): DataPolicy {
   const settings = settingMap(db, accountId);
   return {
     auditRetentionDays: parseIntegerSetting(
@@ -120,7 +126,7 @@ export function readDataPolicy(db, accountId) {
   };
 }
 
-export function updateDataPolicy(db, accountId, policy, timestamp) {
+export function updateDataPolicy(db: Database.Database, accountId: number, policy: DataPolicy, timestamp: string) {
   db.transaction(() => {
     upsertSetting(
       db,
@@ -151,4 +157,26 @@ export function updateDataPolicy(db, accountId, policy, timestamp) {
       timestamp,
     );
   })();
+}
+import type Database from 'better-sqlite3';
+
+interface SettingRow {
+  key: string;
+  value: string;
+}
+
+interface SupportPolicy {
+  supportAccessEnabled: boolean;
+  supportContact: string;
+  supportPolicyUrl: string;
+  supportNotes: string;
+  supportUpdatedAt: string | null;
+  supportUpdatedByUserId: number | null;
+}
+
+interface DataPolicy {
+  auditRetentionDays: number;
+  idempotencyRetentionDays: number;
+  sessionRetentionDays: number;
+  loginAttemptRetentionDays: number;
 }

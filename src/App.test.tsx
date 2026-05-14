@@ -3,30 +3,26 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
 
-function jsonResponse(body, status = 200) {
-  return Promise.resolve({
-    ok: status >= 200 && status < 300,
-    status,
-    headers: {
-      get: () => null,
-    },
-    json: () => Promise.resolve(body),
-  });
+function fetchMock() {
+  return vi.mocked(globalThis.fetch);
 }
 
-function blobResponse(body, status = 200, headers = {}) {
-  return Promise.resolve({
-    ok: status >= 200 && status < 300,
-    status,
-    headers: {
-      get: (name) => headers[name.toLowerCase()] || null,
-    },
-    json: () => Promise.resolve({}),
-    blob: () => Promise.resolve(new Blob([body])),
-  });
+function createObjectUrlMock() {
+  return vi.mocked(globalThis.URL.createObjectURL);
 }
 
-function supportPolicyResponse(overrides = {}) {
+function jsonResponse(body: unknown, status = 200): Response {
+  if (status === 204 || status === 205 || status === 304) {
+    return new Response(null, { status });
+  }
+  return new Response(JSON.stringify(body), { status });
+}
+
+function blobResponse(body: BlobPart, status = 200, headers: Record<string, string> = {}): Response {
+  return new Response(new Blob([body]), { status, headers });
+}
+
+function supportPolicyResponse(overrides: Record<string, unknown> = {}) {
   return jsonResponse({
     data: {
       supportAccessEnabled: false,
@@ -40,7 +36,7 @@ function supportPolicyResponse(overrides = {}) {
   });
 }
 
-function dataPolicyResponse(overrides = {}) {
+function dataPolicyResponse(overrides: Record<string, unknown> = {}) {
   return jsonResponse({
     data: {
       auditRetentionDays: 365,
@@ -62,7 +58,7 @@ describe('App', () => {
   });
 
   it('renders setup and initializes the vault', async () => {
-    globalThis.fetch
+    fetchMock()
       .mockResolvedValueOnce(
         jsonResponse({
           data: {
@@ -117,7 +113,7 @@ describe('App', () => {
   });
 
   it('renders unlock when setup exists but session is locked', async () => {
-    globalThis.fetch
+    fetchMock()
       .mockResolvedValueOnce(
         jsonResponse({
           data: {
@@ -160,7 +156,7 @@ describe('App', () => {
   });
 
   it('accepts an invite from the locked screen', async () => {
-    globalThis.fetch
+    fetchMock()
       .mockResolvedValueOnce(
         jsonResponse({
           data: {
@@ -213,7 +209,7 @@ describe('App', () => {
   });
 
   it('resets an unlock secret with a recovery code from the locked screen', async () => {
-    globalThis.fetch
+    fetchMock()
       .mockResolvedValueOnce(
         jsonResponse({
           data: {
@@ -252,7 +248,7 @@ describe('App', () => {
   });
 
   it('shows server request IDs in API error states', async () => {
-    globalThis.fetch.mockResolvedValueOnce(
+    fetchMock().mockResolvedValueOnce(
       jsonResponse(
         {
           error: {
@@ -272,7 +268,7 @@ describe('App', () => {
   });
 
   it('renders the authenticated work surface with cards and deals', async () => {
-    globalThis.fetch
+    fetchMock()
       .mockResolvedValueOnce(
         jsonResponse({
           data: {
@@ -329,7 +325,7 @@ describe('App', () => {
   });
 
   it('renders dashboard P&L and risk metrics from card data', async () => {
-    globalThis.fetch
+    fetchMock()
       .mockResolvedValueOnce(
         jsonResponse({
           data: {
@@ -401,7 +397,7 @@ describe('App', () => {
   });
 
   it('loads the audit log from primary navigation', async () => {
-    globalThis.fetch
+    fetchMock()
       .mockResolvedValueOnce(
         jsonResponse({
           data: {
@@ -448,7 +444,7 @@ describe('App', () => {
   });
 
   it('filters the audit log from the audit view', async () => {
-    globalThis.fetch
+    fetchMock()
       .mockResolvedValueOnce(
         jsonResponse({
           data: {
@@ -518,7 +514,7 @@ describe('App', () => {
     const originalRevokeObjectURL = globalThis.URL.revokeObjectURL;
     globalThis.URL.createObjectURL = undefined;
     globalThis.URL.revokeObjectURL = undefined;
-    globalThis.fetch
+    fetchMock()
       .mockResolvedValueOnce(
         jsonResponse({
           data: {
@@ -539,9 +535,9 @@ describe('App', () => {
             exportedAt: '2026-05-11T17:30:00.000Z',
             warning: 'This plaintext export contains spendable credentials.',
             cards: [],
-            deals: [],
-            transactions: [],
-            usages: [],
+            deals: [] as unknown[],
+            transactions: [] as unknown[],
+            usages: [] as unknown[],
           },
         }),
       );
@@ -583,7 +579,7 @@ describe('App', () => {
     const originalRevokeObjectURL = globalThis.URL.revokeObjectURL;
     globalThis.URL.createObjectURL = undefined;
     globalThis.URL.revokeObjectURL = undefined;
-    globalThis.fetch
+    fetchMock()
       .mockResolvedValueOnce(
         jsonResponse({
           data: {
@@ -662,7 +658,7 @@ describe('App', () => {
     const originalRevokeObjectURL = globalThis.URL.revokeObjectURL;
     globalThis.URL.createObjectURL = undefined;
     globalThis.URL.revokeObjectURL = undefined;
-    globalThis.fetch
+    fetchMock()
       .mockResolvedValueOnce(
         jsonResponse({
           data: {
@@ -710,7 +706,7 @@ describe('App', () => {
   });
 
   it('previews a CSV import from the backup view without exposing full credentials', async () => {
-    globalThis.fetch
+    fetchMock()
       .mockResolvedValueOnce(
         jsonResponse({
           data: {
@@ -809,7 +805,7 @@ describe('App', () => {
     globalThis.URL.createObjectURL = vi.fn(() => 'blob:csv-template');
     globalThis.URL.revokeObjectURL = vi.fn();
     globalThis.HTMLAnchorElement.prototype.click = vi.fn();
-    globalThis.fetch
+    fetchMock()
       .mockResolvedValueOnce(
         jsonResponse({
           data: {
@@ -833,7 +829,7 @@ describe('App', () => {
       await user.click(screen.getByRole('button', { name: /^download template$/i }));
 
       expect(globalThis.URL.createObjectURL).toHaveBeenCalledWith(expect.any(Blob));
-      expect(globalThis.URL.createObjectURL.mock.calls[0][0].type).toBe('text/csv');
+      expect((createObjectUrlMock().mock.calls[0][0] as Blob).type).toBe('text/csv');
       expect(globalThis.URL.revokeObjectURL).toHaveBeenCalledWith('blob:csv-template');
     } finally {
       globalThis.URL.createObjectURL = originalCreateObjectURL;
@@ -843,7 +839,7 @@ describe('App', () => {
   });
 
   it('hides backup workflows disabled by feature flags', async () => {
-    globalThis.fetch
+    fetchMock()
       .mockResolvedValueOnce(
         jsonResponse({
           data: {
@@ -877,7 +873,7 @@ describe('App', () => {
 
   it('confirms a valid CSV import from the backup view', async () => {
     const csv = 'brand,cardType,faceValue,cardNumber\nTarget,merchant,50,4111111111111111';
-    globalThis.fetch
+    fetchMock()
       .mockResolvedValueOnce(
         jsonResponse({
           data: {
@@ -985,8 +981,8 @@ describe('App', () => {
     const payload = {
       schemaVersion: 1,
       exportType: 'plaintext_json',
-      appSettings: [],
-      deals: [],
+      appSettings: [] as unknown[],
+      deals: [] as unknown[],
       cards: [
         {
           id: 1,
@@ -1001,11 +997,11 @@ describe('App', () => {
           status: 'available',
         },
       ],
-      transactions: [],
-      usages: [],
+      transactions: [] as unknown[],
+      usages: [] as unknown[],
     };
 
-    globalThis.fetch
+    fetchMock()
       .mockResolvedValueOnce(
         jsonResponse({
           data: {
@@ -1123,7 +1119,7 @@ describe('App', () => {
       },
     };
 
-    globalThis.fetch
+    fetchMock()
       .mockResolvedValueOnce(
         jsonResponse({
           data: {
@@ -1218,7 +1214,7 @@ describe('App', () => {
   });
 
   it('changes the unlock secret from settings', async () => {
-    globalThis.fetch
+    fetchMock()
       .mockResolvedValueOnce(
         jsonResponse({
           data: {
@@ -1278,7 +1274,7 @@ describe('App', () => {
   });
 
   it('updates backup settings from settings', async () => {
-    globalThis.fetch
+    fetchMock()
       .mockResolvedValueOnce(
         jsonResponse({
           data: {
@@ -1354,7 +1350,7 @@ describe('App', () => {
   });
 
   it('shows plaintext export as policy locked in settings', async () => {
-    globalThis.fetch
+    fetchMock()
       .mockResolvedValueOnce(
         jsonResponse({
           data: {
@@ -1398,7 +1394,7 @@ describe('App', () => {
   });
 
   it('creates a user from security settings', async () => {
-    globalThis.fetch
+    fetchMock()
       .mockResolvedValueOnce(
         jsonResponse({
           data: {
@@ -1499,7 +1495,7 @@ describe('App', () => {
   });
 
   it('updates support and data policies from settings', async () => {
-    globalThis.fetch
+    fetchMock()
       .mockResolvedValueOnce(
         jsonResponse({
           data: {
@@ -1615,7 +1611,7 @@ describe('App', () => {
   });
 
   it('renders viewer sessions as read-only', async () => {
-    globalThis.fetch
+    fetchMock()
       .mockResolvedValueOnce(
         jsonResponse({
           data: {
@@ -1646,7 +1642,7 @@ describe('App', () => {
   });
 
   it('reveals and copies card credentials from card detail without putting secrets in status text', async () => {
-    globalThis.fetch
+    fetchMock()
       .mockResolvedValueOnce(
         jsonResponse({
           data: {
@@ -1688,8 +1684,8 @@ describe('App', () => {
               purchaseCostCents: 4500,
               cardNumberLast4: '1111',
             },
-            transactions: [],
-            usages: [],
+            transactions: [] as unknown[],
+            usages: [] as unknown[],
             audit: [],
           },
         }),
@@ -1751,7 +1747,7 @@ describe('App', () => {
   });
 
   it('renders a scannable barcode after credential reveal', async () => {
-    globalThis.fetch
+    fetchMock()
       .mockResolvedValueOnce(
         jsonResponse({
           data: {
@@ -1807,8 +1803,8 @@ describe('App', () => {
               remainingBalanceCents: 2500,
               purchaseCostCents: 2000,
             },
-            transactions: [],
-            usages: [],
+            transactions: [] as unknown[],
+            usages: [] as unknown[],
             audit: [],
           },
         }),
@@ -1845,7 +1841,7 @@ describe('App', () => {
   });
 
   it('creates a deal with a starter card from the dashboard without a deal name', async () => {
-    globalThis.fetch
+    fetchMock()
       .mockResolvedValueOnce(
         jsonResponse({
           data: {
@@ -1956,7 +1952,7 @@ describe('App', () => {
   });
 
   it('creates a custom credential deal from Add Deal', async () => {
-    globalThis.fetch
+    fetchMock()
       .mockResolvedValueOnce(
         jsonResponse({
           data: {
@@ -2062,7 +2058,7 @@ describe('App', () => {
   });
 
   it('uses a single primary field for claim-code cards in Add Deal', async () => {
-    globalThis.fetch
+    fetchMock()
       .mockResolvedValueOnce(
         jsonResponse({
           data: {
@@ -2161,7 +2157,7 @@ describe('App', () => {
   });
 
   it('uses card number plus access code for Target-style Add Deal entry', async () => {
-    globalThis.fetch
+    fetchMock()
       .mockResolvedValueOnce(
         jsonResponse({
           data: {
@@ -2268,7 +2264,7 @@ describe('App', () => {
   });
 
   it('suggests indexed card brands when an add-deal value looks mistyped', async () => {
-    globalThis.fetch
+    fetchMock()
       .mockResolvedValueOnce(
         jsonResponse({
           data: {
@@ -2381,7 +2377,7 @@ describe('App', () => {
   });
 
   it('archives and restores deals from the deals view', async () => {
-    globalThis.fetch
+    fetchMock()
       .mockResolvedValueOnce(
         jsonResponse({
           data: {
@@ -2491,7 +2487,7 @@ describe('App', () => {
   });
 
   it('edits deal metadata from the deals view', async () => {
-    globalThis.fetch
+    fetchMock()
       .mockResolvedValueOnce(
         jsonResponse({
           data: {
@@ -2577,7 +2573,7 @@ describe('App', () => {
   });
 
   it('opens deal detail with cards and totals from the deals view', async () => {
-    globalThis.fetch
+    fetchMock()
       .mockResolvedValueOnce(
         jsonResponse({
           data: {
@@ -2669,7 +2665,7 @@ describe('App', () => {
   });
 
   it('records card usage from the card table action', async () => {
-    globalThis.fetch
+    fetchMock()
       .mockResolvedValueOnce(
         jsonResponse({
           data: {
@@ -2715,7 +2711,7 @@ describe('App', () => {
               notes: 'Promo notes',
               rowVersion: 2,
             },
-            transactions: [],
+            transactions: [] as unknown[],
             usages: [{ id: 7, amountCents: 1250, merchant: 'Target' }],
             audit: [],
           },
@@ -2752,7 +2748,7 @@ describe('App', () => {
   });
 
   it('opens card detail with transactions usages and audit summary', async () => {
-    globalThis.fetch
+    fetchMock()
       .mockResolvedValueOnce(
         jsonResponse({
           data: {
@@ -2832,7 +2828,7 @@ describe('App', () => {
   });
 
   it('undoes a usage from the card detail panel', async () => {
-    globalThis.fetch
+    fetchMock()
       .mockResolvedValueOnce(
         jsonResponse({
           data: {
@@ -2873,7 +2869,7 @@ describe('App', () => {
               cardNumberLast4: '1111',
               rowVersion: 2,
             },
-            transactions: [],
+            transactions: [] as unknown[],
             usages: [{ id: 7, amountCents: 1250, merchant: 'Target', usageDate: '2026-05-11' }],
             audit: [{ id: 12, action: 'card.use', timestamp: '2026-05-11T16:00:00.000Z' }],
           },
@@ -2892,7 +2888,7 @@ describe('App', () => {
               cardNumberLast4: '1111',
               rowVersion: 3,
             },
-            transactions: [],
+            transactions: [] as unknown[],
             usages: [
               {
                 id: 7,
@@ -2944,7 +2940,7 @@ describe('App', () => {
   });
 
   it('sells a card from the card table action', async () => {
-    globalThis.fetch
+    fetchMock()
       .mockResolvedValueOnce(
         jsonResponse({
           data: {
@@ -2986,7 +2982,7 @@ describe('App', () => {
               rowVersion: 3,
             },
             transactions: [{ id: 8, type: 'sale', salePriceCents: 3800, buyerName: 'Dealer A' }],
-            usages: [],
+            usages: [] as unknown[],
             audit: [],
           },
         }),
@@ -3026,7 +3022,7 @@ describe('App', () => {
   });
 
   it('undoes a sold card sale from the card table action', async () => {
-    globalThis.fetch
+    fetchMock()
       .mockResolvedValueOnce(
         jsonResponse({
           data: {
@@ -3071,7 +3067,7 @@ describe('App', () => {
               { id: 9, type: 'sale_reversal', reason: 'Buyer canceled' },
               { id: 8, type: 'sale', salePriceCents: 3800 },
             ],
-            usages: [],
+            usages: [] as unknown[],
             audit: [],
           },
         }),
@@ -3105,7 +3101,7 @@ describe('App', () => {
   });
 
   it('voids an active card from the card table action', async () => {
-    globalThis.fetch
+    fetchMock()
       .mockResolvedValueOnce(
         jsonResponse({
           data: {
@@ -3146,7 +3142,7 @@ describe('App', () => {
               cardNumberLast4: '1111',
               rowVersion: 5,
             },
-            transactions: [],
+            transactions: [] as unknown[],
             usages: [{ id: 11, amountCents: 3750, merchant: 'Write-off (Voided)', isWriteOff: 1 }],
             audit: [],
           },
@@ -3182,7 +3178,7 @@ describe('App', () => {
   });
 
   it('searches cards by exact card number from the cards view', async () => {
-    globalThis.fetch
+    fetchMock()
       .mockResolvedValueOnce(
         jsonResponse({
           data: {
@@ -3258,7 +3254,7 @@ describe('App', () => {
   });
 
   it('filters cards by status and brand from the cards view', async () => {
-    globalThis.fetch
+    fetchMock()
       .mockResolvedValueOnce(
         jsonResponse({
           data: {
@@ -3334,7 +3330,7 @@ describe('App', () => {
   });
 
   it('filters cards by source deal expiration text and sort from the cards view', async () => {
-    globalThis.fetch
+    fetchMock()
       .mockResolvedValueOnce(
         jsonResponse({
           data: {
@@ -3442,7 +3438,7 @@ describe('App', () => {
   });
 
   it('paginates cards from the cards view', async () => {
-    globalThis.fetch
+    fetchMock()
       .mockResolvedValueOnce(
         jsonResponse({
           data: {
@@ -3509,7 +3505,7 @@ describe('App', () => {
   });
 
   it('edits allowed card fields from the cards view', async () => {
-    globalThis.fetch
+    fetchMock()
       .mockResolvedValueOnce(
         jsonResponse({
           data: {
@@ -3591,7 +3587,7 @@ describe('App', () => {
   });
 
   it('deletes an untouched available card from the cards view', async () => {
-    globalThis.fetch
+    fetchMock()
       .mockResolvedValueOnce(
         jsonResponse({
           data: {
@@ -3645,7 +3641,7 @@ describe('App', () => {
   });
 
   it('reserves and unreserves a card from row actions', async () => {
-    globalThis.fetch
+    fetchMock()
       .mockResolvedValueOnce(
         jsonResponse({
           data: {
@@ -3751,7 +3747,7 @@ describe('App', () => {
   });
 
   it('closes reserve dialog with Escape and restores focus', async () => {
-    globalThis.fetch
+    fetchMock()
       .mockResolvedValueOnce(
         jsonResponse({
           data: {

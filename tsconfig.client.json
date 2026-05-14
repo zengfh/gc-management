@@ -5,9 +5,9 @@
     "moduleResolution": "Bundler",
     "jsx": "react-jsx",
     "allowImportingTsExtensions": true,
+    "noImplicitAny": true,
     "noEmit": true,
     "types": ["vite/client", "vitest/globals", "@testing-library/jest-dom"]
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "test/**/*.ts", "vite.config.js"],
-  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "shared/**/*.ts", "test/**/*.ts", "vite.config.js"]
 }

@@ -1,4 +1,9 @@
-function requestPath(req) {
+import type { Request } from 'express';
+
+type FetchLike = typeof fetch;
+type ReporterLogger = Pick<Console, 'error'>;
+
+function requestPath(req: Request): string {
   return req.path || (req.originalUrl || req.url || '').split('?')[0] || 'unknown';
 }
 
@@ -7,9 +12,14 @@ export function createErrorReporter({
   token = process.env.GC_ERROR_REPORT_TOKEN,
   fetchImpl = globalThis.fetch,
   logger = console,
+}: {
+  endpoint?: string;
+  token?: string;
+  fetchImpl?: FetchLike;
+  logger?: Partial<ReporterLogger>;
 } = {}) {
   return {
-    report({ req, err }) {
+    report({ req, err }: { req: Request; err: unknown }) {
       if (!endpoint || !fetchImpl) {
         return;
       }
@@ -22,7 +32,7 @@ export function createErrorReporter({
         accountId: req.auth?.accountId || req.session?.accountId || null,
         userId: req.auth?.userId || req.session?.userId || null,
         error: {
-          name: err?.name || 'Error',
+          name: err instanceof Error ? err.name : 'Error',
           code: 'INTERNAL_ERROR',
         },
         reportedAt: new Date().toISOString(),
@@ -41,7 +51,7 @@ export function createErrorReporter({
             level: 'error',
             event: 'external_error_report_failed',
             requestId: req.requestId,
-            message: error?.message || 'External error report failed.',
+            message: error instanceof Error ? error.message : 'External error report failed.',
           }),
         );
       });

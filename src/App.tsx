@@ -1,4 +1,11 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import type {
+  ChangeEvent,
+  FocusEvent,
+  FormEvent,
+  KeyboardEvent,
+  ReactNode,
+} from 'react';
 import {
   AlertTriangle,
   CircleDollarSign,
@@ -20,22 +27,225 @@ import {
   ShieldCheck,
   Tag,
   X,
+  type LucideIcon,
 } from 'lucide-react';
+import { apiDownload, apiFetch } from './api';
+import type {
+  AuditCriteria,
+  AuditEvent,
+  ApiResponse,
+  AuthState,
+  BackupSettings,
+  Card,
+  CardDetail,
+  CardSearchCriteria,
+  CardStatus,
+  CredentialField,
+  CredentialFieldKind,
+  CredentialProfile,
+  DataPolicy,
+  Deal,
+  DealDetail,
+  FeatureFlags,
+  Page,
+  ReferenceReviewItem,
+  ReferenceValueType,
+  ReferenceValue,
+  ReferenceValueState,
+  RevealedCredentials,
+  SupportPolicy,
+  UserInvite,
+  AuthUser,
+  Usage,
+} from '../shared/domain';
 
-interface ApiOptions {
-  method?: string;
-  body?: unknown;
-  csrfToken?: string | null;
+type ViewId = 'dashboard' | 'cards' | 'deals' | 'backup' | 'audit' | 'settings';
+
+interface CountSummary {
+  cards?: number;
+  deals?: number;
+  auditLog?: number;
+  idempotencyKeys?: number;
 }
 
-interface ApiError extends Error {
-  code?: string;
-  fieldErrors?: unknown[];
-  requestId?: string | null;
-  status?: number;
+interface PortableExportPayload {
+  exportedAt?: string;
+  cards?: Card[];
+  counts?: CountSummary;
 }
 
-const navItems = [
+interface ImportSummary {
+  mode: string;
+  cardCount: number;
+  dealCount: number;
+}
+
+interface CsvImportResult {
+  cards: Card[];
+}
+
+interface CsvPreviewRow {
+  rowNumber: number;
+  valid: boolean;
+  parsed?: {
+    brand?: string;
+    cardType?: string;
+    faceValueCents?: number;
+    purchaseCostCents?: number;
+    credentialHint?: string;
+    credentialLabel?: string;
+    hasPin?: boolean;
+    hasBillingZip?: boolean;
+  };
+  errors?: Array<{ field: string; code: string; message: string }>;
+}
+
+interface CsvPreviewPayload {
+  summary: {
+    validCount: number;
+    invalidCount: number;
+    rowCount: number;
+  };
+  rows: CsvPreviewRow[];
+}
+
+interface DealMutationResult {
+  deal: Deal;
+  cards: Card[];
+}
+
+interface CardMutationResult {
+  card: Card;
+}
+
+interface AddDealCustomField {
+  id: string;
+  label: string;
+  fieldKind: CredentialFieldKind;
+  value: string;
+}
+
+interface AddDealFormState {
+  name: string;
+  source: string;
+  totalCost: string;
+  cardBrand: string;
+  faceValue: string;
+  credentialProfile: CredentialProfile | 'merchant_number_access';
+  profileTouched: boolean;
+  cardNumber: string;
+  redemptionCode: string;
+  pin: string;
+  accessCode: string;
+  barcodeValue: string;
+  barcodeFormat: string;
+  expirationMonth: string;
+  expirationYear: string;
+  networkSecurityCode: string;
+  saveNetworkSecurityCode: boolean;
+  billingZip: string;
+  cardholderName: string;
+  billingAddress: string;
+  customFields: AddDealCustomField[];
+}
+
+interface CardDetailState {
+  card: Card;
+  data?: CardDetail | null;
+  error?: string;
+  loading: boolean;
+}
+
+interface DealDetailState {
+  deal: Deal;
+  data?: DealDetail | null;
+  error?: string;
+  loading: boolean;
+}
+
+interface WorkSurfaceProps {
+  auth: AuthState;
+  cards: Card[];
+  cardsPage: Page;
+  deals: Deal[];
+  auditEvents: AuditEvent[];
+  auditLoading: boolean;
+  auditError: string;
+  backupSettings: BackupSettings;
+  backupSettingsLoading: boolean;
+  backupSettingsLoaded: boolean;
+  backupSettingsError: string;
+  users: AuthUser[];
+  userInvites: UserInvite[];
+  usersLoading: boolean;
+  usersLoaded: boolean;
+  usersError: string;
+  supportPolicy: SupportPolicy;
+  supportPolicyLoading: boolean;
+  supportPolicyLoaded: boolean;
+  supportPolicyError: string;
+  dataPolicy: DataPolicy;
+  dataPolicyLoading: boolean;
+  dataPolicyLoaded: boolean;
+  dataPolicyError: string;
+  features?: FeatureFlags;
+  referenceValues: ReferenceValueState;
+  loading: boolean;
+  onRefresh: () => Promise<unknown>;
+  onLogout: () => Promise<unknown>;
+  onLoadAudit: (criteria?: AuditCriteria) => Promise<unknown>;
+  onLoadBackupSettings: () => Promise<unknown>;
+  onLoadUsers: () => Promise<unknown>;
+  onLoadSupportPolicy: () => Promise<unknown>;
+  onLoadDataPolicy: () => Promise<unknown>;
+  onCreateInvite: AsyncApiHandler<ApiPayload, UserInvite>;
+  onRevokeInvite: (inviteId: string) => Promise<UserInvite>;
+  onUpdateUser: (userId: string, payload: ApiPayload) => Promise<AuthUser>;
+  onUpdateSupportPolicy: AsyncApiHandler<ApiPayload, ApiResponse<SupportPolicy>>;
+  onUpdateDataPolicy: AsyncApiHandler<ApiPayload, ApiResponse<DataPolicy>>;
+  onExportAccountData: AsyncApiHandler<ApiPayload, ApiResponse<PortableExportPayload>>;
+  onRunRetention: AsyncApiHandler<ApiPayload, ApiResponse<{ counts?: CountSummary }>>;
+  onDeleteAccountData: AsyncApiHandler<ApiPayload, ApiResponse<{ counts?: CountSummary }>>;
+  onUpdateBackupSettings: AsyncApiHandler<ApiPayload, ApiResponse<BackupSettings>>;
+  onExportPlaintext: AsyncApiHandler<ApiPayload, ApiResponse<PortableExportPayload>>;
+  onExportEncrypted: AsyncApiHandler<ApiPayload, ApiResponse<PortableExportPayload>>;
+  onExportRawDatabase: AsyncApiHandler<ApiPayload, { blob: Blob; filename: string | null }>;
+  onPreviewCsv: AsyncApiHandler<{ csv: string }, ApiResponse<CsvPreviewPayload>>;
+  onConfirmCsv: AsyncApiHandler<{ csv: string }, ApiResponse<CsvImportResult>>;
+  onImportBackup: AsyncApiHandler<ApiPayload, ApiResponse<{ summary: ImportSummary }>>;
+  onChangeUnlockSecret: AsyncApiHandler<ApiPayload, ApiResponse<unknown>>;
+  onGenerateRecoveryCodes: AsyncApiHandler<{ currentUnlockSecret: string }, { codes: string[]; activeCount: number }>;
+  onLoadReferenceValues: () => Promise<ReferenceValueState>;
+  onUpsertReferenceValues: (values?: ReferenceValue[]) => Promise<ReferenceValue[]>;
+  onCreateDeal: AsyncApiHandler<ApiPayload, unknown>;
+  onLoadDeals: (includeArchived: boolean) => Promise<unknown>;
+  onEditDeal: (dealId: string, payload: ApiPayload) => Promise<unknown>;
+  onArchiveDeal: (deal: Deal, includeArchived: boolean) => Promise<unknown>;
+  onUnarchiveDeal: (deal: Deal, includeArchived: boolean) => Promise<unknown>;
+  onSearchCards: (criteria?: CardSearchCriteria) => Promise<unknown>;
+  onLoadCardDetail: (cardId: string) => Promise<ApiResponse<CardDetail>>;
+  onLoadDealDetail: (dealId: string) => Promise<ApiResponse<DealDetail>>;
+  onRevealCardCredentials: (cardId: string) => Promise<ApiResponse<RevealedCredentials>>;
+  onUseCard: (cardId: string, payload: ApiPayload) => Promise<unknown>;
+  onUndoUsage: (cardId: string, payload: ApiPayload) => Promise<ApiResponse<CardMutationResult>>;
+  onEditCard: (cardId: string, payload: ApiPayload) => Promise<unknown>;
+  onDeleteCard: (cardId: string) => Promise<unknown>;
+  onSellCard: (cardId: string, payload: CardSalePayload) => Promise<unknown>;
+  onUndoSale: (cardId: string, payload: ApiPayload) => Promise<unknown>;
+  onVoidCard: (cardId: string, payload: ApiPayload) => Promise<unknown>;
+  onReserveCard: (cardId: string, payload: ApiPayload) => Promise<unknown>;
+  onUnreserveCard: (card: Card) => Promise<unknown>;
+}
+
+type ApiPayload = Record<string, unknown>;
+type AsyncApiHandler<TPayload = ApiPayload, TResult = unknown> = (payload: TPayload) => Promise<TResult>;
+type VoidHandler = () => void;
+
+interface CardSalePayload extends ApiPayload {
+  salePriceCents: number;
+}
+
+const navItems: Array<{ id: ViewId; label: string; icon: LucideIcon }> = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'cards', label: 'Cards', icon: CreditCard },
   { id: 'deals', label: 'Deals', icon: Tag },
@@ -44,14 +254,14 @@ const navItems = [
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
 
-const defaultPage = {
+const defaultPage: Page = {
   limit: 50,
   offset: 0,
   total: 0,
   hasMore: false,
 };
 
-const defaultBackupSettings = {
+const defaultBackupSettings: BackupSettings = {
   allowPlaintextExport: true,
   plaintextExportPolicyLocked: false,
   backupReminderDays: 30,
@@ -63,7 +273,7 @@ const defaultBackupSettings = {
   lastRawDatabaseExportAt: null,
 };
 
-const defaultSupportPolicy = {
+const defaultSupportPolicy: SupportPolicy = {
   supportAccessEnabled: false,
   supportContact: '',
   supportPolicyUrl: '',
@@ -72,14 +282,14 @@ const defaultSupportPolicy = {
   supportUpdatedByUserId: null,
 };
 
-const defaultDataPolicy = {
+const defaultDataPolicy: DataPolicy = {
   auditRetentionDays: 365,
   idempotencyRetentionDays: 7,
   sessionRetentionDays: 7,
   loginAttemptRetentionDays: 30,
 };
 
-const defaultFeatureFlags = {
+const defaultFeatureFlags: FeatureFlags = {
   plaintextJsonExport: true,
   rawDatabaseExport: true,
   csvImport: true,
@@ -144,7 +354,7 @@ const csvImportTemplates = [
   },
 ];
 
-const statusLabels = {
+const statusLabels: Record<CardStatus, string> = {
   available: 'Available',
   reserved: 'Reserved',
   in_use: 'In Use',
@@ -182,7 +392,7 @@ const customCredentialFieldKinds = [
   { value: 'metadata', label: 'Note' },
 ];
 
-function inferCredentialProfileForBrand(brand) {
+function inferCredentialProfileForBrand(brand: string): string {
   if (networkBrandPattern.test(brand)) {
     return 'network_prepaid';
   }
@@ -198,7 +408,7 @@ function inferCredentialProfileForBrand(brand) {
   return 'merchant_number_pin';
 }
 
-function inferNetworkFromBrand(brand) {
+function inferNetworkFromBrand(brand: string): string {
   const normalized = String(brand || '').toLowerCase();
   if (normalized.includes('master')) {
     return 'mastercard';
@@ -215,7 +425,7 @@ function inferNetworkFromBrand(brand) {
   return 'other';
 }
 
-function credentialSummaryText(card) {
+function credentialSummaryText(card: Pick<Card, 'credentialSummary' | 'cardNumberLast4'> | null | undefined): string {
   const summary = card?.credentialSummary;
   if (summary?.primaryHint) {
     return summary.primaryLabel ? `${summary.primaryLabel}: ${summary.primaryHint}` : summary.primaryHint;
@@ -229,7 +439,7 @@ function credentialSummaryText(card) {
   return 'Hidden';
 }
 
-const barcodeFormatToBcid = {
+const barcodeFormatToBcid: Record<string, string> = {
   code128: 'code128',
   qr: 'qrcode',
   ean13: 'ean13',
@@ -240,7 +450,7 @@ const barcodeFormatToBcid = {
   other: 'code128',
 };
 
-function barcodeSvgDataUri(value, format, toSvg) {
+function barcodeSvgDataUri(value: string, format: string | null | undefined, toSvg: (options: Record<string, unknown>) => string): string {
   const bcid = barcodeFormatToBcid[format] || barcodeFormatToBcid.other;
   const svg = toSvg({
     bcid,
@@ -254,19 +464,19 @@ function barcodeSvgDataUri(value, format, toSvg) {
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 
-function authRole(auth) {
+function authRole(auth: AuthState | null | undefined): string {
   return auth?.user?.role || 'owner';
 }
 
-function canAdmin(auth) {
+function canAdmin(auth: AuthState | null | undefined): boolean {
   return adminRoleSet.has(authRole(auth));
 }
 
-function canManageInventory(auth) {
+function canManageInventory(auth: AuthState | null | undefined): boolean {
   return operatorRoleSet.has(authRole(auth));
 }
 
-function authFeatures(auth) {
+function authFeatures(auth: AuthState | null | undefined): FeatureFlags {
   return {
     ...defaultFeatureFlags,
     ...(auth?.features || {}),
@@ -277,25 +487,29 @@ const referenceValueTypes = {
   dealName: 'deal_name',
   source: 'source',
   cardBrand: 'card_brand',
-};
+} as const;
 
-const defaultReferenceValues = {
+const defaultReferenceValues: ReferenceValueState = {
   [referenceValueTypes.dealName]: [],
   [referenceValueTypes.source]: [],
   [referenceValueTypes.cardBrand]: [],
 };
 
-const addDealReferenceFields = [
+const addDealReferenceFields: Array<{
+  field: 'name' | 'source' | 'cardBrand';
+  type: ReferenceValueType;
+  label: string;
+}> = [
   { field: 'name', type: referenceValueTypes.dealName, label: 'Deal name' },
   { field: 'source', type: referenceValueTypes.source, label: 'Source' },
   { field: 'cardBrand', type: referenceValueTypes.cardBrand, label: 'Card brand' },
 ];
 
-function normalizeReferenceText(value) {
+function normalizeReferenceText(value: unknown): string {
   return String(value || '').trim().toLowerCase();
 }
 
-function sortReferenceValues(values) {
+function sortReferenceValues(values: ReferenceValue[]): ReferenceValue[] {
   return [...values].sort((a, b) => {
     const usageDelta = (b.usageCount || 0) - (a.usageCount || 0);
     if (usageDelta) {
@@ -309,7 +523,7 @@ function sortReferenceValues(values) {
   });
 }
 
-function mergeReferenceValueState(current, incomingRows) {
+function mergeReferenceValueState(current: ReferenceValueState, incomingRows: ReferenceValue[] = []): ReferenceValueState {
   const next = {
     [referenceValueTypes.dealName]: [...(current?.[referenceValueTypes.dealName] || [])],
     [referenceValueTypes.source]: [...(current?.[referenceValueTypes.source] || [])],
@@ -331,12 +545,14 @@ function mergeReferenceValueState(current, incomingRows) {
     }
   }
 
-  return Object.fromEntries(
-    Object.entries(next).map(([type, values]) => [type, sortReferenceValues(values)]),
-  );
+  return {
+    [referenceValueTypes.dealName]: sortReferenceValues(next[referenceValueTypes.dealName]),
+    [referenceValueTypes.source]: sortReferenceValues(next[referenceValueTypes.source]),
+    [referenceValueTypes.cardBrand]: sortReferenceValues(next[referenceValueTypes.cardBrand]),
+  };
 }
 
-function normalizeReferenceValuePayload(data) {
+function normalizeReferenceValuePayload(data: Partial<ReferenceValueState> | null | undefined): ReferenceValueState {
   return {
     [referenceValueTypes.dealName]: Array.isArray(data?.[referenceValueTypes.dealName])
       ? sortReferenceValues(data[referenceValueTypes.dealName])
@@ -350,7 +566,7 @@ function normalizeReferenceValuePayload(data) {
   };
 }
 
-function filterReferenceOptions(options, query, limit = 8) {
+function filterReferenceOptions(options: ReferenceValue[], query: string, limit = 8): ReferenceValue[] {
   const normalizedQuery = normalizeReferenceText(query);
   const ranked = (options || [])
     .filter((option) => {
@@ -388,13 +604,13 @@ function filterReferenceOptions(options, query, limit = 8) {
   return ranked.slice(0, limit).map(({ option }) => option);
 }
 
-function hasIndexedReferenceValue(options, value) {
+function hasIndexedReferenceValue(options: ReferenceValue[], value: string): boolean {
   const normalized = normalizeReferenceText(value);
   return Boolean(normalized)
     && (options || []).some((option) => normalizeReferenceText(option.value) === normalized);
 }
 
-function levenshteinDistance(left, right) {
+function levenshteinDistance(left: string, right: string): number {
   if (left === right) {
     return 0;
   }
@@ -424,7 +640,7 @@ function levenshteinDistance(left, right) {
   return previous[right.length];
 }
 
-function typoSuggestions(options, value) {
+function typoSuggestions(options: ReferenceValue[], value: string): ReferenceValue[] {
   const normalizedValue = normalizeReferenceText(value);
   if (normalizedValue.length < 3) {
     return [];
@@ -447,7 +663,10 @@ function typoSuggestions(options, value) {
     .map(({ option }) => option);
 }
 
-function buildReferenceReviewItems(form, referenceValues) {
+function buildReferenceReviewItems(
+  form: { name: string; source: string; cardBrand: string },
+  referenceValues: ReferenceValueState,
+): ReferenceReviewItem[] {
   return addDealReferenceFields
     .map((config) => {
       const value = String(form[config.field] || '').trim();
@@ -465,14 +684,18 @@ function buildReferenceReviewItems(form, referenceValues) {
         suggestions: typoSuggestions(options, value),
       };
     })
-    .filter(Boolean);
+    .filter((item): item is ReferenceReviewItem => Boolean(item));
 }
 
-function buildReferenceTouchValues(form, referenceValues, approvedItems) {
+function buildReferenceTouchValues(
+  form: { name: string; source: string; cardBrand: string },
+  referenceValues: ReferenceValueState,
+  approvedItems: ReferenceReviewItem[] = [],
+): ReferenceValue[] {
   const approvedKeys = new Set(
     (approvedItems || []).map((item) => `${item.type}:${normalizeReferenceText(item.value)}`),
   );
-  const touched = [];
+  const touched: ReferenceValue[] = [];
   const seen = new Set();
 
   for (const config of addDealReferenceFields) {
@@ -503,8 +726,8 @@ const dialogFocusableSelector = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(',');
 
-function useDialogFocus(onClose) {
-  const dialogRef = useRef(null);
+function useDialogFocus(onClose: VoidHandler) {
+  const dialogRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -513,19 +736,19 @@ function useDialogFocus(onClose) {
     }
 
     const previousFocus = document.activeElement;
-    const focusableElements = () =>
-      [...dialog.querySelectorAll(dialogFocusableSelector)].filter(
+    const focusableElements = (): HTMLElement[] =>
+      [...dialog.querySelectorAll<HTMLElement>(dialogFocusableSelector)].filter(
         (element) => !element.hasAttribute('aria-hidden'),
       );
     const initialFocus =
-      dialog.querySelector('[data-autofocus]')
-      || dialog.querySelector('input:not([disabled]), select:not([disabled]), textarea:not([disabled])')
+      dialog.querySelector<HTMLElement>('[data-autofocus]')
+      || dialog.querySelector<HTMLElement>('input:not([disabled]), select:not([disabled]), textarea:not([disabled])')
       || focusableElements()[0]
       || dialog;
 
     initialFocus.focus();
 
-    function handleKeyDown(event) {
+    function handleKeyDown(event: globalThis.KeyboardEvent) {
       if (event.key === 'Escape') {
         event.preventDefault();
         onClose();
@@ -565,115 +788,21 @@ function useDialogFocus(onClose) {
   return dialogRef;
 }
 
-function createUiIdempotencyKey() {
-  if (globalThis.crypto?.randomUUID) {
-    return `ui_${globalThis.crypto.randomUUID()}`;
-  }
-  return `ui_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
-}
-
-async function apiFetch(path, { method = 'GET', body, csrfToken }: ApiOptions = {}) {
-  const options: RequestInit & { headers: Record<string, string> } = {
-    method,
-    credentials: 'same-origin',
-    headers: {
-      Accept: 'application/json',
-    },
-  };
-
-  if (body !== undefined) {
-    options.headers['Content-Type'] = 'application/json';
-    options.body = JSON.stringify(body);
-  }
-
-  if (csrfToken) {
-    options.headers['X-CSRF-Token'] = csrfToken;
-    if (!['GET', 'HEAD'].includes(method.toUpperCase())) {
-      options.headers['Idempotency-Key'] = createUiIdempotencyKey();
-    }
-  }
-
-  const response = await fetch(path, options);
-  const payload = await response.json().catch(() => ({}));
-
-  if (!response.ok) {
-    const requestId = payload.error?.requestId || response.headers.get('x-request-id');
-    const message = payload.error?.message || 'Request failed.';
-    const error: ApiError = new Error(requestId ? `${message} Request ID: ${requestId}` : message);
-    error.code = payload.error?.code;
-    error.fieldErrors = payload.error?.fieldErrors || [];
-    error.requestId = requestId;
-    error.status = response.status;
-    throw error;
-  }
-
-  return payload;
-}
-
-async function apiDownload(path, { method = 'GET', body, csrfToken }: ApiOptions = {}) {
-  const options: RequestInit & { headers: Record<string, string> } = {
-    method,
-    credentials: 'same-origin',
-    headers: {
-      Accept: 'application/octet-stream',
-    },
-  };
-
-  if (body !== undefined) {
-    options.headers['Content-Type'] = 'application/json';
-    options.body = JSON.stringify(body);
-  }
-
-  if (csrfToken) {
-    options.headers['X-CSRF-Token'] = csrfToken;
-    if (!['GET', 'HEAD'].includes(method.toUpperCase())) {
-      options.headers['Idempotency-Key'] = createUiIdempotencyKey();
-    }
-  }
-
-  const response = await fetch(path, options);
-  if (!response.ok) {
-    const payload = await response.json().catch(() => ({}));
-    const requestId = payload.error?.requestId || response.headers.get('x-request-id');
-    const message = payload.error?.message || 'Request failed.';
-    const error: ApiError = new Error(requestId ? `${message} Request ID: ${requestId}` : message);
-    error.code = payload.error?.code;
-    error.fieldErrors = payload.error?.fieldErrors || [];
-    error.requestId = requestId;
-    error.status = response.status;
-    throw error;
-  }
-
-  return {
-    blob: await response.blob(),
-    filename: filenameFromContentDisposition(response.headers.get('content-disposition')),
-  };
-}
-
-function filenameFromContentDisposition(header) {
-  if (!header) {
-    return null;
-  }
-
-  const match = /filename="([^"]+)"/.exec(header);
-  return match?.[1] || null;
-}
-
-function formatMoney(cents = 0) {
+function formatMoney(cents = 0): string {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
   }).format(cents / 100);
 }
 
-function formatDateTime(value) {
+function formatDateTime(value: string | null | undefined): string {
   if (!value) {
     return 'Not recorded';
   }
   return new Date(value).toLocaleString();
 }
 
-function parseDateOnly(value) {
+function parseDateOnly(value: string | null | undefined): Date | null {
   if (!value) {
     return null;
   }
@@ -681,7 +810,7 @@ function parseDateOnly(value) {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-function isWithinNextDays(value, days) {
+function isWithinNextDays(value: string | null | undefined, days: number): boolean {
   const parsed = parseDateOnly(value);
   if (!parsed) {
     return false;
@@ -693,7 +822,7 @@ function isWithinNextDays(value, days) {
   return parsed >= today && parsed <= end;
 }
 
-function isBeforeToday(value) {
+function isBeforeToday(value: string | null | undefined): boolean {
   const parsed = parseDateOnly(value);
   if (!parsed) {
     return false;
@@ -703,7 +832,7 @@ function isBeforeToday(value) {
   return parsed < today;
 }
 
-function formatDisplayValue(value) {
+function formatDisplayValue(value: unknown): string {
   if (!value) {
     return 'Not recorded';
   }
@@ -712,11 +841,11 @@ function formatDisplayValue(value) {
     .replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
-function statusText(status) {
-  return statusLabels[status] || status;
+function statusText(status: CardStatus | string): string {
+  return status in statusLabels ? statusLabels[status as CardStatus] : status;
 }
 
-function viewTitle(view) {
+function viewTitle(view: ViewId): string {
   if (view === 'dashboard') {
     return 'Dashboard';
   }
@@ -735,11 +864,11 @@ function viewTitle(view) {
   return 'Deals';
 }
 
-function isTerminalCard(card) {
+function isTerminalCard(card: Pick<Card, 'status'>): boolean {
   return terminalCardStatuses.has(card.status);
 }
 
-function dollarsToCents(value) {
+function dollarsToCents(value: string): number | undefined {
   if (!value) {
     return undefined;
   }
@@ -752,11 +881,19 @@ function dollarsToCents(value) {
   return Math.round(Number(normalized) * 100);
 }
 
-function criteriaValue(value) {
+function criteriaValue(value: unknown): string {
   return value == null ? '' : String(value).trim();
 }
 
-function downloadBlobFile(filename, blob) {
+function errorMessage(caught: unknown): string {
+  return caught instanceof Error ? caught.message : 'Unexpected error.';
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function downloadBlobFile(filename: string, blob: Blob): void {
   if (typeof document === 'undefined' || !globalThis.URL?.createObjectURL) {
     return;
   }
@@ -771,7 +908,7 @@ function downloadBlobFile(filename, blob) {
   globalThis.URL.revokeObjectURL?.(url);
 }
 
-function downloadJsonFile(filename, payload) {
+function downloadJsonFile(filename: string, payload: unknown): void {
   downloadBlobFile(
     filename,
     new Blob([JSON.stringify(payload, null, 2)], {
@@ -780,7 +917,7 @@ function downloadJsonFile(filename, payload) {
   );
 }
 
-function downloadCsvFile(filename, csv) {
+function downloadCsvFile(filename: string, csv: string): void {
   downloadBlobFile(
     filename,
     new Blob([csv], {
@@ -789,7 +926,7 @@ function downloadCsvFile(filename, csv) {
   );
 }
 
-function readFileText(file) {
+function readFileText(file: File): Promise<string> {
   if (file?.text) {
     return file.text();
   }
@@ -802,7 +939,7 @@ function readFileText(file) {
   });
 }
 
-function FieldError({ message }) {
+function FieldError({ message }: { message?: string | null }) {
   if (!message) {
     return null;
   }
@@ -814,9 +951,9 @@ function FieldError({ message }) {
   );
 }
 
-function BarcodePreview({ value, format }) {
+function BarcodePreview({ value, format }: { value?: string | null; format?: string | null }) {
   const barcodeKey = `${format || 'code128'}:${value || ''}`;
-  const [barcodeImage, setBarcodeImage] = useState({ key: '', src: null });
+  const [barcodeImage, setBarcodeImage] = useState<{ key: string; src: string | null }>({ key: '', src: null });
 
   useEffect(() => {
     let canceled = false;
@@ -857,7 +994,7 @@ function BarcodePreview({ value, format }) {
   );
 }
 
-function SetupScreen({ onSetup }) {
+function SetupScreen({ onSetup }: { onSetup: AsyncApiHandler<{ email: string; displayName: string; unlockSecret: string }> }) {
   const [email, setEmail] = useState('');
   const [displayName, setDisplayName] = useState('Owner');
   const [unlockSecret, setUnlockSecret] = useState('');
@@ -866,7 +1003,7 @@ function SetupScreen({ onSetup }) {
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  async function submitSetup(event) {
+  async function submitSetup(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError('');
 
@@ -884,7 +1021,7 @@ function SetupScreen({ onSetup }) {
     try {
       await onSetup({ email: email.trim(), displayName: displayName.trim(), unlockSecret });
     } catch (caught) {
-      setError(caught.message);
+      setError(errorMessage(caught));
     } finally {
       setSubmitting(false);
     }
@@ -960,7 +1097,15 @@ function SetupScreen({ onSetup }) {
   );
 }
 
-function UnlockScreen({ onLogin, onAcceptInvite, onRecoverAccess }) {
+function UnlockScreen({
+  onLogin,
+  onAcceptInvite,
+  onRecoverAccess,
+}: {
+  onLogin: AsyncApiHandler<{ email: string; unlockSecret: string }>;
+  onAcceptInvite: AsyncApiHandler<{ email: string; inviteCode: string; unlockSecret: string }>;
+  onRecoverAccess: AsyncApiHandler<{ email: string; recoveryCode: string; newUnlockSecret: string }>;
+}) {
   const [mode, setMode] = useState('login');
   const [email, setEmail] = useState('');
   const [unlockSecret, setUnlockSecret] = useState('');
@@ -976,20 +1121,20 @@ function UnlockScreen({ onLogin, onAcceptInvite, onRecoverAccess }) {
   const [success, setSuccess] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  async function submitLogin(event) {
+  async function submitLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError('');
     setSubmitting(true);
     try {
       await onLogin({ email: email.trim(), unlockSecret });
     } catch (caught) {
-      setError(caught.message);
+      setError(errorMessage(caught));
     } finally {
       setSubmitting(false);
     }
   }
 
-  async function submitInvite(event) {
+  async function submitInvite(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError('');
     setSuccess('');
@@ -1006,13 +1151,13 @@ function UnlockScreen({ onLogin, onAcceptInvite, onRecoverAccess }) {
         unlockSecret: inviteUnlockSecret,
       });
     } catch (caught) {
-      setError(caught.message);
+      setError(errorMessage(caught));
     } finally {
       setSubmitting(false);
     }
   }
 
-  async function submitRecovery(event) {
+  async function submitRecovery(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError('');
     setSuccess('');
@@ -1035,7 +1180,7 @@ function UnlockScreen({ onLogin, onAcceptInvite, onRecoverAccess }) {
       setMode('login');
       setEmail(recoveryEmail.trim());
     } catch (caught) {
-      setError(caught.message);
+      setError(errorMessage(caught));
     } finally {
       setSubmitting(false);
     }
@@ -1197,11 +1342,11 @@ function UnlockScreen({ onLogin, onAcceptInvite, onRecoverAccess }) {
   );
 }
 
-function StatusBadge({ status }) {
+function StatusBadge({ status }: { status: CardStatus | string }) {
   return <span className={`status-badge status-${status}`}>{statusText(status)}</span>;
 }
 
-function Metric({ label, value, icon: Icon }) {
+function Metric({ label, value, icon: Icon }: { label: string; value: ReactNode; icon: LucideIcon }) {
   return (
     <article className="metric">
       <div className="metric-icon">
@@ -1227,6 +1372,18 @@ function CardsTable({
   onVoidCard,
   onReserveCard,
   onUnreserveCard,
+}: {
+  cards: Card[];
+  canManage: boolean;
+  onUseCard: (card: Card) => void;
+  onViewCard: (card: Card) => void;
+  onEditCard: (card: Card) => void;
+  onDeleteCard: (card: Card) => void;
+  onSellCard: (card: Card) => void;
+  onUndoSale: (card: Card) => void;
+  onVoidCard: (card: Card) => void;
+  onReserveCard: (card: Card) => void;
+  onUnreserveCard: (card: Card) => void;
 }) {
   if (cards.length === 0) {
     return (
@@ -1383,7 +1540,21 @@ function CardsTable({
   );
 }
 
-function DealsTable({ deals, canManage, onViewDeal, onEditDeal, onArchiveDeal, onUnarchiveDeal }) {
+function DealsTable({
+  deals,
+  canManage,
+  onViewDeal,
+  onEditDeal,
+  onArchiveDeal,
+  onUnarchiveDeal,
+}: {
+  deals: Deal[];
+  canManage: boolean;
+  onViewDeal: (deal: Deal) => void;
+  onEditDeal: (deal: Deal) => void;
+  onArchiveDeal: (deal: Deal) => void;
+  onUnarchiveDeal: (deal: Deal) => void;
+}) {
   if (deals.length === 0) {
     return (
       <div className="empty-state">
@@ -1470,7 +1641,7 @@ function DealsTable({ deals, canManage, onViewDeal, onEditDeal, onArchiveDeal, o
   );
 }
 
-function AuditTable({ events }) {
+function AuditTable({ events }: { events: AuditEvent[] }) {
   if (events.length === 0) {
     return (
       <div className="empty-state">
@@ -1508,7 +1679,7 @@ function AuditTable({ events }) {
   );
 }
 
-function AuditFilterForm({ onLoadAudit }) {
+function AuditFilterForm({ onLoadAudit }: { onLoadAudit: (criteria?: AuditCriteria) => Promise<unknown> }) {
   const [entityType, setEntityType] = useState('');
   const [action, setAction] = useState('');
   const [from, setFrom] = useState('');
@@ -1516,14 +1687,14 @@ function AuditFilterForm({ onLoadAudit }) {
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  async function submitFilter(event) {
+  async function submitFilter(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError('');
     setSubmitting(true);
     try {
       await onLoadAudit({ entityType, action, from, to });
     } catch (caught) {
-      setError(caught.message);
+      setError(errorMessage(caught));
     } finally {
       setSubmitting(false);
     }
@@ -1539,7 +1710,7 @@ function AuditFilterForm({ onLoadAudit }) {
     try {
       await onLoadAudit({});
     } catch (caught) {
-      setError(caught.message);
+      setError(errorMessage(caught));
     } finally {
       setSubmitting(false);
     }
@@ -1587,7 +1758,7 @@ function AuditFilterForm({ onLoadAudit }) {
   );
 }
 
-function BackupExportForm({ onExportPlaintext }) {
+function BackupExportForm({ onExportPlaintext }: { onExportPlaintext: AsyncApiHandler<ApiPayload, ApiResponse<PortableExportPayload>> }) {
   const [unlockSecret, setUnlockSecret] = useState('');
   const [confirmation, setConfirmation] = useState('');
   const [acknowledgePlaintext, setAcknowledgePlaintext] = useState(false);
@@ -1595,7 +1766,7 @@ function BackupExportForm({ onExportPlaintext }) {
   const [success, setSuccess] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  async function submitExport(event) {
+  async function submitExport(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError('');
     setSuccess('');
@@ -1614,7 +1785,7 @@ function BackupExportForm({ onExportPlaintext }) {
       setAcknowledgePlaintext(false);
       setSuccess(`Plaintext export prepared with ${payload?.cards?.length || 0} cards.`);
     } catch (caught) {
-      setError(caught.message);
+      setError(errorMessage(caught));
     } finally {
       setSubmitting(false);
     }
@@ -1663,7 +1834,7 @@ function BackupExportForm({ onExportPlaintext }) {
   );
 }
 
-function EncryptedBackupExportForm({ onExportEncrypted }) {
+function EncryptedBackupExportForm({ onExportEncrypted }: { onExportEncrypted: AsyncApiHandler<ApiPayload, ApiResponse<PortableExportPayload>> }) {
   const [unlockSecret, setUnlockSecret] = useState('');
   const [backupPassphrase, setBackupPassphrase] = useState('');
   const [backupPassphraseConfirmation, setBackupPassphraseConfirmation] = useState('');
@@ -1672,7 +1843,7 @@ function EncryptedBackupExportForm({ onExportEncrypted }) {
   const [success, setSuccess] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  async function submitExport(event) {
+  async function submitExport(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError('');
     setSuccess('');
@@ -1698,7 +1869,7 @@ function EncryptedBackupExportForm({ onExportEncrypted }) {
       setConfirmation('');
       setSuccess('Encrypted export prepared.');
     } catch (caught) {
-      setError(caught.message);
+      setError(errorMessage(caught));
     } finally {
       setSubmitting(false);
     }
@@ -1756,13 +1927,17 @@ function EncryptedBackupExportForm({ onExportEncrypted }) {
   );
 }
 
-function RawDatabaseExportForm({ onExportRawDatabase }) {
+function RawDatabaseExportForm({
+  onExportRawDatabase,
+}: {
+  onExportRawDatabase: AsyncApiHandler<ApiPayload, { blob: Blob; filename: string | null }>;
+}) {
   const [unlockSecret, setUnlockSecret] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  async function submitExport(event) {
+  async function submitExport(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError('');
     setSuccess('');
@@ -1773,7 +1948,7 @@ function RawDatabaseExportForm({ onExportRawDatabase }) {
       setUnlockSecret('');
       setSuccess('Raw database export prepared.');
     } catch (caught) {
-      setError(caught.message);
+      setError(errorMessage(caught));
     } finally {
       setSubmitting(false);
     }
@@ -1805,7 +1980,7 @@ function RawDatabaseExportForm({ onExportRawDatabase }) {
   );
 }
 
-function CsvPreviewTable({ rows }) {
+function CsvPreviewTable({ rows }: { rows: CsvPreviewRow[] }) {
   if (!rows?.length) {
     return null;
   }
@@ -1864,17 +2039,23 @@ function CsvPreviewTable({ rows }) {
   );
 }
 
-function CsvImportPreviewForm({ onPreviewCsv, onConfirmCsv }) {
+function CsvImportPreviewForm({
+  onPreviewCsv,
+  onConfirmCsv,
+}: {
+  onPreviewCsv: AsyncApiHandler<{ csv: string }, ApiResponse<CsvPreviewPayload>>;
+  onConfirmCsv: AsyncApiHandler<{ csv: string }, ApiResponse<CsvImportResult>>;
+}) {
   const [csvText, setCsvText] = useState('');
   const [fileName, setFileName] = useState('');
   const [selectedTemplateId, setSelectedTemplateId] = useState(csvImportTemplates[0].id);
-  const [preview, setPreview] = useState(null);
+  const [preview, setPreview] = useState<CsvPreviewPayload | null>(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [confirming, setConfirming] = useState(false);
 
-  async function updateFile(event) {
+  async function updateFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     setPreview(null);
     setError('');
@@ -1890,11 +2071,11 @@ function CsvImportPreviewForm({ onPreviewCsv, onConfirmCsv }) {
       setCsvText(await readFileText(file));
     } catch (caught) {
       setCsvText('');
-      setError(caught.message);
+      setError(errorMessage(caught));
     }
   }
 
-  async function submitPreview(event) {
+  async function submitPreview(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError('');
     setSuccess('');
@@ -1909,7 +2090,7 @@ function CsvImportPreviewForm({ onPreviewCsv, onConfirmCsv }) {
       const response = await onPreviewCsv({ csv: csvText });
       setPreview(response.data);
     } catch (caught) {
-      setError(caught.message);
+      setError(errorMessage(caught));
     } finally {
       setSubmitting(false);
     }
@@ -1923,7 +2104,7 @@ function CsvImportPreviewForm({ onPreviewCsv, onConfirmCsv }) {
       const response = await onConfirmCsv({ csv: csvText });
       setSuccess(`Imported ${response.data.cards.length} ${response.data.cards.length === 1 ? 'card' : 'cards'}.`);
     } catch (caught) {
-      setError(caught.message);
+      setError(errorMessage(caught));
     } finally {
       setConfirming(false);
     }
@@ -1991,8 +2172,8 @@ function CsvImportPreviewForm({ onPreviewCsv, onConfirmCsv }) {
   );
 }
 
-function PlaintextJsonImportForm({ onImportBackup }) {
-  const [payload, setPayload] = useState(null);
+function PlaintextJsonImportForm({ onImportBackup }: { onImportBackup: AsyncApiHandler<ApiPayload, ApiResponse<{ summary: ImportSummary }>> }) {
+  const [payload, setPayload] = useState<unknown | null>(null);
   const [fileName, setFileName] = useState('');
   const [unlockSecret, setUnlockSecret] = useState('');
   const [mode, setMode] = useState('merge');
@@ -2001,7 +2182,7 @@ function PlaintextJsonImportForm({ onImportBackup }) {
   const [success, setSuccess] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  async function updateFile(event) {
+  async function updateFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     setPayload(null);
     setFileName('');
@@ -2021,7 +2202,7 @@ function PlaintextJsonImportForm({ onImportBackup }) {
     }
   }
 
-  async function submitImport(event) {
+  async function submitImport(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError('');
     setSuccess('');
@@ -2051,7 +2232,7 @@ function PlaintextJsonImportForm({ onImportBackup }) {
         }, ${summary.dealCount} ${summary.dealCount === 1 ? 'deal' : 'deals'}.`,
       );
     } catch (caught) {
-      setError(caught.message);
+      setError(errorMessage(caught));
     } finally {
       setSubmitting(false);
     }
@@ -2105,8 +2286,8 @@ function PlaintextJsonImportForm({ onImportBackup }) {
   );
 }
 
-function EncryptedJsonImportForm({ onImportBackup }) {
-  const [payload, setPayload] = useState(null);
+function EncryptedJsonImportForm({ onImportBackup }: { onImportBackup: AsyncApiHandler<ApiPayload, ApiResponse<{ summary: ImportSummary }>> }) {
+  const [payload, setPayload] = useState<unknown | null>(null);
   const [fileName, setFileName] = useState('');
   const [unlockSecret, setUnlockSecret] = useState('');
   const [backupPassphrase, setBackupPassphrase] = useState('');
@@ -2116,7 +2297,7 @@ function EncryptedJsonImportForm({ onImportBackup }) {
   const [success, setSuccess] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  async function updateFile(event) {
+  async function updateFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     setPayload(null);
     setFileName('');
@@ -2129,7 +2310,7 @@ function EncryptedJsonImportForm({ onImportBackup }) {
     setFileName(file.name);
     try {
       const parsedPayload = JSON.parse(await readFileText(file));
-      if (parsedPayload?.exportType !== 'encrypted_portable_json') {
+      if (!isRecord(parsedPayload) || parsedPayload.exportType !== 'encrypted_portable_json') {
         throw new Error('Invalid encrypted backup.');
       }
       setPayload(parsedPayload);
@@ -2139,7 +2320,7 @@ function EncryptedJsonImportForm({ onImportBackup }) {
     }
   }
 
-  async function submitImport(event) {
+  async function submitImport(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError('');
     setSuccess('');
@@ -2171,7 +2352,7 @@ function EncryptedJsonImportForm({ onImportBackup }) {
         }, ${summary.dealCount} ${summary.dealCount === 1 ? 'deal' : 'deals'}.`,
       );
     } catch (caught) {
-      setError(caught.message);
+      setError(errorMessage(caught));
     } finally {
       setSubmitting(false);
     }
@@ -2234,7 +2415,13 @@ function EncryptedJsonImportForm({ onImportBackup }) {
   );
 }
 
-function BackupSettingsForm({ settings, onUpdateBackupSettings }) {
+function BackupSettingsForm({
+  settings,
+  onUpdateBackupSettings,
+}: {
+  settings: BackupSettings;
+  onUpdateBackupSettings: AsyncApiHandler<ApiPayload, ApiResponse<BackupSettings>>;
+}) {
   const effectiveSettings = settings || defaultBackupSettings;
   const [allowPlaintextExport, setAllowPlaintextExport] = useState(effectiveSettings.allowPlaintextExport);
   const [backupReminderDays, setBackupReminderDays] = useState(String(effectiveSettings.backupReminderDays));
@@ -2243,7 +2430,7 @@ function BackupSettingsForm({ settings, onUpdateBackupSettings }) {
   const [success, setSuccess] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  async function submitSettings(event) {
+  async function submitSettings(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError('');
     setSuccess('');
@@ -2263,7 +2450,7 @@ function BackupSettingsForm({ settings, onUpdateBackupSettings }) {
       setUnlockSecret('');
       setSuccess('Backup settings saved.');
     } catch (caught) {
-      setError(caught.message);
+      setError(errorMessage(caught));
     } finally {
       setSubmitting(false);
     }
@@ -2350,17 +2537,26 @@ function UserAdminPanel({
   onCreateInvite,
   onRevokeInvite,
   onUpdateUser,
+}: {
+  users: AuthUser[];
+  invites: UserInvite[];
+  loading: boolean;
+  loaded: boolean;
+  error: string;
+  onCreateInvite: AsyncApiHandler<ApiPayload, UserInvite>;
+  onRevokeInvite: (inviteId: string) => Promise<UserInvite>;
+  onUpdateUser: (userId: string, payload: ApiPayload) => Promise<AuthUser>;
 }) {
   const [email, setEmail] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [role, setRole] = useState('operator');
   const [currentUnlockSecret, setCurrentUnlockSecret] = useState('');
-  const [createdInvite, setCreatedInvite] = useState(null);
+  const [createdInvite, setCreatedInvite] = useState<UserInvite | null>(null);
   const [formError, setFormError] = useState('');
   const [success, setSuccess] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  async function submitCreate(event) {
+  async function submitCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setFormError('');
     setSuccess('');
@@ -2379,7 +2575,7 @@ function UserAdminPanel({
       setCreatedInvite(created);
       setSuccess(`Invite created for ${created.displayName}.`);
     } catch (caught) {
-      setFormError(caught.message);
+      setFormError(errorMessage(caught));
     } finally {
       setSubmitting(false);
     }
@@ -2498,13 +2694,19 @@ function UserAdminPanel({
   );
 }
 
-function UserAdminRow({ user, onUpdateUser }) {
+function UserAdminRow({
+  user,
+  onUpdateUser,
+}: {
+  user: AuthUser;
+  onUpdateUser: (userId: string, payload: ApiPayload) => Promise<AuthUser>;
+}) {
   const [role, setRole] = useState(user.role);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
-  async function updateRole(event) {
-    const nextRole = event.target.value;
+  async function updateRole(event: ChangeEvent<HTMLSelectElement>) {
+    const nextRole = event.target.value as AuthUser['role'];
     setRole(nextRole);
     setError('');
     setSubmitting(true);
@@ -2512,7 +2714,7 @@ function UserAdminRow({ user, onUpdateUser }) {
       await onUpdateUser(user.id, { role: nextRole });
     } catch (caught) {
       setRole(user.role);
-      setError(caught.message);
+      setError(errorMessage(caught));
     } finally {
       setSubmitting(false);
     }
@@ -2524,7 +2726,7 @@ function UserAdminRow({ user, onUpdateUser }) {
     try {
       await onUpdateUser(user.id, { disabled: !user.disabledAt });
     } catch (caught) {
-      setError(caught.message);
+      setError(errorMessage(caught));
     } finally {
       setSubmitting(false);
     }
@@ -2567,14 +2769,20 @@ function UserAdminRow({ user, onUpdateUser }) {
   );
 }
 
-function RecoveryCodesPanel({ activeCount, onGenerateRecoveryCodes }) {
+function RecoveryCodesPanel({
+  activeCount,
+  onGenerateRecoveryCodes,
+}: {
+  activeCount?: number;
+  onGenerateRecoveryCodes: AsyncApiHandler<{ currentUnlockSecret: string }, { codes: string[]; activeCount: number }>;
+}) {
   const [currentUnlockSecret, setCurrentUnlockSecret] = useState('');
-  const [codes, setCodes] = useState<any[]>([]);
+  const [codes, setCodes] = useState<string[]>([]);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  async function generateCodes(event) {
+  async function generateCodes(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError('');
     setSuccess('');
@@ -2586,7 +2794,7 @@ function RecoveryCodesPanel({ activeCount, onGenerateRecoveryCodes }) {
       setCurrentUnlockSecret('');
       setSuccess('Recovery codes regenerated. Store them now; they are shown once.');
     } catch (caught) {
-      setError(caught.message);
+      setError(errorMessage(caught));
     } finally {
       setSubmitting(false);
     }
@@ -2626,7 +2834,13 @@ function RecoveryCodesPanel({ activeCount, onGenerateRecoveryCodes }) {
   );
 }
 
-function SupportPolicyForm({ policy, onUpdateSupportPolicy }) {
+function SupportPolicyForm({
+  policy,
+  onUpdateSupportPolicy,
+}: {
+  policy: SupportPolicy;
+  onUpdateSupportPolicy: AsyncApiHandler<ApiPayload, ApiResponse<SupportPolicy>>;
+}) {
   const [supportAccessEnabled, setSupportAccessEnabled] = useState(policy.supportAccessEnabled);
   const [supportContact, setSupportContact] = useState(policy.supportContact || '');
   const [supportPolicyUrl, setSupportPolicyUrl] = useState(policy.supportPolicyUrl || '');
@@ -2636,7 +2850,7 @@ function SupportPolicyForm({ policy, onUpdateSupportPolicy }) {
   const [success, setSuccess] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  async function submitPolicy(event) {
+  async function submitPolicy(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError('');
     setSuccess('');
@@ -2652,7 +2866,7 @@ function SupportPolicyForm({ policy, onUpdateSupportPolicy }) {
       setUnlockSecret('');
       setSuccess('Support policy saved.');
     } catch (caught) {
-      setError(caught.message);
+      setError(errorMessage(caught));
     } finally {
       setSubmitting(false);
     }
@@ -2707,7 +2921,13 @@ function SupportPolicyForm({ policy, onUpdateSupportPolicy }) {
   );
 }
 
-function DataPolicyForm({ policy, onUpdateDataPolicy }) {
+function DataPolicyForm({
+  policy,
+  onUpdateDataPolicy,
+}: {
+  policy: DataPolicy;
+  onUpdateDataPolicy: AsyncApiHandler<ApiPayload, ApiResponse<DataPolicy>>;
+}) {
   const [auditRetentionDays, setAuditRetentionDays] = useState(String(policy.auditRetentionDays));
   const [idempotencyRetentionDays, setIdempotencyRetentionDays] = useState(String(policy.idempotencyRetentionDays));
   const [sessionRetentionDays, setSessionRetentionDays] = useState(String(policy.sessionRetentionDays));
@@ -2717,7 +2937,7 @@ function DataPolicyForm({ policy, onUpdateDataPolicy }) {
   const [success, setSuccess] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  async function submitPolicy(event) {
+  async function submitPolicy(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError('');
     setSuccess('');
@@ -2733,7 +2953,7 @@ function DataPolicyForm({ policy, onUpdateDataPolicy }) {
       setUnlockSecret('');
       setSuccess('Data policy saved.');
     } catch (caught) {
-      setError(caught.message);
+      setError(errorMessage(caught));
     } finally {
       setSubmitting(false);
     }
@@ -2802,7 +3022,15 @@ function DataPolicyForm({ policy, onUpdateDataPolicy }) {
   );
 }
 
-function DataOperationsPanel({ onExportAccountData, onRunRetention, onDeleteAccountData }) {
+function DataOperationsPanel({
+  onExportAccountData,
+  onRunRetention,
+  onDeleteAccountData,
+}: {
+  onExportAccountData: AsyncApiHandler<ApiPayload, ApiResponse<PortableExportPayload>>;
+  onRunRetention: AsyncApiHandler<ApiPayload, ApiResponse<{ counts?: CountSummary }>>;
+  onDeleteAccountData: AsyncApiHandler<ApiPayload, ApiResponse<{ counts?: CountSummary }>>;
+}) {
   const [exportUnlockSecret, setExportUnlockSecret] = useState('');
   const [exportConfirmation, setExportConfirmation] = useState('');
   const [exportError, setExportError] = useState('');
@@ -2819,7 +3047,7 @@ function DataOperationsPanel({ onExportAccountData, onRunRetention, onDeleteAcco
   const [deleteSuccess, setDeleteSuccess] = useState('');
   const [deleting, setDeleting] = useState(false);
 
-  async function submitExport(event) {
+  async function submitExport(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setExportError('');
     setExportSuccess('');
@@ -2836,13 +3064,13 @@ function DataOperationsPanel({ onExportAccountData, onRunRetention, onDeleteAcco
       setExportConfirmation('');
       setExportSuccess(`Sanitized export prepared with ${payload?.counts?.cards || 0} cards.`);
     } catch (caught) {
-      setExportError(caught.message);
+      setExportError(errorMessage(caught));
     } finally {
       setExporting(false);
     }
   }
 
-  async function submitRetention(event) {
+  async function submitRetention(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setRetentionError('');
     setRetentionSuccess('');
@@ -2857,13 +3085,13 @@ function DataOperationsPanel({ onExportAccountData, onRunRetention, onDeleteAcco
       setRetentionConfirmation('');
       setRetentionSuccess(`Retention purged ${counts.auditLog || 0} audit rows and ${counts.idempotencyKeys || 0} idempotency rows.`);
     } catch (caught) {
-      setRetentionError(caught.message);
+      setRetentionError(errorMessage(caught));
     } finally {
       setRetentionRunning(false);
     }
   }
 
-  async function submitDelete(event) {
+  async function submitDelete(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setDeleteError('');
     setDeleteSuccess('');
@@ -2878,7 +3106,7 @@ function DataOperationsPanel({ onExportAccountData, onRunRetention, onDeleteAcco
       setDeleteConfirmation('');
       setDeleteSuccess(`Deleted ${counts.cards || 0} cards and ${counts.deals || 0} deals.`);
     } catch (caught) {
-      setDeleteError(caught.message);
+      setDeleteError(errorMessage(caught));
     } finally {
       setDeleting(false);
     }
@@ -2977,7 +3205,7 @@ function DataOperationsPanel({ onExportAccountData, onRunRetention, onDeleteAcco
   );
 }
 
-function ChangeUnlockSecretForm({ onChangeUnlockSecret }) {
+function ChangeUnlockSecretForm({ onChangeUnlockSecret }: { onChangeUnlockSecret: AsyncApiHandler<ApiPayload, ApiResponse<unknown>> }) {
   const [oldUnlockSecret, setOldUnlockSecret] = useState('');
   const [newUnlockSecret, setNewUnlockSecret] = useState('');
   const [confirmUnlockSecret, setConfirmUnlockSecret] = useState('');
@@ -2985,7 +3213,7 @@ function ChangeUnlockSecretForm({ onChangeUnlockSecret }) {
   const [success, setSuccess] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  async function submitChange(event) {
+  async function submitChange(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError('');
     setSuccess('');
@@ -3002,7 +3230,7 @@ function ChangeUnlockSecretForm({ onChangeUnlockSecret }) {
       setConfirmUnlockSecret('');
       setSuccess('Unlock secret changed.');
     } catch (caught) {
-      setError(caught.message);
+      setError(errorMessage(caught));
     } finally {
       setSubmitting(false);
     }
@@ -3049,7 +3277,13 @@ function ChangeUnlockSecretForm({ onChangeUnlockSecret }) {
   );
 }
 
-function CardSearchForm({ deals, onSearchCards }) {
+function CardSearchForm({
+  deals,
+  onSearchCards,
+}: {
+  deals: Deal[];
+  onSearchCards: (criteria?: CardSearchCriteria) => Promise<unknown>;
+}) {
   const [cardNumber, setCardNumber] = useState('');
   const [status, setStatus] = useState('');
   const [brand, setBrand] = useState('');
@@ -3061,7 +3295,7 @@ function CardSearchForm({ deals, onSearchCards }) {
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  async function submitSearch(event) {
+  async function submitSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError('');
     setSubmitting(true);
@@ -3079,7 +3313,7 @@ function CardSearchForm({ deals, onSearchCards }) {
         sortDir,
       });
     } catch (caught) {
-      setError(caught.message);
+      setError(errorMessage(caught));
     } finally {
       setSubmitting(false);
     }
@@ -3111,7 +3345,7 @@ function CardSearchForm({ deals, onSearchCards }) {
         offset: 0,
       });
     } catch (caught) {
-      setError(caught.message);
+      setError(errorMessage(caught));
     } finally {
       setSubmitting(false);
     }
@@ -3194,7 +3428,15 @@ function CardSearchForm({ deals, onSearchCards }) {
   );
 }
 
-function CardsPagination({ page, currentCount, onPageCards }) {
+function CardsPagination({
+  page,
+  currentCount,
+  onPageCards,
+}: {
+  page: Page;
+  currentCount: number;
+  onPageCards: (offset: number) => void;
+}) {
   if (!page?.total) {
     return null;
   }
@@ -3233,11 +3475,23 @@ function CardsPagination({ page, currentCount, onPageCards }) {
   );
 }
 
-function canUndoUsage(usage) {
+function canUndoUsage(usage: Usage): boolean {
   return !usage.isReversed && !usage.reversedAt && !usage.isWriteOff;
 }
 
-function HistoryList({ title, items, renderItem, emptyText, children = null }) {
+function HistoryList<T extends { id: string | number }>({
+  title,
+  items,
+  renderItem,
+  emptyText,
+  children = null,
+}: {
+  title: string;
+  items: T[];
+  renderItem: (item: T) => ReactNode;
+  emptyText: string;
+  children?: ReactNode;
+}) {
   return (
     <section className="detail-section">
       <h3>{title}</h3>
@@ -3255,14 +3509,28 @@ function HistoryList({ title, items, renderItem, emptyText, children = null }) {
   );
 }
 
-function CardDetailPanel({ detailState, canManage, onClose, onLogout, onUndoUsage, onRevealCredentials }) {
+function CardDetailPanel({
+  detailState,
+  canManage,
+  onClose,
+  onLogout,
+  onUndoUsage,
+  onRevealCredentials,
+}: {
+  detailState: CardDetailState;
+  canManage: boolean;
+  onClose: VoidHandler;
+  onLogout: VoidHandler;
+  onUndoUsage: (usageId: string, reason: string) => Promise<unknown>;
+  onRevealCredentials: (cardId: string) => Promise<ApiResponse<RevealedCredentials>>;
+}) {
   const { card, data, error, loading } = detailState;
   const detailCard = data?.card || card;
-  const [undoUsage, setUndoUsage] = useState(null);
+  const [undoUsage, setUndoUsage] = useState<Usage | null>(null);
   const [undoReason, setUndoReason] = useState('');
   const [undoError, setUndoError] = useState('');
   const [submittingUndo, setSubmittingUndo] = useState(false);
-  const [credentials, setCredentials] = useState(null);
+  const [credentials, setCredentials] = useState<RevealedCredentials | null>(null);
   const [credentialError, setCredentialError] = useState('');
   const [credentialMessage, setCredentialMessage] = useState('');
   const [revealing, setRevealing] = useState(false);
@@ -3294,13 +3562,13 @@ function CardDetailPanel({ detailState, canManage, onClose, onLogout, onUndoUsag
     };
   }, []);
 
-  function startUndoUsage(usage) {
+  function startUndoUsage(usage: Usage) {
     setUndoUsage(usage);
     setUndoReason('');
     setUndoError('');
   }
 
-  async function submitUndoUsage(event) {
+  async function submitUndoUsage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setUndoError('');
 
@@ -3312,11 +3580,13 @@ function CardDetailPanel({ detailState, canManage, onClose, onLogout, onUndoUsag
 
     setSubmittingUndo(true);
     try {
-      await onUndoUsage(undoUsage.id, reason);
+      if (undoUsage) {
+        await onUndoUsage(undoUsage.id, reason);
+      }
       setUndoUsage(null);
       setUndoReason('');
     } catch (caught) {
-      setUndoError(caught.message);
+      setUndoError(errorMessage(caught));
     } finally {
       setSubmittingUndo(false);
     }
@@ -3331,14 +3601,14 @@ function CardDetailPanel({ detailState, canManage, onClose, onLogout, onUndoUsag
       setCredentials(response.data);
       return response.data;
     } catch (caught) {
-      setCredentialError(caught.message);
+      setCredentialError(errorMessage(caught));
       return null;
     } finally {
       setRevealing(false);
     }
   }
 
-  async function copyValue(value, label) {
+  async function copyValue(value: string | null | undefined, label: string) {
     setCredentialError('');
     setCredentialMessage('');
     if (!value) {
@@ -3354,10 +3624,15 @@ function CardDetailPanel({ detailState, canManage, onClose, onLogout, onUndoUsag
     setCredentialMessage(`${label} copied.`);
   }
 
-  async function copyCredential(fieldKey, label) {
+  async function copyCredential(fieldKey: string, label: string) {
     const currentCredentials = credentials || (await revealCredentials());
     const field = currentCredentials?.credentials?.fields?.find((item) => item.fieldKey === fieldKey);
-    await copyValue(field?.value ?? currentCredentials?.[fieldKey], label);
+    const legacyValues: Record<string, string | null | undefined> = {
+      cardNumber: currentCredentials?.cardNumber,
+      pin: currentCredentials?.pin,
+      billingZip: currentCredentials?.billingZip,
+    };
+    await copyValue(field?.value ?? legacyValues[fieldKey], label);
   }
 
   async function copyPrimaryCredential() {
@@ -3368,28 +3643,28 @@ function CardDetailPanel({ detailState, canManage, onClose, onLogout, onUndoUsag
     await copyValue(field?.value ?? currentCredentials?.cardNumber, field?.label || 'Credential');
   }
 
-  const revealedCredentialFields = credentials?.credentials?.fields?.length
+  const revealedCredentialFields: CredentialField[] = credentials?.credentials?.fields?.length
     ? credentials.credentials.fields
     : credentials
       ? [
           {
             fieldKey: 'cardNumber',
             label: 'Card number',
-            fieldKind: 'card_number',
+            fieldKind: 'card_number' as CredentialFieldKind,
             value: credentials.cardNumber,
             copyable: true,
           },
           {
             fieldKey: 'pin',
             label: 'PIN',
-            fieldKind: 'pin',
+            fieldKind: 'pin' as CredentialFieldKind,
             value: credentials.pin,
             copyable: true,
           },
           {
             fieldKey: 'billingZip',
             label: 'Billing ZIP',
-            fieldKind: 'billing_postal_code',
+            fieldKind: 'billing_postal_code' as CredentialFieldKind,
             value: credentials.billingZip,
             copyable: true,
           },
@@ -3606,7 +3881,7 @@ function CardDetailPanel({ detailState, canManage, onClose, onLogout, onUndoUsag
   );
 }
 
-function DealDetailPanel({ detailState, onClose }) {
+function DealDetailPanel({ detailState, onClose }: { detailState: DealDetailState; onClose: VoidHandler }) {
   const { deal, data, error, loading } = detailState;
   const detailDeal = data?.deal || deal;
   const dealCards = data?.cards || [];
@@ -3708,7 +3983,15 @@ function DealDetailPanel({ detailState, onClose }) {
   );
 }
 
-function EditCardPanel({ card, onClose, onEditCard }) {
+function EditCardPanel({
+  card,
+  onClose,
+  onEditCard,
+}: {
+  card: Card;
+  onClose: VoidHandler;
+  onEditCard: (cardId: string, payload: ApiPayload) => Promise<unknown>;
+}) {
   const terminal = isTerminalCard(card);
   const [form, setForm] = useState({
     brand: card.brand || '',
@@ -3719,16 +4002,21 @@ function EditCardPanel({ card, onClose, onEditCard }) {
   const [submitting, setSubmitting] = useState(false);
   const dialogRef = useDialogFocus(onClose);
 
-  function updateField(field, value) {
+  function updateField(field: 'brand' | 'expirationDate' | 'notes', value: string) {
     setForm((current) => ({ ...current, [field]: value }));
   }
 
-  async function submitEdit(event) {
+  async function submitEdit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError('');
 
     const notes = form.notes.trim();
-    const payload: any = {
+    const payload: {
+      rowVersion: number;
+      brand?: string;
+      expirationDate?: string | null;
+      notes?: string | null;
+    } = {
       rowVersion: card.rowVersion,
     };
 
@@ -3748,7 +4036,7 @@ function EditCardPanel({ card, onClose, onEditCard }) {
       await onEditCard(card.id, payload);
       onClose();
     } catch (caught) {
-      setError(caught.message);
+      setError(errorMessage(caught));
     } finally {
       setSubmitting(false);
     }
@@ -3809,12 +4097,20 @@ function EditCardPanel({ card, onClose, onEditCard }) {
   );
 }
 
-function DeleteCardPanel({ card, onClose, onDeleteCard }) {
+function DeleteCardPanel({
+  card,
+  onClose,
+  onDeleteCard,
+}: {
+  card: Card;
+  onClose: VoidHandler;
+  onDeleteCard: (cardId: string) => Promise<unknown>;
+}) {
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const dialogRef = useDialogFocus(onClose);
 
-  async function submitDelete(event) {
+  async function submitDelete(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError('');
     setSubmitting(true);
@@ -3822,7 +4118,7 @@ function DeleteCardPanel({ card, onClose, onDeleteCard }) {
       await onDeleteCard(card.id);
       onClose();
     } catch (caught) {
-      setError(caught.message);
+      setError(errorMessage(caught));
     } finally {
       setSubmitting(false);
     }
@@ -3867,7 +4163,21 @@ function DeleteCardPanel({ card, onClose, onDeleteCard }) {
   );
 }
 
-function ReferenceCombobox({ label, value, onChange, options, required = false, placeholder = '' }) {
+function ReferenceCombobox({
+  label,
+  value,
+  onChange,
+  options,
+  required = false,
+  placeholder = '',
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: ReferenceValue[];
+  required?: boolean;
+  placeholder?: string;
+}) {
   const generatedId = useId();
   const inputId = `reference-combobox-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${generatedId}`;
   const listboxId = `${inputId}-listbox`;
@@ -3875,13 +4185,13 @@ function ReferenceCombobox({ label, value, onChange, options, required = false, 
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const matches = useMemo(() => filterReferenceOptions(options, value), [options, value]);
 
-  function selectOption(option) {
+  function selectOption(option: ReferenceValue) {
     onChange(option.value);
     setOpen(false);
     setHighlightedIndex(0);
   }
 
-  function handleKeyDown(event) {
+  function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
     if (event.key === 'ArrowDown') {
       event.preventDefault();
       setOpen(true);
@@ -3908,7 +4218,7 @@ function ReferenceCombobox({ label, value, onChange, options, required = false, 
   return (
     <div
       className="combobox-field"
-      onBlur={(event) => {
+      onBlur={(event: FocusEvent<HTMLDivElement>) => {
         if (!event.currentTarget.contains(event.relatedTarget)) {
           setOpen(false);
         }
@@ -3958,13 +4268,25 @@ function ReferenceCombobox({ label, value, onChange, options, required = false, 
   );
 }
 
-function ReferenceReviewModal({ items, onClose, onConfirm, onUseSuggestion, submitting }) {
-  const [checked, setChecked] = useState(() =>
+function ReferenceReviewModal({
+  items,
+  onClose,
+  onConfirm,
+  onUseSuggestion,
+  submitting,
+}: {
+  items: ReferenceReviewItem[];
+  onClose: VoidHandler;
+  onConfirm: (items: ReferenceReviewItem[]) => void;
+  onUseSuggestion: (item: ReferenceReviewItem, suggestion: ReferenceValue) => void;
+  submitting: boolean;
+}) {
+  const [checked, setChecked] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(items.map((item) => [item.key, true])),
   );
   const dialogRef = useDialogFocus(onClose);
 
-  function toggleItem(key, value) {
+  function toggleItem(key: string, value: boolean) {
     setChecked((current) => ({
       ...current,
       [key]: value,
@@ -4044,12 +4366,20 @@ function AddDealPanel({
   onClose,
   onCreateDeal,
   referenceValues = defaultReferenceValues,
-  onLoadReferenceValues = async () => {},
-  onUpsertReferenceValues = async (_values?: any[]) => {},
+  onLoadReferenceValues = async () => defaultReferenceValues,
+  onUpsertReferenceValues = async (_values?: ReferenceValue[]) => [],
   referenceValueHintsEnabled = true,
   features = defaultFeatureFlags,
+}: {
+  onClose: VoidHandler;
+  onCreateDeal: AsyncApiHandler<ApiPayload, unknown>;
+  referenceValues?: ReferenceValueState;
+  onLoadReferenceValues?: () => Promise<ReferenceValueState>;
+  onUpsertReferenceValues?: (values?: ReferenceValue[]) => Promise<ReferenceValue[]>;
+  referenceValueHintsEnabled?: boolean;
+  features?: FeatureFlags;
 }) {
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<AddDealFormState>({
     name: '',
     source: '',
     totalCost: '',
@@ -4081,7 +4411,7 @@ function AddDealPanel({
   });
   const [error, setError] = useState('');
   const [referenceError, setReferenceError] = useState('');
-  const [reviewItems, setReviewItems] = useState<any[]>([]);
+  const [reviewItems, setReviewItems] = useState<ReferenceReviewItem[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const dialogRef = useDialogFocus(onClose);
   const loadReferenceValuesRef = useRef(onLoadReferenceValues);
@@ -4097,7 +4427,7 @@ function AddDealPanel({
     }
     loadReferenceValuesRef.current().catch((caught) => {
       if (!canceled) {
-        setReferenceError(caught.message);
+        setReferenceError(errorMessage(caught));
       }
     });
     return () => {
@@ -4105,17 +4435,17 @@ function AddDealPanel({
     };
   }, [referenceValueHintsEnabled]);
 
-  function updateField(field, value) {
+  function updateField(field: keyof AddDealFormState, value: string | boolean) {
     setForm((current) => ({
       ...current,
       [field]: value,
       ...(field === 'cardBrand' && !current.profileTouched
-        ? { credentialProfile: inferCredentialProfileForBrand(value) }
+        ? { credentialProfile: inferCredentialProfileForBrand(String(value)) as AddDealFormState['credentialProfile'] }
         : {}),
     }));
   }
 
-  function updateCredentialProfile(value) {
+  function updateCredentialProfile(value: AddDealFormState['credentialProfile']) {
     setForm((current) => ({
       ...current,
       credentialProfile: value,
@@ -4123,7 +4453,7 @@ function AddDealPanel({
     }));
   }
 
-  function updateCustomField(id, patch) {
+  function updateCustomField(id: string, patch: Partial<AddDealCustomField>) {
     setForm((current) => ({
       ...current,
       customFields: current.customFields.map((field) =>
@@ -4147,7 +4477,7 @@ function AddDealPanel({
     }));
   }
 
-  function removeCustomField(id) {
+  function removeCustomField(id: string) {
     setForm((current) => ({
       ...current,
       customFields:
@@ -4157,9 +4487,15 @@ function AddDealPanel({
     }));
   }
 
-  function credentialFields() {
-    const fields = [];
-    const push = (fieldKey, label, fieldKind, value, extra = {}) => {
+  function credentialFields(): CredentialField[] {
+    const fields: CredentialField[] = [];
+    const push = (
+      fieldKey: string,
+      label: string,
+      fieldKind: CredentialFieldKind,
+      value: string,
+      extra: Partial<CredentialField> = {},
+    ) => {
       if (!String(value || '').trim()) {
         return;
       }
@@ -4223,7 +4559,7 @@ function AddDealPanel({
     return fields;
   }
 
-  function dealPayload(totalCostCents, faceValueCents) {
+  function dealPayload(totalCostCents: number | undefined, faceValueCents: number) {
     const profile = form.credentialProfile === 'merchant_number_access'
       ? 'merchant_number_pin'
       : form.credentialProfile;
@@ -4256,7 +4592,13 @@ function AddDealPanel({
     };
   }
 
-  async function createDeal({ skipReview = false, approvedReferenceItems = [] } = {}) {
+  async function createDeal({
+    skipReview = false,
+    approvedReferenceItems = [],
+  }: {
+    skipReview?: boolean;
+    approvedReferenceItems?: ReferenceReviewItem[];
+  } = {}) {
     setError('');
 
     const totalCostCents = dollarsToCents(form.totalCost);
@@ -4285,18 +4627,18 @@ function AddDealPanel({
       await onCreateDeal(dealPayload(totalCostCents, faceValueCents));
       onClose();
     } catch (caught) {
-      setError(caught.message);
+      setError(errorMessage(caught));
     } finally {
       setSubmitting(false);
     }
   }
 
-  async function submitDeal(event) {
+  async function submitDeal(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     await createDeal();
   }
 
-  function useSuggestion(item, suggestion) {
+  function useSuggestion(item: ReferenceReviewItem, suggestion: ReferenceValue) {
     updateField(item.field, suggestion.value);
     setReviewItems([]);
     setError('');
@@ -4459,7 +4801,7 @@ function AddDealPanel({
                 <span>Type</span>
                 <select
                   value={field.fieldKind}
-                  onChange={(event) => updateCustomField(field.id, { fieldKind: event.target.value })}
+                  onChange={(event) => updateCustomField(field.id, { fieldKind: event.target.value as CredentialFieldKind })}
                 >
                   {customCredentialFieldKinds.map((option) => (
                     <option key={option.value} value={option.value}>
@@ -4605,7 +4947,10 @@ function AddDealPanel({
           </label>
           <label>
             <span>Credential type</span>
-            <select value={form.credentialProfile} onChange={(event) => updateCredentialProfile(event.target.value)}>
+            <select
+              value={form.credentialProfile}
+              onChange={(event) => updateCredentialProfile(event.target.value as AddDealFormState['credentialProfile'])}
+            >
               {credentialProfileOptions.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
@@ -4643,7 +4988,15 @@ function AddDealPanel({
   );
 }
 
-function EditDealPanel({ deal, onClose, onEditDeal }) {
+function EditDealPanel({
+  deal,
+  onClose,
+  onEditDeal,
+}: {
+  deal: Deal;
+  onClose: VoidHandler;
+  onEditDeal: (dealId: string, payload: ApiPayload) => Promise<unknown>;
+}) {
   const [form, setForm] = useState({
     name: deal.name || '',
     source: deal.source || '',
@@ -4654,14 +5007,14 @@ function EditDealPanel({ deal, onClose, onEditDeal }) {
   const [submitting, setSubmitting] = useState(false);
   const dialogRef = useDialogFocus(onClose);
 
-  function updateField(field, value) {
+  function updateField(field: 'name' | 'source' | 'purchaseDate' | 'notes', value: string) {
     setForm((current) => ({
       ...current,
       [field]: value,
     }));
   }
 
-  async function submitEdit(event) {
+  async function submitEdit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError('');
 
@@ -4682,7 +5035,7 @@ function EditDealPanel({ deal, onClose, onEditDeal }) {
       });
       onClose();
     } catch (caught) {
-      setError(caught.message);
+      setError(errorMessage(caught));
     } finally {
       setSubmitting(false);
     }
@@ -4736,7 +5089,15 @@ function EditDealPanel({ deal, onClose, onEditDeal }) {
   );
 }
 
-function ReserveCardPanel({ card, onClose, onReserveCard }) {
+function ReserveCardPanel({
+  card,
+  onClose,
+  onReserveCard,
+}: {
+  card: Card;
+  onClose: VoidHandler;
+  onReserveCard: (cardId: string, payload: ApiPayload) => Promise<unknown>;
+}) {
   const [reservedFor, setReservedFor] = useState('');
   const [reservedUntil, setReservedUntil] = useState('');
   const [reservedNotes, setReservedNotes] = useState('');
@@ -4744,7 +5105,7 @@ function ReserveCardPanel({ card, onClose, onReserveCard }) {
   const [submitting, setSubmitting] = useState(false);
   const dialogRef = useDialogFocus(onClose);
 
-  async function submitReserve(event) {
+  async function submitReserve(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError('');
 
@@ -4757,7 +5118,7 @@ function ReserveCardPanel({ card, onClose, onReserveCard }) {
       });
       onClose();
     } catch (caught) {
-      setError(caught.message);
+      setError(errorMessage(caught));
     } finally {
       setSubmitting(false);
     }
@@ -4808,13 +5169,21 @@ function ReserveCardPanel({ card, onClose, onReserveCard }) {
   );
 }
 
-function VoidCardPanel({ card, onClose, onVoidCard }) {
+function VoidCardPanel({
+  card,
+  onClose,
+  onVoidCard,
+}: {
+  card: Card;
+  onClose: VoidHandler;
+  onVoidCard: (cardId: string, payload: ApiPayload) => Promise<unknown>;
+}) {
   const [reason, setReason] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const dialogRef = useDialogFocus(onClose);
 
-  async function submitVoid(event) {
+  async function submitVoid(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError('');
 
@@ -4828,7 +5197,7 @@ function VoidCardPanel({ card, onClose, onVoidCard }) {
       await onVoidCard(card.id, { reason: reason.trim() });
       onClose();
     } catch (caught) {
-      setError(caught.message);
+      setError(errorMessage(caught));
     } finally {
       setSubmitting(false);
     }
@@ -4874,13 +5243,21 @@ function VoidCardPanel({ card, onClose, onVoidCard }) {
   );
 }
 
-function UndoSalePanel({ card, onClose, onUndoSale }) {
+function UndoSalePanel({
+  card,
+  onClose,
+  onUndoSale,
+}: {
+  card: Card;
+  onClose: VoidHandler;
+  onUndoSale: (cardId: string, payload: ApiPayload) => Promise<unknown>;
+}) {
   const [reason, setReason] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const dialogRef = useDialogFocus(onClose);
 
-  async function submitUndoSale(event) {
+  async function submitUndoSale(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError('');
 
@@ -4894,7 +5271,7 @@ function UndoSalePanel({ card, onClose, onUndoSale }) {
       await onUndoSale(card.id, { reason: reason.trim() });
       onClose();
     } catch (caught) {
-      setError(caught.message);
+      setError(errorMessage(caught));
     } finally {
       setSubmitting(false);
     }
@@ -4940,7 +5317,15 @@ function UndoSalePanel({ card, onClose, onUndoSale }) {
   );
 }
 
-function SellCardPanel({ card, onClose, onSellCard }) {
+function SellCardPanel({
+  card,
+  onClose,
+  onSellCard,
+}: {
+  card: Card;
+  onClose: VoidHandler;
+  onSellCard: (cardId: string, payload: CardSalePayload) => Promise<unknown>;
+}) {
   const [salePrice, setSalePrice] = useState('');
   const [buyerName, setBuyerName] = useState('');
   const [buyerType, setBuyerType] = useState('');
@@ -4948,7 +5333,7 @@ function SellCardPanel({ card, onClose, onSellCard }) {
   const [submitting, setSubmitting] = useState(false);
   const dialogRef = useDialogFocus(onClose);
 
-  async function submitSale(event) {
+  async function submitSale(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError('');
     const salePriceCents = dollarsToCents(salePrice);
@@ -4967,7 +5352,7 @@ function SellCardPanel({ card, onClose, onSellCard }) {
       });
       onClose();
     } catch (caught) {
-      setError(caught.message);
+      setError(errorMessage(caught));
     } finally {
       setSubmitting(false);
     }
@@ -5036,14 +5421,22 @@ function SellCardPanel({ card, onClose, onSellCard }) {
   );
 }
 
-function UseCardPanel({ card, onClose, onUseCard }) {
+function UseCardPanel({
+  card,
+  onClose,
+  onUseCard,
+}: {
+  card: Card;
+  onClose: VoidHandler;
+  onUseCard: (cardId: string, payload: ApiPayload) => Promise<unknown>;
+}) {
   const [amount, setAmount] = useState('');
   const [merchant, setMerchant] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const dialogRef = useDialogFocus(onClose);
 
-  async function submitUsage(event) {
+  async function submitUsage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError('');
     const amountCents = dollarsToCents(amount);
@@ -5061,7 +5454,7 @@ function UseCardPanel({ card, onClose, onUseCard }) {
       });
       onClose();
     } catch (caught) {
-      setError(caught.message);
+      setError(errorMessage(caught));
     } finally {
       setSubmitting(false);
     }
@@ -5186,19 +5579,19 @@ function WorkSurface({
   onVoidCard,
   onReserveCard,
   onUnreserveCard,
-}) {
-  const [activeView, setActiveView] = useState('dashboard');
+}: WorkSurfaceProps) {
+  const [activeView, setActiveView] = useState<ViewId>('dashboard');
   const [showAddDeal, setShowAddDeal] = useState(false);
-  const [editDeal, setEditDeal] = useState(null);
-  const [usageCard, setUsageCard] = useState(null);
-  const [editCard, setEditCard] = useState(null);
-  const [deleteCard, setDeleteCard] = useState(null);
-  const [reserveCard, setReserveCard] = useState(null);
-  const [saleCard, setSaleCard] = useState(null);
-  const [undoSaleCard, setUndoSaleCard] = useState(null);
-  const [voidCard, setVoidCard] = useState(null);
-  const [detailState, setDetailState] = useState(null);
-  const [dealDetailState, setDealDetailState] = useState(null);
+  const [editDeal, setEditDeal] = useState<Deal | null>(null);
+  const [usageCard, setUsageCard] = useState<Card | null>(null);
+  const [editCard, setEditCard] = useState<Card | null>(null);
+  const [deleteCard, setDeleteCard] = useState<Card | null>(null);
+  const [reserveCard, setReserveCard] = useState<Card | null>(null);
+  const [saleCard, setSaleCard] = useState<Card | null>(null);
+  const [undoSaleCard, setUndoSaleCard] = useState<Card | null>(null);
+  const [voidCard, setVoidCard] = useState<Card | null>(null);
+  const [detailState, setDetailState] = useState<CardDetailState | null>(null);
+  const [dealDetailState, setDealDetailState] = useState<DealDetailState | null>(null);
   const [showArchivedDeals, setShowArchivedDeals] = useState(false);
   const [dealError, setDealError] = useState('');
   const userCanAdmin = canAdmin(auth);
@@ -5259,7 +5652,7 @@ function WorkSurface({
     ],
   );
 
-  async function activateView(view) {
+  async function activateView(view: ViewId) {
     setActiveView(view);
     if (view === 'audit') {
       await onLoadAudit({});
@@ -5276,7 +5669,7 @@ function WorkSurface({
     }
   }
 
-  async function toggleArchivedDeals(event) {
+  async function toggleArchivedDeals(event: ChangeEvent<HTMLInputElement>) {
     const nextValue = event.target.checked;
     setDealError('');
     setShowArchivedDeals(nextValue);
@@ -5284,56 +5677,56 @@ function WorkSurface({
       await onLoadDeals(nextValue);
     } catch (caught) {
       setShowArchivedDeals(!nextValue);
-      setDealError(caught.message);
+      setDealError(errorMessage(caught));
     }
   }
 
-  async function archiveDeal(deal) {
+  async function archiveDeal(deal: Deal) {
     setDealError('');
     try {
       await onArchiveDeal(deal, showArchivedDeals);
     } catch (caught) {
-      setDealError(caught.message);
+      setDealError(errorMessage(caught));
     }
   }
 
-  async function unarchiveDeal(deal) {
+  async function unarchiveDeal(deal: Deal) {
     setDealError('');
     try {
       await onUnarchiveDeal(deal, showArchivedDeals);
     } catch (caught) {
-      setDealError(caught.message);
+      setDealError(errorMessage(caught));
     }
   }
 
-  async function openCardDetail(card) {
+  async function openCardDetail(card: Card) {
     setDetailState({ card, data: null, error: '', loading: true });
     try {
       const response = await onLoadCardDetail(card.id);
       setDetailState({ card: response.data.card, data: response.data, error: '', loading: false });
     } catch (caught) {
-      setDetailState({ card, data: null, error: caught.message, loading: false });
+      setDetailState({ card, data: null, error: errorMessage(caught), loading: false });
     }
   }
 
-  async function openDealDetail(deal) {
+  async function openDealDetail(deal: Deal) {
     setDealDetailState({ deal, data: null, error: '', loading: true });
     try {
       const response = await onLoadDealDetail(deal.id);
       setDealDetailState({ deal: response.data.deal, data: response.data, error: '', loading: false });
     } catch (caught) {
-      setDealDetailState({ deal, data: null, error: caught.message, loading: false });
+      setDealDetailState({ deal, data: null, error: errorMessage(caught), loading: false });
     }
   }
 
-  async function undoUsageFromDetail(usageId, reason) {
+  async function undoUsageFromDetail(usageId: string | number, reason: string) {
     const cardId = (detailState?.data?.card || detailState?.card)?.id;
     const response = await onUndoUsage(cardId, { usageId, reason });
     setDetailState({ card: response.data.card, data: response.data, error: '', loading: false });
     return response;
   }
 
-  async function pageCards(offset) {
+  async function pageCards(offset: number) {
     await onSearchCards({
       limit: cardsPage?.limit || defaultPage.limit,
       offset,
@@ -5739,20 +6132,20 @@ function WorkSurface({
 }
 
 export default function App() {
-  const [auth, setAuth] = useState(null);
-  const [cards, setCards] = useState<any[]>([]);
-  const [cardsPage, setCardsPage] = useState(defaultPage);
-  const [cardCriteria, setCardCriteria] = useState<Record<string, any>>({});
-  const [deals, setDeals] = useState<any[]>([]);
-  const [auditEvents, setAuditEvents] = useState<any[]>([]);
+  const [auth, setAuth] = useState<AuthState | null>(null);
+  const [cards, setCards] = useState<Card[]>([]);
+  const [cardsPage, setCardsPage] = useState<Page>(defaultPage);
+  const [cardCriteria, setCardCriteria] = useState<CardSearchCriteria>({});
+  const [deals, setDeals] = useState<Deal[]>([]);
+  const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditError, setAuditError] = useState('');
   const [backupSettings, setBackupSettings] = useState(defaultBackupSettings);
   const [backupSettingsLoading, setBackupSettingsLoading] = useState(false);
   const [backupSettingsLoaded, setBackupSettingsLoaded] = useState(false);
   const [backupSettingsError, setBackupSettingsError] = useState('');
-  const [users, setUsers] = useState<any[]>([]);
-  const [userInvites, setUserInvites] = useState<any[]>([]);
+  const [users, setUsers] = useState<AuthUser[]>([]);
+  const [userInvites, setUserInvites] = useState<UserInvite[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
   const [usersLoaded, setUsersLoaded] = useState(false);
   const [usersError, setUsersError] = useState('');
@@ -5764,7 +6157,7 @@ export default function App() {
   const [dataPolicyLoading, setDataPolicyLoading] = useState(false);
   const [dataPolicyLoaded, setDataPolicyLoaded] = useState(false);
   const [dataPolicyError, setDataPolicyError] = useState('');
-  const [referenceValues, setReferenceValues] = useState(defaultReferenceValues);
+  const [referenceValues, setReferenceValues] = useState<ReferenceValueState>(defaultReferenceValues);
   const [loading, setLoading] = useState(true);
   const [inventoryLoading, setInventoryLoading] = useState(false);
   const [error, setError] = useState('');
@@ -5774,8 +6167,8 @@ export default function App() {
     setInventoryLoading(true);
     try {
       const [cardsResponse, dealsResponse] = await Promise.all([
-        apiFetch('/api/cards'),
-        apiFetch('/api/deals'),
+        apiFetch<ApiResponse<Card[]>>('/api/cards'),
+        apiFetch<ApiResponse<Deal[]>>('/api/deals'),
       ]);
       setCards(cardsResponse.data || []);
       setCardsPage(cardsResponse.page || defaultPage);
@@ -5786,7 +6179,7 @@ export default function App() {
     }
   }
 
-  async function handleSearchCards(criteria: Record<string, any> = {}) {
+  async function handleSearchCards(criteria: CardSearchCriteria = {}) {
     const nextCriteria = {
       ...cardCriteria,
       ...criteria,
@@ -5844,7 +6237,7 @@ export default function App() {
     const query = params.toString() ? `?${params.toString()}` : '';
     setInventoryLoading(true);
     try {
-      const response = await apiFetch(`/api/cards${query}`);
+      const response = await apiFetch<ApiResponse<Card[]>>(`/api/cards${query}`);
       setCards(response.data || []);
       setCardsPage(response.page || defaultPage);
       setCardCriteria(nextCriteria);
@@ -5853,23 +6246,23 @@ export default function App() {
     }
   }
 
-  async function handleLoadCardDetail(cardId) {
-    return apiFetch(`/api/cards/${cardId}`);
+  async function handleLoadCardDetail(cardId: string) {
+    return apiFetch<ApiResponse<CardDetail>>(`/api/cards/${cardId}`);
   }
 
-  async function handleLoadDealDetail(dealId) {
-    return apiFetch(`/api/deals/${dealId}`);
+  async function handleLoadDealDetail(dealId: string) {
+    return apiFetch<ApiResponse<DealDetail>>(`/api/deals/${dealId}`);
   }
 
-  async function handleRevealCardCredentials(cardId) {
-    return apiFetch(`/api/cards/${cardId}/reveal`, {
+  async function handleRevealCardCredentials(cardId: string) {
+    return apiFetch<ApiResponse<RevealedCredentials>>(`/api/cards/${cardId}/reveal`, {
       method: 'POST',
       body: {},
       csrfToken: auth.csrfToken,
     });
   }
 
-  async function handleLoadAudit(criteria: Record<string, any> = {}) {
+  async function handleLoadAudit(criteria: AuditCriteria = {}) {
     const params = new URLSearchParams();
     const entityType = criteriaValue(criteria.entityType);
     const action = criteriaValue(criteria.action);
@@ -5892,10 +6285,10 @@ export default function App() {
     setAuditLoading(true);
     setAuditError('');
     try {
-      const response = await apiFetch(`/api/audit${query}`);
+      const response = await apiFetch<ApiResponse<AuditEvent[]>>(`/api/audit${query}`);
       setAuditEvents(response.data || []);
     } catch (caught) {
-      setAuditError(caught.message);
+      setAuditError(errorMessage(caught));
     } finally {
       setAuditLoading(false);
     }
@@ -5905,20 +6298,20 @@ export default function App() {
     setBackupSettingsLoading(true);
     setBackupSettingsError('');
     try {
-      const response = await apiFetch('/api/settings/backup');
+      const response = await apiFetch<ApiResponse<BackupSettings>>('/api/settings/backup');
       setBackupSettings(response.data || defaultBackupSettings);
       setBackupSettingsLoaded(true);
       return response;
     } catch (caught) {
-      setBackupSettingsError(caught.message);
+      setBackupSettingsError(errorMessage(caught));
       return null;
     } finally {
       setBackupSettingsLoading(false);
     }
   }
 
-  async function handleUpdateBackupSettings(payload) {
-    const response = await apiFetch('/api/settings/backup', {
+  async function handleUpdateBackupSettings(payload: ApiPayload) {
+    const response = await apiFetch<ApiResponse<BackupSettings>>('/api/settings/backup', {
       method: 'PUT',
       body: payload,
       csrfToken: auth.csrfToken,
@@ -5933,23 +6326,23 @@ export default function App() {
     setUsersError('');
     try {
       const [response, invitesResponse] = await Promise.all([
-        apiFetch('/api/users'),
-        apiFetch('/api/users/invites'),
+        apiFetch<ApiResponse<AuthUser[]>>('/api/users'),
+        apiFetch<ApiResponse<UserInvite[]>>('/api/users/invites'),
       ]);
       setUsers(Array.isArray(response.data) ? response.data : []);
       setUserInvites(Array.isArray(invitesResponse.data) ? invitesResponse.data : []);
       setUsersLoaded(true);
       return response;
     } catch (caught) {
-      setUsersError(caught.message);
+      setUsersError(errorMessage(caught));
       return null;
     } finally {
       setUsersLoading(false);
     }
   }
 
-  async function handleCreateInvite(payload) {
-    const response = await apiFetch('/api/users/invites', {
+  async function handleCreateInvite(payload: ApiPayload) {
+    const response = await apiFetch<ApiResponse<UserInvite>>('/api/users/invites', {
       method: 'POST',
       body: payload,
       csrfToken: auth.csrfToken,
@@ -5959,8 +6352,8 @@ export default function App() {
     return response.data;
   }
 
-  async function handleRevokeInvite(inviteId) {
-    const response = await apiFetch(`/api/users/invites/${inviteId}`, {
+  async function handleRevokeInvite(inviteId: string) {
+    const response = await apiFetch<ApiResponse<UserInvite>>(`/api/users/invites/${inviteId}`, {
       method: 'DELETE',
       csrfToken: auth.csrfToken,
     });
@@ -5968,8 +6361,8 @@ export default function App() {
     return response.data;
   }
 
-  async function handleUpdateUser(userId, payload) {
-    const response = await apiFetch(`/api/users/${userId}`, {
+  async function handleUpdateUser(userId: string, payload: ApiPayload) {
+    const response = await apiFetch<ApiResponse<AuthUser>>(`/api/users/${userId}`, {
       method: 'PUT',
       body: payload,
       csrfToken: auth.csrfToken,
@@ -5982,20 +6375,20 @@ export default function App() {
     setSupportPolicyLoading(true);
     setSupportPolicyError('');
     try {
-      const response = await apiFetch('/api/admin/support-policy');
+      const response = await apiFetch<ApiResponse<SupportPolicy>>('/api/admin/support-policy');
       setSupportPolicy(response.data || defaultSupportPolicy);
       setSupportPolicyLoaded(true);
       return response;
     } catch (caught) {
-      setSupportPolicyError(caught.message);
+      setSupportPolicyError(errorMessage(caught));
       return null;
     } finally {
       setSupportPolicyLoading(false);
     }
   }
 
-  async function handleUpdateSupportPolicy(payload) {
-    const response = await apiFetch('/api/admin/support-policy', {
+  async function handleUpdateSupportPolicy(payload: ApiPayload) {
+    const response = await apiFetch<ApiResponse<SupportPolicy>>('/api/admin/support-policy', {
       method: 'PUT',
       body: payload,
       csrfToken: auth.csrfToken,
@@ -6009,20 +6402,20 @@ export default function App() {
     setDataPolicyLoading(true);
     setDataPolicyError('');
     try {
-      const response = await apiFetch('/api/admin/data-policy');
+      const response = await apiFetch<ApiResponse<DataPolicy>>('/api/admin/data-policy');
       setDataPolicy(response.data || defaultDataPolicy);
       setDataPolicyLoaded(true);
       return response;
     } catch (caught) {
-      setDataPolicyError(caught.message);
+      setDataPolicyError(errorMessage(caught));
       return null;
     } finally {
       setDataPolicyLoading(false);
     }
   }
 
-  async function handleUpdateDataPolicy(payload) {
-    const response = await apiFetch('/api/admin/data-policy', {
+  async function handleUpdateDataPolicy(payload: ApiPayload) {
+    const response = await apiFetch<ApiResponse<DataPolicy>>('/api/admin/data-policy', {
       method: 'PUT',
       body: payload,
       csrfToken: auth.csrfToken,
@@ -6032,24 +6425,24 @@ export default function App() {
     return response;
   }
 
-  async function handleExportAccountData(payload) {
-    return apiFetch('/api/admin/data-export', {
+  async function handleExportAccountData(payload: ApiPayload) {
+    return apiFetch<ApiResponse<PortableExportPayload>>('/api/admin/data-export', {
       method: 'POST',
       body: payload,
       csrfToken: auth.csrfToken,
     });
   }
 
-  async function handleRunRetention(payload) {
-    return apiFetch('/api/admin/retention/run', {
+  async function handleRunRetention(payload: ApiPayload) {
+    return apiFetch<ApiResponse<{ counts?: CountSummary }>>('/api/admin/retention/run', {
       method: 'POST',
       body: payload,
       csrfToken: auth.csrfToken,
     });
   }
 
-  async function handleDeleteAccountData(payload) {
-    const response = await apiFetch('/api/admin/data-delete', {
+  async function handleDeleteAccountData(payload: ApiPayload) {
+    const response = await apiFetch<ApiResponse<{ counts?: CountSummary }>>('/api/admin/data-delete', {
       method: 'POST',
       body: payload,
       csrfToken: auth.csrfToken,
@@ -6058,23 +6451,23 @@ export default function App() {
     return response;
   }
 
-  async function handleExportPlaintext(payload) {
-    return apiFetch('/api/backup/export', {
+  async function handleExportPlaintext(payload: ApiPayload) {
+    return apiFetch<ApiResponse<PortableExportPayload>>('/api/backup/export', {
       method: 'POST',
       body: payload,
       csrfToken: auth.csrfToken,
     });
   }
 
-  async function handleExportEncrypted(payload) {
-    return apiFetch('/api/backup/export-encrypted', {
+  async function handleExportEncrypted(payload: ApiPayload) {
+    return apiFetch<ApiResponse<PortableExportPayload>>('/api/backup/export-encrypted', {
       method: 'POST',
       body: payload,
       csrfToken: auth.csrfToken,
     });
   }
 
-  async function handleExportRawDatabase(payload) {
+  async function handleExportRawDatabase(payload: ApiPayload) {
     return apiDownload('/api/backup/db-file', {
       method: 'POST',
       body: payload,
@@ -6082,16 +6475,16 @@ export default function App() {
     });
   }
 
-  async function handlePreviewCsv(payload) {
-    return apiFetch('/api/cards/import-csv', {
+  async function handlePreviewCsv(payload: { csv: string }) {
+    return apiFetch<ApiResponse<CsvPreviewPayload>>('/api/cards/import-csv', {
       method: 'POST',
       body: payload,
       csrfToken: auth.csrfToken,
     });
   }
 
-  async function handleConfirmCsv(payload) {
-    const response = await apiFetch('/api/cards/import-csv/confirm', {
+  async function handleConfirmCsv(payload: { csv: string }) {
+    const response = await apiFetch<ApiResponse<CsvImportResult>>('/api/cards/import-csv/confirm', {
       method: 'POST',
       body: payload,
       csrfToken: auth.csrfToken,
@@ -6107,8 +6500,8 @@ export default function App() {
     return response;
   }
 
-  async function handleImportBackup(payload) {
-    const response = await apiFetch('/api/backup/import', {
+  async function handleImportBackup(payload: ApiPayload) {
+    const response = await apiFetch<ApiResponse<{ summary: ImportSummary }>>('/api/backup/import', {
       method: 'POST',
       body: payload,
       csrfToken: auth.csrfToken,
@@ -6117,16 +6510,16 @@ export default function App() {
     return response;
   }
 
-  async function handleChangeUnlockSecret(payload) {
-    return apiFetch('/api/auth/change-unlock-secret', {
+  async function handleChangeUnlockSecret(payload: ApiPayload) {
+    return apiFetch<ApiResponse<unknown>>('/api/auth/change-unlock-secret', {
       method: 'POST',
       body: payload,
       csrfToken: auth.csrfToken,
     });
   }
 
-  async function handleGenerateRecoveryCodes(payload) {
-    const response = await apiFetch('/api/auth/recovery-codes', {
+  async function handleGenerateRecoveryCodes(payload: { currentUnlockSecret: string }) {
+    const response = await apiFetch<ApiResponse<{ codes: string[]; activeCount: number }>>('/api/auth/recovery-codes', {
       method: 'POST',
       body: payload,
       csrfToken: auth.csrfToken,
@@ -6140,11 +6533,11 @@ export default function App() {
     return response.data;
   }
 
-  async function loadDeals({ includeArchived = false } = {}) {
+  async function loadDeals({ includeArchived = false }: { includeArchived?: boolean } = {}) {
     const query = includeArchived ? '?includeArchived=true' : '';
     setInventoryLoading(true);
     try {
-      const response = await apiFetch(`/api/deals${query}`);
+      const response = await apiFetch<ApiResponse<Deal[]>>(`/api/deals${query}`);
       setDeals(response.data || []);
     } finally {
       setInventoryLoading(false);
@@ -6158,7 +6551,7 @@ export default function App() {
       setLoading(true);
       setError('');
       try {
-        const response = await apiFetch('/api/auth/status');
+        const response = await apiFetch<ApiResponse<AuthState>>('/api/auth/status');
         if (canceled) {
           return;
         }
@@ -6168,7 +6561,7 @@ export default function App() {
         }
       } catch (caught) {
         if (!canceled) {
-          setError(caught.message);
+          setError(errorMessage(caught));
         }
       } finally {
         if (!canceled) {
@@ -6183,8 +6576,8 @@ export default function App() {
     };
   }, []);
 
-  async function handleSetup(payload) {
-    const response = await apiFetch('/api/auth/setup', {
+  async function handleSetup(payload: { email: string; displayName: string; unlockSecret: string }) {
+    const response = await apiFetch<ApiResponse<AuthState>>('/api/auth/setup', {
       method: 'POST',
       body: payload,
     });
@@ -6192,8 +6585,8 @@ export default function App() {
     await loadInventory();
   }
 
-  async function handleLogin({ email, unlockSecret }) {
-    const response = await apiFetch('/api/auth/login', {
+  async function handleLogin({ email, unlockSecret }: { email: string; unlockSecret: string }) {
+    const response = await apiFetch<ApiResponse<AuthState>>('/api/auth/login', {
       method: 'POST',
       body: {
         ...(email ? { email } : {}),
@@ -6204,8 +6597,8 @@ export default function App() {
     await loadInventory();
   }
 
-  async function handleAcceptInvite(payload) {
-    const response = await apiFetch('/api/auth/accept-invite', {
+  async function handleAcceptInvite(payload: { email: string; inviteCode: string; unlockSecret: string }) {
+    const response = await apiFetch<ApiResponse<AuthState>>('/api/auth/accept-invite', {
       method: 'POST',
       body: payload,
     });
@@ -6213,8 +6606,8 @@ export default function App() {
     await loadInventory();
   }
 
-  async function handleRecoverAccess(payload) {
-    return apiFetch('/api/auth/recover', {
+  async function handleRecoverAccess(payload: { email: string; recoveryCode: string; newUnlockSecret: string }) {
+    return apiFetch<ApiResponse<unknown>>('/api/auth/recover', {
       method: 'POST',
       body: payload,
     });
@@ -6222,7 +6615,7 @@ export default function App() {
 
   async function handleLogout() {
     if (auth?.csrfToken) {
-      await apiFetch('/api/auth/logout', {
+      await apiFetch<ApiResponse<unknown>>('/api/auth/logout', {
         method: 'POST',
         body: {},
         csrfToken: auth.csrfToken,
@@ -6256,17 +6649,17 @@ export default function App() {
       setReferenceValues(defaultReferenceValues);
       return defaultReferenceValues;
     }
-    const response = await apiFetch('/api/reference-values?types=deal_name,source,card_brand&limit=200');
+    const response = await apiFetch<ApiResponse<ReferenceValueState>>('/api/reference-values?types=deal_name,source,card_brand&limit=200');
     const nextValues = normalizeReferenceValuePayload(response.data);
     setReferenceValues(nextValues);
     return nextValues;
   }
 
-  async function handleUpsertReferenceValues(values) {
+  async function handleUpsertReferenceValues(values: ReferenceValue[] = []) {
     if (!features.referenceValueHints || !values.length) {
       return [];
     }
-    const response = await apiFetch('/api/reference-values', {
+    const response = await apiFetch<ApiResponse<ReferenceValue[]>>('/api/reference-values', {
       method: 'POST',
       body: { values },
       csrfToken: auth.csrfToken,
@@ -6275,8 +6668,8 @@ export default function App() {
     return response.data || [];
   }
 
-  async function handleCreateDeal(payload) {
-    const response = await apiFetch('/api/deals', {
+  async function handleCreateDeal(payload: ApiPayload) {
+    const response = await apiFetch<ApiResponse<DealMutationResult>>('/api/deals', {
       method: 'POST',
       body: payload,
       csrfToken: auth.csrfToken,
@@ -6288,8 +6681,8 @@ export default function App() {
     ]);
   }
 
-  async function handleDealArchiveTransition(dealId, action, includeArchived) {
-    const response = await apiFetch(`/api/deals/${dealId}/${action}`, {
+  async function handleDealArchiveTransition(dealId: string, action: 'archive' | 'unarchive', includeArchived: boolean) {
+    const response = await apiFetch<ApiResponse<{ deal: Deal }>>(`/api/deals/${dealId}/${action}`, {
       method: 'POST',
       body: {},
       csrfToken: auth.csrfToken,
@@ -6308,8 +6701,8 @@ export default function App() {
     });
   }
 
-  async function handleEditDeal(dealId, payload) {
-    const response = await apiFetch(`/api/deals/${dealId}`, {
+  async function handleEditDeal(dealId: string, payload: ApiPayload) {
+    const response = await apiFetch<ApiResponse<{ deal: Deal }>>(`/api/deals/${dealId}`, {
       method: 'PUT',
       body: payload,
       csrfToken: auth.csrfToken,
@@ -6319,8 +6712,8 @@ export default function App() {
     return response;
   }
 
-  async function handleUseCard(cardId, payload) {
-    const response = await apiFetch(`/api/cards/${cardId}/use`, {
+  async function handleUseCard(cardId: string, payload: ApiPayload) {
+    const response = await apiFetch<ApiResponse<CardMutationResult>>(`/api/cards/${cardId}/use`, {
       method: 'POST',
       body: payload,
       csrfToken: auth.csrfToken,
@@ -6330,8 +6723,8 @@ export default function App() {
     );
   }
 
-  async function handleUndoUsage(cardId, payload) {
-    const response = await apiFetch(`/api/cards/${cardId}/undo-usage`, {
+  async function handleUndoUsage(cardId: string, payload: ApiPayload) {
+    const response = await apiFetch<ApiResponse<CardMutationResult>>(`/api/cards/${cardId}/undo-usage`, {
       method: 'POST',
       body: payload,
       csrfToken: auth.csrfToken,
@@ -6342,8 +6735,8 @@ export default function App() {
     return response;
   }
 
-  async function handleEditCard(cardId, payload) {
-    const response = await apiFetch(`/api/cards/${cardId}`, {
+  async function handleEditCard(cardId: string, payload: ApiPayload) {
+    const response = await apiFetch<ApiResponse<Card>>(`/api/cards/${cardId}`, {
       method: 'PUT',
       body: payload,
       csrfToken: auth.csrfToken,
@@ -6354,16 +6747,16 @@ export default function App() {
     return response;
   }
 
-  async function handleDeleteCard(cardId) {
-    await apiFetch(`/api/cards/${cardId}`, {
+  async function handleDeleteCard(cardId: string) {
+    await apiFetch<ApiResponse<unknown>>(`/api/cards/${cardId}`, {
       method: 'DELETE',
       csrfToken: auth.csrfToken,
     });
     setCards((current) => current.filter((card) => card.id !== cardId));
   }
 
-  async function handleSellCard(cardId, payload) {
-    const response = await apiFetch(`/api/cards/${cardId}/sell`, {
+  async function handleSellCard(cardId: string, payload: CardSalePayload) {
+    const response = await apiFetch<ApiResponse<CardMutationResult>>(`/api/cards/${cardId}/sell`, {
       method: 'POST',
       body: payload,
       csrfToken: auth.csrfToken,
@@ -6377,8 +6770,8 @@ export default function App() {
     );
   }
 
-  async function handleUndoSale(cardId, payload) {
-    const response = await apiFetch(`/api/cards/${cardId}/undo-sale`, {
+  async function handleUndoSale(cardId: string, payload: ApiPayload) {
+    const response = await apiFetch<ApiResponse<CardMutationResult>>(`/api/cards/${cardId}/undo-sale`, {
       method: 'POST',
       body: payload,
       csrfToken: auth.csrfToken,
@@ -6390,8 +6783,8 @@ export default function App() {
     );
   }
 
-  async function handleVoidCard(cardId, payload) {
-    const response = await apiFetch(`/api/cards/${cardId}/void`, {
+  async function handleVoidCard(cardId: string, payload: ApiPayload) {
+    const response = await apiFetch<ApiResponse<CardMutationResult>>(`/api/cards/${cardId}/void`, {
       method: 'POST',
       body: payload,
       csrfToken: auth.csrfToken,
@@ -6401,8 +6794,8 @@ export default function App() {
     );
   }
 
-  async function handleCardTransition(cardId, action, payload = {}) {
-    const response = await apiFetch(`/api/cards/${cardId}/${action}`, {
+  async function handleCardTransition(cardId: string, action: 'reserve' | 'unreserve', payload: ApiPayload = {}) {
+    const response = await apiFetch<ApiResponse<Card>>(`/api/cards/${cardId}/${action}`, {
       method: 'POST',
       body: payload,
       csrfToken: auth.csrfToken,

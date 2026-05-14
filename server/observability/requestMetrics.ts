@@ -1,18 +1,42 @@
-function statusClass(status) {
+import type { NextFunction, Request, Response } from 'express';
+
+interface RequestMeasurement {
+  method: string;
+  status: number;
+  durationMs: number;
+}
+
+export interface RequestMetrics {
+  record(measurement: RequestMeasurement): void;
+  snapshot(): {
+    startedAt: string;
+    uptimeSeconds: number;
+    requests: {
+      total: number;
+      errorCount: number;
+      averageDurationMs: number;
+      maxDurationMs: number;
+      byStatusClass: Record<string, number>;
+      byMethod: Record<string, number>;
+    };
+  };
+}
+
+function statusClass(status: number): string {
   return `${Math.floor(status / 100)}xx`;
 }
 
-export function createRequestMetrics({ now = () => Date.now() } = {}) {
+export function createRequestMetrics({ now = () => Date.now() }: { now?: () => number } = {}): RequestMetrics {
   const startedAtMs = now();
-  const byStatusClass = {};
-  const byMethod = {};
+  const byStatusClass: Record<string, number> = {};
+  const byMethod: Record<string, number> = {};
   let total = 0;
   let errorCount = 0;
   let totalDurationMs = 0;
   let maxDurationMs = 0;
 
   return {
-    record({ method, status, durationMs }) {
+    record({ method, status, durationMs }: RequestMeasurement) {
       total += 1;
       totalDurationMs += durationMs;
       maxDurationMs = Math.max(maxDurationMs, durationMs);
@@ -40,8 +64,8 @@ export function createRequestMetrics({ now = () => Date.now() } = {}) {
   };
 }
 
-export function createRequestMetricsMiddleware({ metrics }) {
-  return function requestMetrics(req, res, next) {
+export function createRequestMetricsMiddleware({ metrics }: { metrics: RequestMetrics }) {
+  return function requestMetrics(req: Request, res: Response, next: NextFunction) {
     const startedAt = process.hrtime.bigint();
     res.on('finish', () => {
       const durationMs = Number(process.hrtime.bigint() - startedAt) / 1_000_000;

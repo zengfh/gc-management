@@ -39,8 +39,8 @@ export function openDatabase(options: OpenDatabaseOptions = {}) {
   return db;
 }
 
-export function verifyDatabase(db) {
-  const foreignKeyIssues = db.pragma('foreign_key_check');
+export function verifyDatabase(db: Database.Database) {
+  const foreignKeyIssues = db.pragma('foreign_key_check') as unknown[];
   if (foreignKeyIssues.length > 0) {
     return { ok: false, foreignKeyIssues };
   }

@@ -1,8 +1,9 @@
 import bcrypt from 'bcryptjs';
 import { Router } from 'express';
+import type Database from 'better-sqlite3';
 import { z } from 'zod';
 import { insertAuditEvent } from '../audit/index.js';
-import { requireAdminRole } from '../auth/roles.js';
+import { requireAdminRole, type Role } from '../auth/roles.js';
 import { requireUnlockedSession } from '../auth/requireAuth.js';
 import { clearUserSessions } from '../auth/sessionRevocation.js';
 import { generateOneTimeSecret, normalizeOneTimeSecret } from '../auth/oneTimeSecrets.js';
@@ -12,8 +13,38 @@ import { objectResponse } from '../http/response.js';
 import { deriveKEK, generateSalt, wrapDEK } from '../security/crypto.js';
 
 const bcryptCost = Number(process.env.BCRYPT_COST || (process.env.NODE_ENV === 'test' ? 4 : 12));
-const userRoles = ['owner', 'admin', 'operator', 'viewer'];
-const assignableRoles = ['admin', 'operator', 'viewer'];
+const userRoles = ['owner', 'admin', 'operator', 'viewer'] as const;
+const assignableRoles = ['admin', 'operator', 'viewer'] as const;
+
+interface UserRow {
+  id: number;
+  accountId: number;
+  email: string | null;
+  displayName: string;
+  role: Role;
+  disabledAt: string | null;
+  lastLoginAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface InviteRow {
+  id: number;
+  accountId: number;
+  email: string;
+  displayName: string;
+  role: Role;
+  invitedByUserId: number;
+  expiresAt: string;
+  usedAt: string | null;
+  revokedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface CountRow {
+  count: number;
+}
 
 const createInviteSchema = z
   .object({
@@ -36,7 +67,7 @@ function nowIso() {
   return new Date().toISOString();
 }
 
-function zodFieldErrors(error) {
+function zodFieldErrors(error: z.ZodError) {
   return error.issues.map((issue) => ({
     field: issue.path.join('.') || 'body',
     code: issue.code,
@@ -52,11 +83,15 @@ function validateBody<T extends z.ZodTypeAny>(schema: T, body: unknown): z.infer
   return result.data;
 }
 
-function normalizeEmail(email) {
+function normalizeEmail(email: unknown): string {
   return String(email || '').trim().toLowerCase();
 }
 
-function parsePositiveInt(value, fallback, { min = 0, max = Number.MAX_SAFE_INTEGER } = {}) {
+function parsePositiveInt<T extends number | null>(
+  value: unknown,
+  fallback: T,
+  { min = 0, max = Number.MAX_SAFE_INTEGER }: { min?: number; max?: number } = {},
+): number | T {
   if (value == null || value === '') {
     return fallback;
   }
@@ -74,7 +109,7 @@ function parsePositiveInt(value, fallback, { min = 0, max = Number.MAX_SAFE_INTE
   return parsed;
 }
 
-function toUserResponse(row) {
+function toUserResponse(row: UserRow) {
   return {
     id: row.id,
     accountId: row.accountId,
@@ -88,7 +123,7 @@ function toUserResponse(row) {
   };
 }
 
-function toInviteResponse(row) {
+function toInviteResponse(row: InviteRow) {
   return {
     id: row.id,
     accountId: row.accountId,
@@ -104,23 +139,23 @@ function toInviteResponse(row) {
   };
 }
 
-function loadUser(db, accountId, userId) {
-  const user = db.prepare('SELECT * FROM users WHERE accountId = ? AND id = ?').get(accountId, userId);
+function loadUser(db: Database.Database, accountId: number, userId: number): UserRow {
+  const user = db.prepare('SELECT * FROM users WHERE accountId = ? AND id = ?').get(accountId, userId) as UserRow | undefined;
   if (!user) {
     throw notFound('USER_NOT_FOUND', 'User not found.');
   }
   return user;
 }
 
-function loadInvite(db, accountId, inviteId) {
-  const invite = db.prepare('SELECT * FROM user_invites WHERE accountId = ? AND id = ?').get(accountId, inviteId);
+function loadInvite(db: Database.Database, accountId: number, inviteId: number | bigint): InviteRow {
+  const invite = db.prepare('SELECT * FROM user_invites WHERE accountId = ? AND id = ?').get(accountId, inviteId) as InviteRow | undefined;
   if (!invite) {
     throw notFound('INVITE_NOT_FOUND', 'Invite not found.');
   }
   return invite;
 }
 
-function assertOwnerMutationAllowed(actorRole, target, nextRole) {
+function assertOwnerMutationAllowed(actorRole: Role, target: UserRow, nextRole: Role) {
   if (target.role === 'owner' && actorRole !== 'owner') {
     throw forbidden('OWNER_ROLE_REQUIRED', 'Only the owner can modify the owner user.');
   }
@@ -129,19 +164,19 @@ function assertOwnerMutationAllowed(actorRole, target, nextRole) {
   }
 }
 
-function activeOwnerCount(db, accountId) {
-  return db
+function activeOwnerCount(db: Database.Database, accountId: number): number {
+  return (db
     .prepare("SELECT COUNT(*) AS count FROM users WHERE accountId = ? AND role = 'owner' AND disabledAt IS NULL")
-    .get(accountId).count;
+    .get(accountId) as CountRow).count;
 }
 
-function activeUserWithEmail(db, accountId, email) {
+function activeUserWithEmail(db: Database.Database, accountId: number, email: string): { id: number } | undefined {
   return db
     .prepare('SELECT id FROM users WHERE accountId = ? AND LOWER(email) = LOWER(?) AND disabledAt IS NULL')
-    .get(accountId, email);
+    .get(accountId, email) as { id: number } | undefined;
 }
 
-function activeInviteWithEmail(db, accountId, email, timestamp) {
+function activeInviteWithEmail(db: Database.Database, accountId: number, email: string, timestamp: string): { id: number } | undefined {
   return db
     .prepare(
       `SELECT id FROM user_invites
@@ -153,10 +188,10 @@ function activeInviteWithEmail(db, accountId, email, timestamp) {
        ORDER BY createdAt DESC
        LIMIT 1`,
     )
-    .get(accountId, email, timestamp);
+    .get(accountId, email, timestamp) as { id: number } | undefined;
 }
 
-export function createUsersRouter({ db }) {
+export function createUsersRouter({ db }: { db: Database.Database }) {
   const router = Router();
 
   router.use(requireUnlockedSession);
@@ -172,7 +207,7 @@ export function createUsersRouter({ db }) {
            WHERE accountId = ?
            ORDER BY disabledAt IS NOT NULL ASC, role = 'owner' DESC, id ASC`,
         )
-        .all(req.auth.accountId);
+        .all(req.auth.accountId) as UserRow[];
       res.json({ data: rows.map(toUserResponse) });
     }),
   );
@@ -191,7 +226,7 @@ export function createUsersRouter({ db }) {
              AND expiresAt > ?
            ORDER BY createdAt DESC`,
         )
-        .all(req.auth.accountId, timestamp);
+        .all(req.auth.accountId, timestamp) as InviteRow[];
       res.json({ data: rows.map(toInviteResponse) });
     }),
   );

@@ -1,3 +1,4 @@
+import type { NextFunction, Request, Response } from 'express';
 import { forbidden } from '../http/errors.js';
 
 const safeMethods = new Set(['GET', 'HEAD', 'OPTIONS']);
@@ -20,7 +21,7 @@ function configuredOrigins() {
     .filter(Boolean);
 }
 
-function requestOrigin(req) {
+function requestOrigin(req: Request): string | null {
   const origin = req.get('Origin');
   if (origin) {
     return origin;
@@ -38,10 +39,10 @@ function requestOrigin(req) {
   }
 }
 
-export function csrfProtection({ exemptPaths = [] } = {}) {
+export function csrfProtection({ exemptPaths = [] }: { exemptPaths?: string[] } = {}) {
   const exempt = new Set(exemptPaths);
 
-  return (req, _res, next) => {
+  return (req: Request, _res: Response, next: NextFunction) => {
     if (safeMethods.has(req.method) || exempt.has(req.path) || !req.session?.userId) {
       next();
       return;

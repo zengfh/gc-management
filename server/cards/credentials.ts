@@ -1,4 +1,6 @@
 import crypto from 'node:crypto';
+import type Database from 'better-sqlite3';
+import type { AuthContext } from '../types/express.js';
 import {
   cardNumberHash,
   cardNumberLast4,
@@ -12,7 +14,8 @@ export const credentialProfiles = [
   'barcode',
   'network_prepaid',
   'custom',
-];
+] as const;
+export type CredentialProfile = (typeof credentialProfiles)[number];
 
 export const credentialFieldKinds = [
   'primary_code',
@@ -27,7 +30,8 @@ export const credentialFieldKinds = [
   'cardholder_name',
   'billing_address',
   'metadata',
-];
+] as const;
+export type CredentialFieldKind = (typeof credentialFieldKinds)[number];
 
 export const barcodeFormats = [
   'code128',
@@ -38,12 +42,13 @@ export const barcodeFormats = [
   'aztec',
   'data_matrix',
   'other',
-];
+] as const;
+type BarcodeFormat = (typeof barcodeFormats)[number];
 
-const defaultProfile = 'merchant_number_pin';
-const indexedKinds = new Set(['primary_code', 'card_number', 'barcode_value']);
+const defaultProfile: CredentialProfile = 'merchant_number_pin';
+const indexedKinds = new Set<CredentialFieldKind>(['primary_code', 'card_number', 'barcode_value']);
 
-const kindSensitivity = {
+const kindSensitivity: Record<CredentialFieldKind, string> = {
   primary_code: 'spendable_secret',
   card_number: 'spendable_secret',
   pin: 'spendable_secret',
@@ -58,7 +63,7 @@ const kindSensitivity = {
   metadata: 'display_metadata',
 };
 
-const labelByFieldKey = {
+const labelByFieldKey: Record<string, string> = {
   primary_code: 'Redemption code',
   claim_code: 'Claim code',
   redemption_code: 'Redemption code',
@@ -77,7 +82,7 @@ const labelByFieldKey = {
   metadata: 'Note',
 };
 
-const kindByFieldKey = {
+const kindByFieldKey: Record<string, CredentialFieldKind> = {
   primary_code: 'primary_code',
   claim_code: 'primary_code',
   redemption_code: 'primary_code',
@@ -107,7 +112,7 @@ const kindByFieldKey = {
   note: 'metadata',
 };
 
-const profileSortOrder = {
+const profileSortOrder: Record<CredentialProfile, Partial<Record<CredentialFieldKind, number>>> = {
   claim_code: {
     primary_code: 10,
     pin: 20,
@@ -140,21 +145,101 @@ const profileSortOrder = {
   custom: {},
 };
 
+interface CredentialFieldInput {
+  fieldKey?: string | null;
+  key?: string | null;
+  label?: string | null;
+  fieldKind?: CredentialFieldKind | string | null;
+  value?: unknown;
+  barcodeFormat?: BarcodeFormat | string | null;
+  sortOrder?: number | null;
+  copyable?: boolean | null;
+}
+
+export interface CredentialInput {
+  credentialProfile?: CredentialProfile | string | null;
+  credentials?: {
+    profile?: CredentialProfile | string | null;
+    fields?: CredentialFieldInput[];
+  } | null;
+  barcode?: string | null;
+  barcodeValue?: string | null;
+  cardNumber?: string | null;
+  primaryCode?: string | null;
+  claimCode?: string | null;
+  redemptionCode?: string | null;
+  giftCode?: string | null;
+  cardType?: string | null;
+  network?: string | null;
+  pin?: string | null;
+  accessCode?: string | null;
+  barcodeFormat?: BarcodeFormat | string | null;
+  expirationMonth?: string | null;
+  expirationYear?: string | null;
+  networkSecurityCode?: string | null;
+  cvv?: string | null;
+  billingZip?: string | null;
+  billingPostalCode?: string | null;
+  cardholderName?: string | null;
+  billingAddress?: string | null;
+}
+
+export interface PreparedCredentialField {
+  fieldKey: string;
+  label: string;
+  fieldKind: CredentialFieldKind;
+  sensitivityClass: string;
+  encryptedValue: string | null;
+  blindIndex: string | null;
+  displayHint: string;
+  displayLast4: string | null;
+  valueLength: number;
+  barcodeFormat: BarcodeFormat | null;
+  sortOrder: number;
+  copyable: 0 | 1;
+}
+
+interface PreparedCardCredentialCarrier {
+  brand: string;
+  credentialFields: PreparedCredentialField[];
+}
+
+interface CredentialFieldRow {
+  fieldKey: string;
+  label: string;
+  fieldKind: CredentialFieldKind;
+  sensitivityClass: string;
+  encryptedValue: string | null;
+  displayHint: string;
+  barcodeFormat: BarcodeFormat | null;
+  copyable: number;
+}
+
+interface CredentialSummaryRow {
+  id?: number;
+  credentialProfile?: CredentialProfile | string | null;
+  credentialSummaryJson?: string | null;
+  cardNumberLast4?: string | null;
+  cardNumber?: string | null;
+  pin?: string | null;
+  billingZip?: string | null;
+}
+
 export class CredentialValidationError extends Error {
   fieldErrors: unknown[];
 
-  constructor(message, fieldErrors = []) {
+  constructor(message: string, fieldErrors: unknown[] = []) {
     super(message);
     this.name = 'CredentialValidationError';
     this.fieldErrors = fieldErrors;
   }
 }
 
-function validationError(field, code, message) {
+function validationError(field: string, code: string, message: string) {
   return { field, code, message };
 }
 
-function canonicalFieldKey(value, fallback) {
+function canonicalFieldKey(value: unknown, fallback: string): string {
   const normalized = String(value || '')
     .trim()
     .toLowerCase()
@@ -163,7 +248,7 @@ function canonicalFieldKey(value, fallback) {
   return normalized || fallback;
 }
 
-function humanizeFieldKey(fieldKey) {
+function humanizeFieldKey(fieldKey: string): string {
   return fieldKey
     .split('_')
     .filter(Boolean)
@@ -171,11 +256,11 @@ function humanizeFieldKey(fieldKey) {
     .join(' ');
 }
 
-export function normalizeCredentialProfile(profile, fallback = defaultProfile) {
-  return credentialProfiles.includes(profile) ? profile : fallback;
+export function normalizeCredentialProfile(profile: unknown, fallback: CredentialProfile = defaultProfile): CredentialProfile {
+  return credentialProfiles.includes(profile as CredentialProfile) ? profile as CredentialProfile : fallback;
 }
 
-function normalizeExpirationMonth(value) {
+function normalizeExpirationMonth(value: unknown): string {
   const digits = String(value || '').replace(/\D/g, '');
   if (!digits) {
     return '';
@@ -189,7 +274,7 @@ function normalizeExpirationMonth(value) {
   return String(month).padStart(2, '0');
 }
 
-function normalizeExpirationYear(value) {
+function normalizeExpirationYear(value: unknown): string {
   const digits = String(value || '').replace(/\D/g, '');
   if (!digits) {
     return '';
@@ -205,7 +290,7 @@ function normalizeExpirationYear(value) {
   return digits;
 }
 
-export function normalizeCredentialValue(kind, value) {
+export function normalizeCredentialValue(kind: CredentialFieldKind, value: unknown): string {
   if (value == null) {
     return '';
   }
@@ -225,7 +310,7 @@ export function normalizeCredentialValue(kind, value) {
   return String(value).trim();
 }
 
-function genericCredentialHash(kind, value, hmacKey) {
+function genericCredentialHash(kind: CredentialFieldKind, value: unknown, hmacKey: Buffer): string | null {
   const normalized = normalizeCredentialValue(kind, value);
   if (!normalized) {
     return null;
@@ -236,7 +321,7 @@ function genericCredentialHash(kind, value, hmacKey) {
     .digest('hex');
 }
 
-export function credentialBlindIndex(kind, value, hmacKey) {
+export function credentialBlindIndex(kind: CredentialFieldKind, value: unknown, hmacKey: Buffer): string | null {
   if (!indexedKinds.has(kind)) {
     return null;
   }
@@ -246,14 +331,14 @@ export function credentialBlindIndex(kind, value, hmacKey) {
   return genericCredentialHash(kind, value, hmacKey);
 }
 
-export function credentialSearchBlindIndexes(rawValue, hmacKey) {
-  const hashes = new Set();
+export function credentialSearchBlindIndexes(rawValue: unknown, hmacKey: Buffer): string[] {
+  const hashes = new Set<string>();
   const cardHash = cardNumberHash(rawValue, hmacKey);
   if (cardHash) {
     hashes.add(cardHash);
   }
 
-  for (const kind of ['primary_code', 'barcode_value']) {
+  for (const kind of ['primary_code', 'barcode_value'] as const) {
     const hash = genericCredentialHash(kind, rawValue, hmacKey);
     if (hash) {
       hashes.add(hash);
@@ -263,7 +348,7 @@ export function credentialSearchBlindIndexes(rawValue, hmacKey) {
   return Array.from(hashes);
 }
 
-function displayLast4(kind, value) {
+function displayLast4(kind: CredentialFieldKind, value: unknown): string | null {
   if (kind === 'card_number') {
     return cardNumberLast4(value);
   }
@@ -271,7 +356,7 @@ function displayLast4(kind, value) {
   return normalized ? normalized.slice(-4) : null;
 }
 
-function displayHintFor(kind, value) {
+function displayHintFor(kind: CredentialFieldKind, value: unknown): string {
   if (kind === 'expiration_month' || kind === 'expiration_year') {
     return normalizeCredentialValue(kind, value);
   }
@@ -282,19 +367,19 @@ function displayHintFor(kind, value) {
   return last4 ? `**** ${last4}` : 'Saved';
 }
 
-function inferKind(fieldKey, explicitKind) {
-  if (credentialFieldKinds.includes(explicitKind)) {
-    return explicitKind;
+function inferKind(fieldKey: string, explicitKind: unknown): CredentialFieldKind {
+  if (typeof explicitKind === 'string' && credentialFieldKinds.includes(explicitKind as CredentialFieldKind)) {
+    return explicitKind as CredentialFieldKind;
   }
   return kindByFieldKey[fieldKey] || 'metadata';
 }
 
-function inferProfile(input) {
-  if (credentialProfiles.includes(input.credentialProfile)) {
-    return input.credentialProfile;
+function inferProfile(input: CredentialInput): CredentialProfile {
+  if (credentialProfiles.includes(input.credentialProfile as CredentialProfile)) {
+    return input.credentialProfile as CredentialProfile;
   }
-  if (credentialProfiles.includes(input.credentials?.profile)) {
-    return input.credentials.profile;
+  if (credentialProfiles.includes(input.credentials?.profile as CredentialProfile)) {
+    return input.credentials?.profile as CredentialProfile;
   }
   if ((input.barcodeValue || input.barcode) && !input.cardNumber) {
     return 'barcode';
@@ -311,9 +396,16 @@ function inferProfile(input) {
   return defaultProfile;
 }
 
-function legacyFieldsFromInput(input, profile) {
-  const fields = [];
-  const push = (fieldKey, fieldKind, value, label, sortOrder, extra = {}) => {
+function legacyFieldsFromInput(input: CredentialInput, profile: CredentialProfile): CredentialFieldInput[] {
+  const fields: CredentialFieldInput[] = [];
+  const push = (
+    fieldKey: string,
+    fieldKind: CredentialFieldKind,
+    value: unknown,
+    label: string,
+    sortOrder: number,
+    extra: Partial<CredentialFieldInput> = {},
+  ) => {
     if (value == null || String(value).trim() === '') {
       return;
     }
@@ -357,14 +449,19 @@ function legacyFieldsFromInput(input, profile) {
   return fields;
 }
 
-function inputFields(input, profile) {
+function inputFields(input: CredentialInput, profile: CredentialProfile): CredentialFieldInput[] {
   if (Array.isArray(input.credentials?.fields)) {
     return input.credentials.fields;
   }
   return legacyFieldsFromInput(input, profile);
 }
 
-function prepareCredentialField(rawField, index, profile, auth) {
+function prepareCredentialField(
+  rawField: CredentialFieldInput,
+  index: number,
+  profile: CredentialProfile,
+  auth: AuthContext,
+): PreparedCredentialField | null {
   const fieldKey = canonicalFieldKey(
     rawField.fieldKey || rawField.key || rawField.fieldKind,
     `field_${index + 1}`,
@@ -388,13 +485,15 @@ function prepareCredentialField(rawField, index, profile, auth) {
     displayHint: displayHintFor(fieldKind, value),
     displayLast4: displayLastFour,
     valueLength: value.length,
-    barcodeFormat: barcodeFormats.includes(rawField.barcodeFormat) ? rawField.barcodeFormat : null,
+    barcodeFormat: barcodeFormats.includes(rawField.barcodeFormat as BarcodeFormat)
+      ? rawField.barcodeFormat as BarcodeFormat
+      : null,
     sortOrder: Number.isInteger(rawField.sortOrder) ? rawField.sortOrder : profileOrder[fieldKind] ?? (index + 1) * 10,
     copyable: rawField.copyable === false ? 0 : 1,
   };
 }
 
-function buildSummary(profile, fields) {
+function buildSummary(profile: CredentialProfile, fields: PreparedCredentialField[]) {
   const primary =
     fields.find((field) => ['card_number', 'primary_code', 'barcode_value'].includes(field.fieldKind)) ||
     fields.find((field) => field.sensitivityClass === 'spendable_secret') ||
@@ -412,7 +511,7 @@ function buildSummary(profile, fields) {
   };
 }
 
-function legacyShadowFromFields(fields) {
+function legacyShadowFromFields(fields: PreparedCredentialField[]) {
   const cardNumberField = fields.find((field) => field.fieldKind === 'card_number');
   const pinField = fields.find((field) => field.fieldKind === 'pin');
   const billingZipField = fields.find((field) => field.fieldKind === 'billing_postal_code');
@@ -426,12 +525,16 @@ function legacyShadowFromFields(fields) {
   };
 }
 
-export function buildCredentialModel(input, auth, options: { allowNetworkSecurityCodeStorage?: boolean } = {}) {
+export function buildCredentialModel(
+  input: CredentialInput,
+  auth: AuthContext,
+  options: { allowNetworkSecurityCodeStorage?: boolean } = {},
+) {
   const profile = inferProfile(input);
   const rawFields = inputFields(input, profile);
-  const errors = [];
-  const seenKeys = new Set();
-  const fields = [];
+  const errors: unknown[] = [];
+  const seenKeys = new Set<string>();
+  const fields: PreparedCredentialField[] = [];
 
   rawFields.forEach((rawField, index) => {
     const field = prepareCredentialField(rawField, index, profile, auth);
@@ -474,7 +577,15 @@ export function buildCredentialModel(input, auth, options: { allowNetworkSecurit
   };
 }
 
-export function insertCredentialFields(db, { accountId, cardId, fields, timestamp }) {
+export function insertCredentialFields(
+  db: Database.Database,
+  {
+    accountId,
+    cardId,
+    fields,
+    timestamp,
+  }: { accountId: number; cardId: number | bigint; fields: PreparedCredentialField[]; timestamp: string },
+) {
   const statement = db.prepare(
     `INSERT INTO card_credential_fields (
       accountId, cardId, fieldKey, label, fieldKind, sensitivityClass,
@@ -504,7 +615,7 @@ export function insertCredentialFields(db, { accountId, cardId, fields, timestam
   }
 }
 
-export function loadCredentialFields(db, accountId, cardId) {
+export function loadCredentialFields(db: Database.Database, accountId: number, cardId: number): CredentialFieldRow[] {
   return db
     .prepare(
       `SELECT *
@@ -512,10 +623,10 @@ export function loadCredentialFields(db, accountId, cardId) {
        WHERE accountId = ? AND cardId = ?
        ORDER BY sortOrder, id`,
     )
-    .all(accountId, cardId);
+    .all(accountId, cardId) as CredentialFieldRow[];
 }
 
-export function revealCredentialPayload(db, card, auth) {
+export function revealCredentialPayload(db: Database.Database, card: { id: number; credentialProfile?: string | null }, auth: AuthContext) {
   const rows = loadCredentialFields(db, auth.accountId, card.id);
   const fields = rows.map((row) => ({
     fieldKey: row.fieldKey,
@@ -534,7 +645,7 @@ export function revealCredentialPayload(db, card, auth) {
   };
 }
 
-export function parseCredentialSummary(row) {
+export function parseCredentialSummary(row: CredentialSummaryRow) {
   if (row.credentialSummaryJson) {
     try {
       return JSON.parse(row.credentialSummaryJson);
@@ -558,14 +669,14 @@ export function parseCredentialSummary(row) {
   };
 }
 
-export function duplicateKeysForCredentialFields(card) {
+export function duplicateKeysForCredentialFields(card: PreparedCardCredentialCarrier): string[] {
   return card.credentialFields
     .filter((field) => field.blindIndex)
     .map((field) => `${card.brand}\0${field.blindIndex}`);
 }
 
-export function assertNoDuplicatePreparedCredentials(cards, conflictFactory) {
-  const seen = new Set();
+export function assertNoDuplicatePreparedCredentials(cards: PreparedCardCredentialCarrier[], conflictFactory: () => Error) {
+  const seen = new Set<string>();
   for (const card of cards) {
     for (const key of duplicateKeysForCredentialFields(card)) {
       if (seen.has(key)) {
@@ -576,7 +687,12 @@ export function assertNoDuplicatePreparedCredentials(cards, conflictFactory) {
   }
 }
 
-export function assertNoExistingCredentialDuplicates(db, auth, cards, conflictFactory) {
+export function assertNoExistingCredentialDuplicates(
+  db: Database.Database,
+  auth: AuthContext,
+  cards: PreparedCardCredentialCarrier[],
+  conflictFactory: () => Error,
+) {
   const lookup = db.prepare(
     `SELECT cards.id
      FROM card_credential_fields AS fields

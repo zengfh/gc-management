@@ -1,9 +1,9 @@
 import { AxeBuilder } from '@axe-core/playwright';
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
 const unlockSecret = 'a strong unlock phrase';
 
-async function ensureUnlocked(page) {
+async function ensureUnlocked(page: Page) {
   await page.goto('/');
 
   const setupHeading = page.getByRole('heading', { name: /create unlock secret/i });
@@ -27,7 +27,7 @@ async function ensureUnlocked(page) {
   await expect(dashboardHeading).toBeVisible();
 }
 
-async function expectNoAxeViolations(page, label) {
+async function expectNoAxeViolations(page: Page, label: string) {
   const results = await new AxeBuilder({ page })
     .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
     .analyze();

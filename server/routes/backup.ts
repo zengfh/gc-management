@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import { Router } from 'express';
+import type Database from 'better-sqlite3';
 import { z } from 'zod';
 import { insertAuditEvent } from '../audit/index.js';
 import { requireUnlockedSession } from '../auth/requireAuth.js';
@@ -12,6 +13,7 @@ import {
   barcodeFormats,
   buildCredentialModel,
   CredentialValidationError,
+  type CredentialInput,
   credentialFieldKinds,
   credentialProfiles,
   insertCredentialFields,
@@ -23,6 +25,158 @@ import { runIdempotentJsonAsync, sendIdempotentJson } from '../http/idempotency.
 import { objectResponse } from '../http/response.js';
 import { readBackupSettings, recordBackupExport } from '../settings/backupSettings.js';
 import { decryptString } from '../security/crypto.js';
+import type { AuthContext } from '../types/express.js';
+
+type DatabaseId = number | bigint;
+
+interface ExportCredentialFieldRow {
+  id: number;
+  accountId: number;
+  cardId: number;
+  fieldKey: string;
+  label: string;
+  fieldKind: string;
+  sensitivityClass: string;
+  encryptedValue: string | null;
+  displayHint: string | null;
+  barcodeFormat: string | null;
+  sortOrder: number;
+  copyable: number;
+}
+
+interface ExportDealRow {
+  id: number;
+  accountId: number;
+  name: string;
+  source: string | null;
+  purchaseDate: string | null;
+  inputTotalCostCents: number | null;
+  notes: string | null;
+  archivedAt: string | null;
+  createdByUserId: number | null;
+  updatedByUserId: number | null;
+  createdAt: string;
+  updatedAt: string;
+  rowVersion: number;
+}
+
+interface ExportCardRow {
+  id: number;
+  accountId: number;
+  dealId: number | null;
+  brand: string;
+  cardType: string;
+  network: string | null;
+  faceValueCents: number;
+  remainingBalanceCents: number;
+  purchaseCostCents: number;
+  credentialProfile?: string | null;
+  credentialSummaryJson?: string | null;
+  cardNumber: string | null;
+  cardNumberLast4: string | null;
+  primaryCredentialLast4?: string | null;
+  pin: string | null;
+  billingZip: string | null;
+  expirationDate: string | null;
+  cardholderName: string | null;
+  status: string;
+  format: string | null;
+  source: string | null;
+  notes: string | null;
+  keyVersion: number;
+  reservedFor: string | null;
+  reservedUntil: string | null;
+  reservedNotes: string | null;
+  createdByUserId: number | null;
+  updatedByUserId: number | null;
+  createdAt: string;
+  updatedAt: string;
+  rowVersion: number;
+}
+
+interface ExportTransactionRow {
+  id: number;
+  accountId: number;
+  cardId: number;
+  type: string;
+  buyerName: string | null;
+  buyerType: string | null;
+  salePriceCents: number | null;
+  feesCents: number;
+  netProceedsCents: number | null;
+  remainingBalanceAtSaleCents: number | null;
+  statusAtSale: string | null;
+  platform: string | null;
+  reason: string | null;
+  transactionDate: string | null;
+  notes: string | null;
+  idempotencyKey: string | null;
+  createdByUserId: number | null;
+  createdAt: string;
+}
+
+interface ExportUsageRow {
+  id: number;
+  accountId: number;
+  cardId: number;
+  amountCents: number;
+  merchant: string | null;
+  description: string | null;
+  isReversed: number;
+  isWriteOff: number;
+  reversalReason: string | null;
+  reversedAt: string | null;
+  usageDate: string | null;
+  idempotencyKey: string | null;
+  createdByUserId: number | null;
+  createdAt: string;
+}
+
+interface ExportSettingRow {
+  id: number;
+  accountId: number;
+  key: string;
+  value: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface ExportReferenceValueRow {
+  id: number;
+  accountId: number;
+  type: string;
+  value: string;
+  normalizedValue: string;
+  usageCount: number;
+  lastUsedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface ImportJobRow {
+  id: number;
+  type: string;
+  status: string;
+  rowCount: number;
+  validCount: number;
+  invalidCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface BackupInfo {
+  tempDir: string;
+  filename: string;
+  path: string;
+}
+
+interface SqliteErrorLike {
+  code?: string;
+}
+
+interface HttpErrorLike {
+  status?: number;
+}
 
 const plaintextExportSchema = z
   .object({
@@ -45,7 +199,7 @@ const portableBackupKdfOptions = {
   p: 1,
   keyLength: 32,
   maxmem: 256 * 1024 * 1024,
-};
+} as const;
 const portableBackupCipher = 'aes-256-gcm';
 const portableBackupIvBytes = 12;
 const portableBackupAuthTagBytes = 16;
@@ -154,7 +308,7 @@ const importCardSchema = z
     remainingBalanceCents: nonnegativeInteger,
     purchaseCostCents: nonnegativeInteger.default(0),
     credentialProfile: z.enum(credentialProfiles).optional(),
-    credentialSummary: z.record(z.string(), z.any()).nullable().optional(),
+    credentialSummary: z.record(z.string(), z.unknown()).nullable().optional(),
     credentials: importCredentialsSchema.optional(),
     cardNumber: nullableString,
     cardNumberLast4: nullableString,
@@ -289,8 +443,19 @@ const backupImportSchema = z
     }
   });
 
-function zodFieldErrors(error) {
-  return error.issues.map((issue) => ({
+type ImportSetting = z.infer<typeof importSettingSchema>;
+type ImportReferenceValue = z.infer<typeof importReferenceValueSchema>;
+type ImportDeal = z.infer<typeof importDealSchema>;
+type ImportCard = z.infer<typeof importCardSchema>;
+type ImportTransaction = z.infer<typeof importTransactionSchema>;
+type ImportUsage = z.infer<typeof importUsageSchema>;
+type PlaintextImportPayload = z.infer<typeof plaintextImportPayloadSchema>;
+type EncryptedPortablePayload = z.infer<typeof encryptedPortablePayloadSchema>;
+type ImportMode = z.infer<typeof backupImportSchema>['mode'];
+type PortableBackupKdf = EncryptedPortablePayload['kdf'];
+
+function zodFieldErrors(error: z.ZodError) {
+  return error.issues.map((issue: z.core.$ZodIssue) => ({
     field: issue.path.join('.') || 'body',
     code: issue.code,
     message: issue.message,
@@ -305,29 +470,29 @@ function validateBody<T extends z.ZodTypeAny>(schema: T, body: unknown): z.infer
   return result.data;
 }
 
-function exportDate(timestamp) {
+function exportDate(timestamp: string) {
   return timestamp.slice(0, 10);
 }
 
-function decryptNullable(value, key) {
+function decryptNullable(value: string | null | undefined, key: Buffer) {
   return value ? decryptString(value, key) : null;
 }
 
-function toSqlBoolean(value) {
+function toSqlBoolean(value: boolean | null | undefined) {
   return value ? 1 : 0;
 }
 
-function timestampOrNow(value, timestamp) {
+function timestampOrNow(value: string | null | undefined, timestamp: string) {
   return value || timestamp;
 }
 
-function rowVersionOrDefault(value) {
+function rowVersionOrDefault(value: number | null | undefined) {
   return value || 1;
 }
 
-function buildImportedCredentialFields(card, auth) {
+function buildImportedCredentialFields(card: ImportCard, auth: AuthContext) {
   try {
-    const model = buildCredentialModel(card, auth, {
+    const model = buildCredentialModel(card as CredentialInput, auth, {
       allowNetworkSecurityCodeStorage: featureEnabled('networkSecurityCodeStorage'),
     });
     return {
@@ -349,7 +514,7 @@ function buildImportedCredentialFields(card, auth) {
   }
 }
 
-function toExportDeal(row) {
+function toExportDeal(row: ExportDealRow) {
   return {
     id: row.id,
     accountId: row.accountId,
@@ -371,7 +536,7 @@ interface ExportOptions {
   includeNetworkSecurityCodes?: boolean;
 }
 
-function toExportCredentialField(row, key, options: ExportOptions = {}) {
+function toExportCredentialField(row: ExportCredentialFieldRow, key: Buffer, options: ExportOptions = {}) {
   if (row.fieldKind === 'network_security_code' && !options.includeNetworkSecurityCodes) {
     return null;
   }
@@ -389,7 +554,12 @@ function toExportCredentialField(row, key, options: ExportOptions = {}) {
   };
 }
 
-function toExportCard(row, key, credentialRows = [], options: ExportOptions = {}) {
+function toExportCard(
+  row: ExportCardRow,
+  key: Buffer,
+  credentialRows: ExportCredentialFieldRow[] = [],
+  options: ExportOptions = {},
+) {
   const credentialFields = credentialRows
     .map((credentialRow) => toExportCredentialField(credentialRow, key, options))
     .filter(Boolean);
@@ -431,7 +601,7 @@ function toExportCard(row, key, credentialRows = [], options: ExportOptions = {}
   };
 }
 
-function toExportTransaction(row) {
+function toExportTransaction(row: ExportTransactionRow) {
   return {
     id: row.id,
     accountId: row.accountId,
@@ -454,7 +624,7 @@ function toExportTransaction(row) {
   };
 }
 
-function toExportUsage(row) {
+function toExportUsage(row: ExportUsageRow) {
   return {
     id: row.id,
     accountId: row.accountId,
@@ -473,7 +643,7 @@ function toExportUsage(row) {
   };
 }
 
-function toExportSetting(row) {
+function toExportSetting(row: ExportSettingRow) {
   return {
     id: row.id,
     accountId: row.accountId,
@@ -484,7 +654,7 @@ function toExportSetting(row) {
   };
 }
 
-function toExportReferenceValue(row) {
+function toExportReferenceValue(row: ExportReferenceValueRow) {
   return {
     id: row.id,
     accountId: row.accountId,
@@ -498,29 +668,34 @@ function toExportReferenceValue(row) {
   };
 }
 
-function buildPlaintextExport(db, auth, exportedAt, options: ExportOptions = {}) {
+function buildPlaintextExport(
+  db: Database.Database,
+  auth: AuthContext,
+  exportedAt: string,
+  options: ExportOptions = {},
+) {
   const dealRows = db
     .prepare('SELECT * FROM deals WHERE accountId = ? ORDER BY id')
-    .all(auth.accountId);
+    .all(auth.accountId) as ExportDealRow[];
   const cardRows = db
     .prepare('SELECT * FROM cards WHERE accountId = ? ORDER BY id')
-    .all(auth.accountId);
+    .all(auth.accountId) as ExportCardRow[];
   const credentialRows = db
     .prepare('SELECT * FROM card_credential_fields WHERE accountId = ? ORDER BY cardId, sortOrder, id')
-    .all(auth.accountId);
+    .all(auth.accountId) as ExportCredentialFieldRow[];
   const transactionRows = db
     .prepare('SELECT * FROM transactions WHERE accountId = ? ORDER BY id')
-    .all(auth.accountId);
+    .all(auth.accountId) as ExportTransactionRow[];
   const usageRows = db
     .prepare('SELECT * FROM usages WHERE accountId = ? ORDER BY id')
-    .all(auth.accountId);
+    .all(auth.accountId) as ExportUsageRow[];
   const settingRows = db
     .prepare('SELECT * FROM app_settings WHERE accountId = ? ORDER BY id')
-    .all(auth.accountId);
+    .all(auth.accountId) as ExportSettingRow[];
   const referenceValueRows = db
     .prepare('SELECT * FROM reference_values WHERE accountId = ? ORDER BY id')
-    .all(auth.accountId);
-  const credentialRowsByCardId = new Map();
+    .all(auth.accountId) as ExportReferenceValueRow[];
+  const credentialRowsByCardId = new Map<number, ExportCredentialFieldRow[]>();
   for (const row of credentialRows) {
     const rows = credentialRowsByCardId.get(row.cardId) || [];
     rows.push(row);
@@ -546,7 +721,7 @@ function buildPlaintextExport(db, auth, exportedAt, options: ExportOptions = {})
   };
 }
 
-function portableBackupKdfParams(salt) {
+function portableBackupKdfParams(salt: string): PortableBackupKdf {
   return {
     name: portableBackupKdfOptions.name,
     salt,
@@ -557,7 +732,7 @@ function portableBackupKdfParams(salt) {
   };
 }
 
-function ensureSupportedPortableKdf(kdf) {
+function ensureSupportedPortableKdf(kdf: PortableBackupKdf) {
   if (
     kdf.name !== portableBackupKdfOptions.name
     || kdf.N !== portableBackupKdfOptions.N
@@ -575,7 +750,7 @@ function ensureSupportedPortableKdf(kdf) {
   }
 }
 
-function derivePortableBackupKey(backupPassphrase, kdf) {
+function derivePortableBackupKey(backupPassphrase: string, kdf: PortableBackupKdf) {
   ensureSupportedPortableKdf(kdf);
   return crypto.scryptSync(
     backupPassphrase,
@@ -590,7 +765,11 @@ function derivePortableBackupKey(backupPassphrase, kdf) {
   );
 }
 
-function encryptPortableBackupPayload(payload, backupPassphrase, timestamp) {
+function encryptPortableBackupPayload(
+  payload: ReturnType<typeof buildPlaintextExport>,
+  backupPassphrase: string,
+  timestamp: string,
+) {
   const salt = crypto.randomBytes(portableBackupSaltBytes).toString('base64');
   const kdf = portableBackupKdfParams(salt);
   const key = derivePortableBackupKey(backupPassphrase, kdf);
@@ -626,7 +805,7 @@ function encryptPortableBackupPayload(payload, backupPassphrase, timestamp) {
   }
 }
 
-function decryptPortableBackupPayload(payload, backupPassphrase) {
+function decryptPortableBackupPayload(payload: EncryptedPortablePayload, backupPassphrase: string): PlaintextImportPayload {
   const key = derivePortableBackupKey(backupPassphrase, payload.kdf);
 
   try {
@@ -643,7 +822,7 @@ function decryptPortableBackupPayload(payload, backupPassphrase) {
       decipher.update(Buffer.from(payload.cipher.ciphertext, 'base64')),
       decipher.final(),
     ]).toString('utf8');
-    let parsed;
+    let parsed: unknown;
     try {
       parsed = JSON.parse(plaintext);
     } catch {
@@ -667,7 +846,7 @@ function decryptPortableBackupPayload(payload, backupPassphrase) {
 
     return validation.data;
   } catch (error) {
-    if (error.status) {
+    if ((error as HttpErrorLike).status) {
       throw error;
     }
     throw badRequest('INVALID_BACKUP_PASSPHRASE', 'Backup passphrase could not decrypt this backup.', [
@@ -682,7 +861,12 @@ function decryptPortableBackupPayload(payload, backupPassphrase) {
   }
 }
 
-function insertImportedSettings(db, auth, settings, timestamp) {
+function insertImportedSettings(
+  db: Database.Database,
+  auth: AuthContext,
+  settings: ImportSetting[],
+  timestamp: string,
+) {
   const statement = db.prepare(
     `INSERT INTO app_settings (accountId, key, value, createdAt, updatedAt)
      VALUES (?, ?, ?, ?, ?)
@@ -702,11 +886,16 @@ function insertImportedSettings(db, auth, settings, timestamp) {
   }
 }
 
-function normalizedReferenceValue(value) {
+function normalizedReferenceValue(value: string) {
   return value.trim().toLowerCase();
 }
 
-function insertImportedReferenceValues(db, auth, referenceValues, timestamp) {
+function insertImportedReferenceValues(
+  db: Database.Database,
+  auth: AuthContext,
+  referenceValues: ImportReferenceValue[],
+  timestamp: string,
+) {
   const statement = db.prepare(
     `INSERT INTO reference_values (
       accountId, type, value, normalizedValue, usageCount, lastUsedAt, createdAt, updatedAt
@@ -732,8 +921,13 @@ function insertImportedReferenceValues(db, auth, referenceValues, timestamp) {
   }
 }
 
-function insertImportedDeals(db, auth, deals, timestamp) {
-  const dealIdMap = new Map();
+function insertImportedDeals(
+  db: Database.Database,
+  auth: AuthContext,
+  deals: ImportDeal[],
+  timestamp: string,
+) {
+  const dealIdMap = new Map<number, DatabaseId>();
   const statement = db.prepare(
     `INSERT INTO deals (
       accountId, name, source, purchaseDate, inputTotalCostCents, notes, archivedAt,
@@ -764,8 +958,14 @@ function insertImportedDeals(db, auth, deals, timestamp) {
   return dealIdMap;
 }
 
-function insertImportedCards(db, auth, cards, dealIdMap, timestamp) {
-  const cardIdMap = new Map();
+function insertImportedCards(
+  db: Database.Database,
+  auth: AuthContext,
+  cards: ImportCard[],
+  dealIdMap: Map<number, DatabaseId>,
+  timestamp: string,
+) {
+  const cardIdMap = new Map<number, DatabaseId>();
   const statement = db.prepare(
     `INSERT INTO cards (
       accountId, dealId, brand, cardType, network, faceValueCents, remainingBalanceCents,
@@ -836,7 +1036,13 @@ function insertImportedCards(db, auth, cards, dealIdMap, timestamp) {
   return cardIdMap;
 }
 
-function insertImportedTransactions(db, auth, transactions, cardIdMap, timestamp) {
+function insertImportedTransactions(
+  db: Database.Database,
+  auth: AuthContext,
+  transactions: ImportTransaction[],
+  cardIdMap: Map<number, DatabaseId>,
+  timestamp: string,
+) {
   const statement = db.prepare(
     `INSERT INTO transactions (
       accountId, cardId, type, buyerName, buyerType, salePriceCents, feesCents,
@@ -879,7 +1085,13 @@ function insertImportedTransactions(db, auth, transactions, cardIdMap, timestamp
   }
 }
 
-function insertImportedUsages(db, auth, usages, cardIdMap, timestamp) {
+function insertImportedUsages(
+  db: Database.Database,
+  auth: AuthContext,
+  usages: ImportUsage[],
+  cardIdMap: Map<number, DatabaseId>,
+  timestamp: string,
+) {
   const statement = db.prepare(
     `INSERT INTO usages (
       accountId, cardId, amountCents, merchant, description, isReversed,
@@ -918,7 +1130,7 @@ function insertImportedUsages(db, auth, usages, cardIdMap, timestamp) {
   }
 }
 
-function deleteCurrentImportScope(db, auth) {
+function deleteCurrentImportScope(db: Database.Database, auth: AuthContext) {
   db.prepare('DELETE FROM usages WHERE accountId = ?').run(auth.accountId);
   db.prepare('DELETE FROM transactions WHERE accountId = ?').run(auth.accountId);
   db.prepare('DELETE FROM cards WHERE accountId = ?').run(auth.accountId);
@@ -927,11 +1139,11 @@ function deleteCurrentImportScope(db, auth) {
   db.prepare('DELETE FROM app_settings WHERE accountId = ?').run(auth.accountId);
 }
 
-function foreignKeyViolations(db) {
+function foreignKeyViolations(db: Database.Database) {
   return db.prepare('PRAGMA foreign_key_check').all();
 }
 
-function importSummary(mode, payload, backupInfo = null) {
+function importSummary(mode: ImportMode, payload: PlaintextImportPayload, backupInfo: BackupInfo | null = null) {
   return {
     mode,
     backupCreated: Boolean(backupInfo),
@@ -944,7 +1156,15 @@ function importSummary(mode, payload, backupInfo = null) {
   };
 }
 
-function importPayloadIntoDatabase(db, auth, payload, mode, timestamp, requestId, backupInfo = null) {
+function importPayloadIntoDatabase(
+  db: Database.Database,
+  auth: AuthContext,
+  payload: PlaintextImportPayload,
+  mode: ImportMode,
+  timestamp: string,
+  requestId: string,
+  backupInfo: BackupInfo | null = null,
+) {
   return db.transaction(() => {
     if (mode === 'replace') {
       deleteCurrentImportScope(db, auth);
@@ -993,7 +1213,7 @@ function importPayloadIntoDatabase(db, auth, payload, mode, timestamp, requestId
         timestamp,
         timestamp,
       );
-    const importJob = db.prepare('SELECT * FROM import_jobs WHERE id = ?').get(jobInfo.lastInsertRowid);
+    const importJob = db.prepare('SELECT * FROM import_jobs WHERE id = ?').get(jobInfo.lastInsertRowid) as ImportJobRow;
 
     insertAuditEvent(db, {
       accountId: auth.accountId,
@@ -1026,14 +1246,15 @@ function importPayloadIntoDatabase(db, auth, payload, mode, timestamp, requestId
   })();
 }
 
-function translateImportError(error) {
-  if (error.code?.startsWith('SQLITE_CONSTRAINT')) {
+function translateImportError(error: unknown) {
+  const sqliteError = error as SqliteErrorLike;
+  if (sqliteError.code?.startsWith('SQLITE_CONSTRAINT')) {
     return badRequest('IMPORT_CONSTRAINT_FAILED', 'Imported data violates database constraints.');
   }
   return error;
 }
 
-async function createPreReplaceBackup(db, timestamp) {
+async function createPreReplaceBackup(db: Database.Database, timestamp: string): Promise<BackupInfo> {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'gc-json-replace-backup-'));
   const filename = `gift-card-pre-import-${exportDate(timestamp)}.sqlite`;
   const backupPath = path.join(tempDir, filename);
@@ -1045,7 +1266,7 @@ async function createPreReplaceBackup(db, timestamp) {
   };
 }
 
-export function createBackupRouter({ db }) {
+export function createBackupRouter({ db }: { db: Database.Database }) {
   const router = Router();
 
   router.use(requireUnlockedSession);

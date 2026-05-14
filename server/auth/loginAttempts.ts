@@ -16,14 +16,19 @@ interface LoginAttemptRow {
   resetAt: number;
 }
 
+interface LoginAttemptRecord {
+  failures: number;
+  resetAt: number;
+}
+
 export function createLoginAttemptStore({
   maxAttempts = 5,
   windowMs = 15 * 60 * 1000,
   now = () => Date.now(),
 }: LoginAttemptStoreOptions = {}) {
-  const attempts = new Map();
+  const attempts = new Map<string, LoginAttemptRecord>();
 
-  function currentRecord(key) {
+  function currentRecord(key: string): LoginAttemptRecord | null {
     const record = attempts.get(key);
     if (!record || record.resetAt <= now()) {
       attempts.delete(key);
@@ -33,12 +38,12 @@ export function createLoginAttemptStore({
   }
 
   return {
-    isBlocked(key) {
+    isBlocked(key: string) {
       const record = currentRecord(key);
       return Boolean(record && record.failures >= maxAttempts);
     },
 
-    recordFailure(key) {
+    recordFailure(key: string) {
       const record = currentRecord(key) || {
         failures: 0,
         resetAt: now() + windowMs,
@@ -48,7 +53,7 @@ export function createLoginAttemptStore({
       return record;
     },
 
-    recordSuccess(key) {
+    recordSuccess(key: string) {
       attempts.delete(key);
     },
   };
@@ -60,7 +65,7 @@ export function createSqliteLoginAttemptStore({
   windowMs = 15 * 60 * 1000,
   now = () => Date.now(),
 }: SqliteLoginAttemptStoreOptions) {
-  function currentRecord(key) {
+  function currentRecord(key: string): LoginAttemptRow | null {
     const record = db
       .prepare('SELECT key, failures, resetAt FROM auth_login_attempts WHERE key = ?')
       .get(key) as LoginAttemptRow | undefined;
@@ -75,12 +80,12 @@ export function createSqliteLoginAttemptStore({
   }
 
   return {
-    isBlocked(key) {
+    isBlocked(key: string) {
       const record = currentRecord(key);
       return Boolean(record && record.failures >= maxAttempts);
     },
 
-    recordFailure(key) {
+    recordFailure(key: string) {
       const record = currentRecord(key);
       const failures = (record?.failures || 0) + 1;
       const resetAt = record?.resetAt || now() + windowMs;
@@ -95,7 +100,7 @@ export function createSqliteLoginAttemptStore({
       return { key, failures, resetAt };
     },
 
-    recordSuccess(key) {
+    recordSuccess(key: string) {
       db.prepare('DELETE FROM auth_login_attempts WHERE key = ?').run(key);
     },
   };

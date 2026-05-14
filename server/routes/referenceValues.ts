@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import type Database from 'better-sqlite3';
 import { z } from 'zod';
 import { insertAuditEvent } from '../audit/index.js';
 import { requireUnlockedSession } from '../auth/requireAuth.js';
@@ -8,6 +9,17 @@ import { asyncHandler, badRequest } from '../http/errors.js';
 import { objectResponse } from '../http/response.js';
 
 const referenceTypes = new Set(['deal_name', 'source', 'card_brand']);
+type ReferenceType = 'deal_name' | 'source' | 'card_brand';
+
+interface ReferenceValueRow {
+  id: number;
+  type: ReferenceType;
+  value: string;
+  usageCount: number;
+  lastUsedAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
 
 const referenceValueInputSchema = z
   .object({
@@ -15,6 +27,7 @@ const referenceValueInputSchema = z
     value: z.string().trim().min(1).max(160),
   })
   .strict();
+type ReferenceValueInput = z.infer<typeof referenceValueInputSchema>;
 
 const upsertReferenceValuesSchema = z
   .object({
@@ -22,7 +35,7 @@ const upsertReferenceValuesSchema = z
   })
   .strict();
 
-function zodFieldErrors(error) {
+function zodFieldErrors(error: z.ZodError) {
   return error.issues.map((issue) => ({
     field: issue.path.join('.') || 'body',
     code: issue.code,
@@ -38,7 +51,11 @@ function validateBody<T extends z.ZodTypeAny>(schema: T, body: unknown): z.infer
   return result.data;
 }
 
-function parsePositiveInt(value, fallback, { min = 1, max = 200 } = {}) {
+function parsePositiveInt<T extends number | null>(
+  value: unknown,
+  fallback: T,
+  { min = 1, max = 200 }: { min?: number; max?: number } = {},
+): number | T {
   if (value == null || value === '') {
     return fallback;
   }
@@ -56,13 +73,13 @@ function parsePositiveInt(value, fallback, { min = 1, max = 200 } = {}) {
   return parsed;
 }
 
-function normalizeReferenceValue(value) {
+function normalizeReferenceValue(value: string): string {
   return value.trim().toLowerCase();
 }
 
-function parseTypes(value) {
+function parseTypes(value: unknown): ReferenceType[] {
   if (!value) {
-    return [...referenceTypes];
+    return [...referenceTypes] as ReferenceType[];
   }
 
   const types = String(value)
@@ -80,10 +97,10 @@ function parseTypes(value) {
     ]);
   }
 
-  return [...new Set(types)];
+  return [...new Set(types)] as ReferenceType[];
 }
 
-function toReferenceValueResponse(row) {
+function toReferenceValueResponse(row: ReferenceValueRow) {
   return {
     id: row.id,
     type: row.type,
@@ -95,10 +112,13 @@ function toReferenceValueResponse(row) {
   };
 }
 
-function selectReferenceValues(db, { accountId, type, q, limit }) {
+function selectReferenceValues(
+  db: Database.Database,
+  { accountId, type, q, limit }: { accountId: number; type: ReferenceType; q: string; limit: number },
+) {
   const normalizedQuery = q ? normalizeReferenceValue(q) : '';
   if (!normalizedQuery) {
-    return db
+    return (db
       .prepare(
         `SELECT *
          FROM reference_values
@@ -106,11 +126,10 @@ function selectReferenceValues(db, { accountId, type, q, limit }) {
          ORDER BY usageCount DESC, lastUsedAt DESC, value COLLATE NOCASE ASC
          LIMIT ?`,
       )
-      .all(accountId, type, limit)
-      .map(toReferenceValueResponse);
+      .all(accountId, type, limit) as ReferenceValueRow[]).map(toReferenceValueResponse);
   }
 
-  return db
+  return (db
     .prepare(
       `SELECT *
        FROM reference_values
@@ -126,11 +145,15 @@ function selectReferenceValues(db, { accountId, type, q, limit }) {
          value COLLATE NOCASE ASC
        LIMIT ?`,
     )
-    .all(accountId, type, `%${normalizedQuery}%`, normalizedQuery, `${normalizedQuery}%`, limit)
-    .map(toReferenceValueResponse);
+    .all(accountId, type, `%${normalizedQuery}%`, normalizedQuery, `${normalizedQuery}%`, limit) as ReferenceValueRow[]).map(
+    toReferenceValueResponse,
+  );
 }
 
-function upsertReferenceValues(db, { accountId, values, timestamp }) {
+function upsertReferenceValues(
+  db: Database.Database,
+  { accountId, values, timestamp }: { accountId: number; values: ReferenceValueInput[]; timestamp: string },
+) {
   const statement = db.prepare(
     `INSERT INTO reference_values (
       accountId, type, value, normalizedValue, usageCount, lastUsedAt, createdAt, updatedAt
@@ -145,8 +168,8 @@ function upsertReferenceValues(db, { accountId, values, timestamp }) {
   );
 
   return db.transaction(() => {
-    const seen = new Set();
-    const rows = [];
+    const seen = new Set<string>();
+    const rows: ReferenceValueRow[] = [];
     for (const item of values) {
       const value = item.value.trim();
       const normalizedValue = normalizeReferenceValue(value);
@@ -156,13 +179,13 @@ function upsertReferenceValues(db, { accountId, values, timestamp }) {
       }
       seen.add(key);
       statement.run(accountId, item.type, value, normalizedValue, timestamp, timestamp, timestamp);
-      rows.push(select.get(accountId, item.type, normalizedValue));
+      rows.push(select.get(accountId, item.type, normalizedValue) as ReferenceValueRow);
     }
     return rows.map(toReferenceValueResponse);
   })();
 }
 
-export function createReferenceValuesRouter({ db }) {
+export function createReferenceValuesRouter({ db }: { db: Database.Database }) {
   const router = Router();
 
   router.use(requireUnlockedSession);
@@ -175,7 +198,10 @@ export function createReferenceValuesRouter({ db }) {
       const types = parseTypes(req.query.types);
       const q = typeof req.query.q === 'string' ? req.query.q : '';
       const limit = parsePositiveInt(req.query.limit, 50, { min: 1, max: 200 });
-      const data = Object.fromEntries(types.map((type) => [type, []]));
+      const data = Object.fromEntries(types.map((type): [ReferenceType, ReturnType<typeof toReferenceValueResponse>[]] => [type, []])) as Record<
+        ReferenceType,
+        ReturnType<typeof toReferenceValueResponse>[]
+      >;
 
       for (const type of types) {
         data[type] = selectReferenceValues(db, {

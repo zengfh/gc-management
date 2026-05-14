@@ -10,6 +10,7 @@ import type Database from 'better-sqlite3';
 import { createSqliteLoginAttemptStore } from './auth/loginAttempts.js';
 import { createSqliteSessionStore } from './auth/sqliteSessionStore.js';
 import { verifyDatabase } from './db/index.js';
+import { HttpError } from './http/errors.js';
 import { errorResponse } from './http/response.js';
 import { createErrorReporter } from './observability/errorReporter.js';
 import { createRequestLogger, logRequestError } from './observability/requestLogging.js';
@@ -246,8 +247,8 @@ export function createApp({ db, logger = console, serveStatic, staticDir = defau
     });
   });
 
-  app.use((err: any, req: Request, res: Response, _next: NextFunction) => {
-    if (err.status && err.code) {
+  app.use((err: unknown, req: Request, res: Response, _next: NextFunction) => {
+    if (err instanceof HttpError) {
       res.status(err.status).json(errorResponse(err, req.requestId));
       return;
     }
