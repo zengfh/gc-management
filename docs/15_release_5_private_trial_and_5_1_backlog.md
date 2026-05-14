@@ -11,8 +11,9 @@ VPS runtime paths:
 
 - Production-style UI and API: `http://127.0.0.1:5180`
 - Runtime database: `/home/opc/gc-management-data/release5/gcmanager.db`
-- Runtime logs: `/home/opc/gc-management-data/release5/prod.log`
-- Runtime PID file: `/home/opc/gc-management-data/release5/prod.pid`
+- Runtime logs: `journalctl --user -u gc-management.service`
+- Runtime environment: `/home/opc/gc-management-data/release5/prod.env`
+- Process supervisor: user-level systemd service `gc-management.service`
 - Future encrypted backup directory: `/home/opc/gc-management-data/release5/backups/`
 - Restore-drill workspace: `/home/opc/gc-management-data/release5/restore-drills/`
 

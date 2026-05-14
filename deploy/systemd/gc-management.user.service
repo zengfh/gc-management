@@ -1,0 +1,16 @@
+[Unit]
+Description=Gift Card Manager private trial
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/dev/gc-management
+EnvironmentFile=%h/gc-management-data/release5/prod.env
+ExecStart=/usr/bin/node server/index.js
+Restart=on-failure
+RestartSec=5s
+UMask=0077
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

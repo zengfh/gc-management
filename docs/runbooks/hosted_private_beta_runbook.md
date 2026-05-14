@@ -86,7 +86,10 @@ Repository templates:
 
 - `deploy/env/gc-management.env.example`
 - `deploy/systemd/gc-management.service`
+- `deploy/systemd/gc-management.user.service`
 - `deploy/nginx/gc-management.conf`
+
+The user-level systemd template is for private SSH-tunnel trials on a VPS without DNS/TLS. The system-level service and Nginx templates are the target for public HTTPS hosting.
 
 ## Reverse Proxy Checklist
 

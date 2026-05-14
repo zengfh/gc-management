@@ -39,8 +39,9 @@ The private VPS trial can run the same production build through one local port:
 
 - UI and API: `http://127.0.0.1:5180`
 - Runtime database: `/home/opc/gc-management-data/release5/gcmanager.db`
-- Runtime logs: `/home/opc/gc-management-data/release5/prod.log`
-- Runtime PID file: `/home/opc/gc-management-data/release5/prod.pid`
+- Runtime logs: `journalctl --user -u gc-management.service`
+- Runtime environment: `/home/opc/gc-management-data/release5/prod.env`
+- Process supervisor: user-level systemd service `gc-management.service`
 
 Because this private trial is normally reached through an SSH tunnel over plain HTTP, it should set `GC_SESSION_COOKIE_SECURE=false`. A real public HTTPS deployment should keep `GC_SESSION_COOKIE_SECURE=true`.
 
@@ -62,6 +63,8 @@ For an actual hosted deployment:
 - Run the app under systemd using `deploy/systemd/gc-management.service`.
 - Terminate HTTPS in Nginx using `deploy/nginx/gc-management.conf`.
 - Keep real gift-card data, backups, logs, and passphrases out of git.
+
+The current private VPS trial uses `deploy/systemd/gc-management.user.service` because it does not yet have a DNS-backed HTTPS Nginx edge. The system-level `deploy/systemd/gc-management.service` remains the target for a real public host.
 
 ## Verification
 
