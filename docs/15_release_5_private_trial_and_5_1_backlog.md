@@ -9,17 +9,17 @@ Release tag: `v0.5.0-release5`
 
 VPS runtime paths:
 
-- Frontend: `http://127.0.0.1:5180`
-- API: `http://127.0.0.1:3010`
+- Production-style UI and API: `http://127.0.0.1:5180`
 - Runtime database: `/home/opc/gc-management-data/release5/gcmanager.db`
-- Runtime logs: `/home/opc/gc-management-data/release5/logs/`
+- Runtime logs: `/home/opc/gc-management-data/release5/prod.log`
+- Runtime PID file: `/home/opc/gc-management-data/release5/prod.pid`
 - Future encrypted backup directory: `/home/opc/gc-management-data/release5/backups/`
 - Restore-drill workspace: `/home/opc/gc-management-data/release5/restore-drills/`
 
 Laptop access via SSH tunnel:
 
 ```bash
-ssh -L 5180:127.0.0.1:5180 -L 3010:127.0.0.1:3010 <user>@<vps-host>
+ssh -L 5180:127.0.0.1:5180 <user>@<vps-host>
 ```
 
 Then open `http://localhost:5180`.
@@ -88,12 +88,14 @@ Completed 2026-05-14:
 
 - Corrected Add Deal credential entry so one-code cards use one field, merchant cards choose either number-plus-PIN or number-plus-access-code, barcode cards do not show a default PIN field, and network prepaid billing fields remain separate from merchant gift-card fields.
 - Verification passed with unit/integration tests, full browser e2e, focused Release 5 browser acceptance, lint, build, and whitespace checks.
+- Added a first-class production static-server/reverse-proxy deployment path so private hosted use no longer depends on the Vite dev server.
+- Added systemd, Nginx, and environment templates under `deploy/`.
+- Updated the hosted private-beta runbook and Release 5.1 hosting status doc.
 
-1. Add a first-class production static-server/reverse-proxy deployment path so private hosted use does not depend on the Vite dev server.
-2. Add a small UI checklist or runbook link for first-time private backup setup after vault creation.
-3. Expand brand-specific credential templates after the owner tests real cards, especially issuers that need labels other than PIN or access code.
-4. Improve mobile/tablet card table behavior for dense credential summaries and action buttons.
-5. Add camera/image barcode scanning as a future optional enhancement.
-6. Add import-preview filters for valid/invalid rows if larger CSV imports become common.
-7. Add a backup reminder prompt after the first real card is added.
-8. Consider a safer "test mode" or sample-data workspace so users can rehearse sale/use/void flows without touching real inventory.
+1. Add a small UI checklist or runbook link for first-time private backup setup after vault creation.
+2. Expand brand-specific credential templates after the owner tests real cards, especially issuers that need labels other than PIN or access code.
+3. Improve mobile/tablet card table behavior for dense credential summaries and action buttons.
+4. Add camera/image barcode scanning as a future optional enhancement.
+5. Add import-preview filters for valid/invalid rows if larger CSV imports become common.
+6. Add a backup reminder prompt after the first real card is added.
+7. Consider a safer "test mode" or sample-data workspace so users can rehearse sale/use/void flows without touching real inventory.

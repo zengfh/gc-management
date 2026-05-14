@@ -26,6 +26,7 @@ Files:
 18. `13_release_5_status.md` - Release 5 credential-profile implementation status, verification, and remaining polish.
 19. `14_release_5_acceptance_trial.md` - Synthetic acceptance dataset, source research, and manual/automated Release 5 trial steps.
 20. `15_release_5_private_trial_and_5_1_backlog.md` - Private trial runbook, backup discipline, and Release 5.1 polish backlog.
+21. `16_release_5_1_production_hosting_status.md` - Production-style hosting research, implementation status, VPS trial runtime, and remaining hosting work.
 
 Scope note:
 

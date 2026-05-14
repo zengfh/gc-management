@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import request from 'supertest';
 import { describe, expect, it, vi } from 'vitest';
 import { createApp } from './app.js';
@@ -53,7 +56,7 @@ describe('app', () => {
     process.env.SESSION_SECRET = 'test-production-session-secret';
     const db = openDatabase({ filename: ':memory:' });
     try {
-      const app = createApp({ db });
+      const app = createApp({ db, serveStatic: false });
 
       const response = await request(app).get('/api/health');
 
@@ -62,6 +65,58 @@ describe('app', () => {
       db.close();
       process.env.NODE_ENV = originalNodeEnv;
       process.env.SESSION_SECRET = originalSessionSecret;
+    }
+  });
+
+  it('serves a production frontend build while preserving API 404 responses', async () => {
+    const db = openDatabase({ filename: ':memory:' });
+    const staticDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gc-static-'));
+    fs.mkdirSync(path.join(staticDir, 'assets'), { recursive: true });
+    fs.writeFileSync(
+      path.join(staticDir, 'index.html'),
+      '<!doctype html><html><body><div id="root"></div><script type="module" src="/assets/app.js"></script></body></html>',
+    );
+    fs.writeFileSync(path.join(staticDir, 'assets', 'app.js'), 'console.log("built app");');
+
+    try {
+      const app = createApp({ db, staticDir, serveStatic: true });
+
+      const homeResponse = await request(app).get('/');
+      expect(homeResponse.status).toBe(200);
+      expect(homeResponse.text).toContain('<div id="root"></div>');
+      expect(homeResponse.headers['cache-control']).toBe('no-cache');
+
+      const spaRouteResponse = await request(app).get('/cards/active');
+      expect(spaRouteResponse.status).toBe(200);
+      expect(spaRouteResponse.text).toContain('<div id="root"></div>');
+
+      const assetResponse = await request(app).get('/assets/app.js');
+      expect(assetResponse.status).toBe(200);
+      expect(assetResponse.text).toContain('built app');
+      expect(assetResponse.headers['cache-control']).toContain('immutable');
+
+      const missingAssetResponse = await request(app).get('/assets/missing.js');
+      expect(missingAssetResponse.status).toBe(404);
+      expect(missingAssetResponse.body.error.code).toBe('NOT_FOUND');
+
+      const apiResponse = await request(app).get('/api/no-such-route');
+      expect(apiResponse.status).toBe(404);
+      expect(apiResponse.body.error.code).toBe('NOT_FOUND');
+    } finally {
+      db.close();
+      fs.rmSync(staticDir, { recursive: true, force: true });
+    }
+  });
+
+  it('fails production-style startup when static serving is enabled without a build', () => {
+    const db = openDatabase({ filename: ':memory:' });
+    const staticDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gc-empty-static-'));
+
+    try {
+      expect(() => createApp({ db, staticDir, serveStatic: true })).toThrow(/Static frontend build not found/);
+    } finally {
+      db.close();
+      fs.rmSync(staticDir, { recursive: true, force: true });
     }
   });
 

@@ -1,9 +1,26 @@
 # Hosted Private-Beta Runbook
 
-Status: Release 4 operational runbook
-Date: 2026-05-12
+Status: Release 5.1 production-style single-node runbook
+Date: 2026-05-14
 
 This runbook is for a single-node private hosted deployment. It is not a multi-instance or SaaS runbook.
+
+## Production Hosting Model
+
+The production app is one Node/Express process:
+
+- `npm run build` creates the Vite frontend bundle in `dist/`.
+- `npm start` runs `server/index.js`.
+- Express serves both the built frontend and `/api/*` from the same origin.
+- Nginx should terminate TLS and reverse proxy to the local app port.
+- The Vite dev server and `vite preview` are not part of production hosting.
+
+Research basis:
+
+- Vite production deployment uses `vite build`, writes to `dist` by default, and states that `vite preview` is for local preview rather than production serving: https://vite.dev/guide/static-deploy.html
+- Express supports serving static files with the built-in `express.static` middleware: https://expressjs.com/en/starter/static-files.html
+- Nginx documents reverse proxying requests to an upstream HTTP server with `proxy_pass`: https://docs.nginx.com/nginx/admin-guide/web-server/reverse-proxy/
+- systemd service units provide restart supervision, while `systemd.exec` covers `WorkingDirectory`, `EnvironmentFile`, `StateDirectory`, `LogsDirectory`, and hardening controls: https://www.freedesktop.org/software/systemd/man/latest/systemd.service.html and https://www.freedesktop.org/software/systemd/man/latest/systemd.exec.html
 
 ## Supported Deployment Shape
 
@@ -12,6 +29,7 @@ Supported:
 - One app process on one host.
 - SQLite database on local durable disk.
 - TLS via reverse proxy.
+- Built frontend served by the app process from `dist/`.
 - One account with multiple users and RBAC.
 - Encrypted portable backups.
 
@@ -28,11 +46,18 @@ Blocked:
 
 ```bash
 NODE_ENV=production
+PORT=3001
 SESSION_SECRET=<long-random-secret>
 GC_DB_PATH=/var/lib/gc-management/gcmanager.db
 APP_ORIGIN=https://giftcards.example.com
+GC_SERVE_STATIC=true
+GC_TRUST_PROXY=true
+GC_SESSION_COOKIE_SECURE=true
+GC_DEPLOYMENT_MODE=single-node
 GC_PLAINTEXT_EXPORT_ENABLED=false
 GC_FEATURE_RAW_DATABASE_EXPORT=false
+GC_FEATURE_CSV_IMPORT=true
+GC_FEATURE_REFERENCE_VALUE_HINTS=true
 GC_REQUEST_LOGS=true
 GC_METRICS_TOKEN=<long-random-token>
 ```
@@ -43,6 +68,25 @@ Optional:
 GC_ERROR_REPORT_URL=https://errors.example.com/report
 GC_ERROR_REPORT_TOKEN=<long-random-token>
 ```
+
+Temporary SSH-tunnel testing without TLS can set `GC_SESSION_COOKIE_SECURE=false` and use an `APP_ORIGIN` such as `http://localhost:5180,http://127.0.0.1:5180`. Do not use that setting for a public HTTPS deployment.
+
+## Deployment Layout
+
+Recommended host layout:
+
+```text
+/opt/gc-management/current        # checked-out release or symlink to current release
+/etc/gc-management/gc-management.env
+/var/lib/gc-management/gcmanager.db
+/var/log/gc-management/
+```
+
+Repository templates:
+
+- `deploy/env/gc-management.env.example`
+- `deploy/systemd/gc-management.service`
+- `deploy/nginx/gc-management.conf`
 
 ## Reverse Proxy Checklist
 
@@ -55,15 +99,32 @@ GC_ERROR_REPORT_TOKEN=<long-random-token>
 
 ## Startup Checklist
 
-1. Install dependencies with `npm ci`.
-2. Set the required environment.
-3. Start with `npm run build`.
-4. Start server with `node server/index.js` behind the reverse proxy.
-5. Verify `GET /api/health`.
-6. Verify security headers on `/api/health`.
-7. Complete setup or login.
-8. Verify `GET /api/auth/status` returns expected feature flags.
-9. Verify `/api/observability/metrics` requires auth or `GC_METRICS_TOKEN`.
+1. Check out the release on the host.
+2. Install dependencies with `npm ci`.
+3. Build the frontend with `npm run build`.
+4. Copy `deploy/env/gc-management.env.example` to `/etc/gc-management/gc-management.env` and replace all secrets and origins.
+5. Copy `deploy/systemd/gc-management.service` to `/etc/systemd/system/gc-management.service`.
+6. Copy `deploy/nginx/gc-management.conf` to the Nginx site config directory and replace the domain and certificate paths.
+7. Run `sudo systemctl daemon-reload`.
+8. Run `sudo systemctl enable --now gc-management`.
+9. Run `sudo nginx -t` and reload Nginx.
+10. Verify `GET /api/health` through both `http://127.0.0.1:$PORT` and the public HTTPS origin.
+11. Verify `/` and a deep SPA path such as `/cards` return the built frontend.
+12. Complete setup or login.
+13. Verify `GET /api/auth/status` returns expected feature flags.
+14. Verify `/api/observability/metrics` requires auth or `GC_METRICS_TOKEN`.
+
+Minimal service install commands:
+
+```bash
+sudo useradd --system --home /var/lib/gc-management --shell /usr/sbin/nologin gcmanager
+sudo install -d -o gcmanager -g gcmanager -m 700 /var/lib/gc-management /var/log/gc-management
+sudo install -d -o root -g root -m 755 /etc/gc-management /opt/gc-management
+sudo install -o root -g root -m 600 deploy/env/gc-management.env.example /etc/gc-management/gc-management.env
+sudo install -o root -g root -m 644 deploy/systemd/gc-management.service /etc/systemd/system/gc-management.service
+```
+
+Edit `/etc/gc-management/gc-management.env` before starting the service.
 
 ## Backup Procedure
 

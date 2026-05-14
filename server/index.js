@@ -6,5 +6,5 @@ const db = openDatabase();
 const app = createApp({ db });
 
 app.listen(port, () => {
-  console.log(`API listening on http://localhost:${port}`);
+  console.log(`Gift Card Manager listening on http://localhost:${port}`);
 });

@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import express from 'express';
 import session from 'express-session';
 import helmet from 'helmet';
@@ -21,6 +24,95 @@ import { createSettingsRouter } from './routes/settings.js';
 import { createUsersRouter } from './routes/users.js';
 import { csrfProtection } from './security/csrf.js';
 
+const appDir = path.dirname(fileURLToPath(import.meta.url));
+const projectRoot = path.resolve(appDir, '..');
+const defaultStaticDir = path.join(projectRoot, 'dist');
+
+function envBoolean(name) {
+  const value = process.env[name];
+  if (value === undefined) {
+    return undefined;
+  }
+  if (['1', 'true', 'yes', 'on'].includes(value.toLowerCase())) {
+    return true;
+  }
+  if (['0', 'false', 'no', 'off'].includes(value.toLowerCase())) {
+    return false;
+  }
+  return undefined;
+}
+
+function shouldServeStatic(serveStatic) {
+  if (serveStatic !== undefined) {
+    return serveStatic;
+  }
+
+  const configured = envBoolean('GC_SERVE_STATIC');
+  if (configured !== undefined) {
+    return configured;
+  }
+
+  return process.env.NODE_ENV === 'production';
+}
+
+function shouldTrustProxy() {
+  const configured = envBoolean('GC_TRUST_PROXY');
+  if (configured !== undefined) {
+    return configured;
+  }
+
+  return process.env.NODE_ENV === 'production';
+}
+
+function shouldUseSecureSessionCookie() {
+  const configured = envBoolean('GC_SESSION_COOKIE_SECURE');
+  if (configured !== undefined) {
+    return configured;
+  }
+
+  return process.env.NODE_ENV === 'production';
+}
+
+function assertStaticBuild(staticDir) {
+  const indexPath = path.join(staticDir, 'index.html');
+  if (!fs.existsSync(indexPath)) {
+    throw new Error(
+      `Static frontend build not found at ${indexPath}. Run npm run build before production startup or set GC_SERVE_STATIC=false.`,
+    );
+  }
+}
+
+function setStaticCacheHeaders(res, filePath, staticDir) {
+  const relativePath = path.relative(staticDir, filePath);
+  if (relativePath.split(path.sep)[0] === 'assets') {
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    return;
+  }
+
+  res.setHeader('Cache-Control', 'no-cache');
+}
+
+function installStaticRoutes(app, staticDir) {
+  const indexPath = path.join(staticDir, 'index.html');
+
+  app.use(
+    express.static(staticDir, {
+      index: false,
+      setHeaders: (res, filePath) => setStaticCacheHeaders(res, filePath, staticDir),
+    }),
+  );
+
+  app.use((req, res, next) => {
+    if (!['GET', 'HEAD'].includes(req.method) || req.path.startsWith('/api/') || path.extname(req.path)) {
+      next();
+      return;
+    }
+
+    res.set('Cache-Control', 'no-cache');
+    res.sendFile(indexPath);
+  });
+}
+
 function assertProductionConfig() {
   if (process.env.NODE_ENV === 'production' && !process.env.SESSION_SECRET) {
     throw new Error('SESSION_SECRET is required in production.');
@@ -32,10 +124,14 @@ function assertProductionConfig() {
   }
 }
 
-export function createApp({ db, logger = console } = {}) {
+export function createApp({ db, logger = console, serveStatic, staticDir = defaultStaticDir } = {}) {
   assertProductionConfig();
 
   const app = express();
+  if (shouldTrustProxy()) {
+    app.set('trust proxy', 1);
+  }
+
   const sessionStore = db ? createSqliteSessionStore({ db }) : undefined;
   const metrics = createRequestMetrics();
   const errorReporter = createErrorReporter({ logger });
@@ -82,7 +178,7 @@ export function createApp({ db, logger = console } = {}) {
       cookie: {
         httpOnly: true,
         sameSite: 'strict',
-        secure: process.env.NODE_ENV === 'production',
+        secure: shouldUseSecureSessionCookie(),
         maxAge: 24 * 60 * 60 * 1000,
       },
     }),
@@ -122,6 +218,11 @@ export function createApp({ db, logger = console } = {}) {
     app.use('/api/reference-values', createReferenceValuesRouter({ db }));
     app.use('/api/settings', createSettingsRouter({ db }));
     app.use('/api/users', createUsersRouter({ db }));
+  }
+
+  if (shouldServeStatic(serveStatic)) {
+    assertStaticBuild(staticDir);
+    installStaticRoutes(app, staticDir);
   }
 
   app.use((req, res) => {

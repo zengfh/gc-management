@@ -1,0 +1,32 @@
+[Unit]
+Description=Gift Card Manager
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=gcmanager
+Group=gcmanager
+WorkingDirectory=/opt/gc-management/current
+EnvironmentFile=/etc/gc-management/gc-management.env
+ExecStart=/usr/bin/node server/index.js
+Restart=on-failure
+RestartSec=5s
+UMask=0077
+
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RemoveIPC=true
+ReadWritePaths=/var/lib/gc-management /var/log/gc-management
+StateDirectory=gc-management
+LogsDirectory=gc-management
+
+[Install]
+WantedBy=multi-user.target
