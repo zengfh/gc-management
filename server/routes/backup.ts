@@ -297,7 +297,7 @@ function zodFieldErrors(error) {
   }));
 }
 
-function validateBody(schema, body) {
+function validateBody<T extends z.ZodTypeAny>(schema: T, body: unknown): z.infer<T> {
   const result = schema.safeParse(body);
   if (!result.success) {
     throw badRequest('VALIDATION_FAILED', 'Request validation failed.', zodFieldErrors(result.error));
@@ -367,7 +367,11 @@ function toExportDeal(row) {
   };
 }
 
-function toExportCredentialField(row, key, options = {}) {
+interface ExportOptions {
+  includeNetworkSecurityCodes?: boolean;
+}
+
+function toExportCredentialField(row, key, options: ExportOptions = {}) {
   if (row.fieldKind === 'network_security_code' && !options.includeNetworkSecurityCodes) {
     return null;
   }
@@ -385,7 +389,7 @@ function toExportCredentialField(row, key, options = {}) {
   };
 }
 
-function toExportCard(row, key, credentialRows = [], options = {}) {
+function toExportCard(row, key, credentialRows = [], options: ExportOptions = {}) {
   const credentialFields = credentialRows
     .map((credentialRow) => toExportCredentialField(credentialRow, key, options))
     .filter(Boolean);
@@ -494,7 +498,7 @@ function toExportReferenceValue(row) {
   };
 }
 
-function buildPlaintextExport(db, auth, exportedAt, options = {}) {
+function buildPlaintextExport(db, auth, exportedAt, options: ExportOptions = {}) {
   const dealRows = db
     .prepare('SELECT * FROM deals WHERE accountId = ? ORDER BY id')
     .all(auth.accountId);

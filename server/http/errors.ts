@@ -1,5 +1,17 @@
+import type { NextFunction, Request, Response } from 'express';
+
+interface HttpErrorOptions {
+  fieldErrors?: unknown[];
+  details?: unknown;
+}
+
 export class HttpError extends Error {
-  constructor(status, code, message, options = {}) {
+  status: number;
+  code: string;
+  fieldErrors: unknown[];
+  details: unknown;
+
+  constructor(status: number, code: string, message: string, options: HttpErrorOptions = {}) {
     super(message);
     this.name = 'HttpError';
     this.status = status;
@@ -9,7 +21,7 @@ export class HttpError extends Error {
   }
 }
 
-export function badRequest(code, message, fieldErrors = []) {
+export function badRequest(code: string, message: string, fieldErrors: unknown[] = []) {
   return new HttpError(400, code, message, { fieldErrors });
 }
 
@@ -25,15 +37,15 @@ export function notFound(code = 'NOT_FOUND', message = 'Not found.') {
   return new HttpError(404, code, message);
 }
 
-export function conflict(code, message, details) {
+export function conflict(code: string, message: string, details?: unknown) {
   return new HttpError(409, code, message, { details });
 }
 
-export function rateLimited(code, message) {
+export function rateLimited(code: string, message: string) {
   return new HttpError(429, code, message);
 }
 
-export function asyncHandler(handler) {
+export function asyncHandler(handler: (req: Request, res: Response, next: NextFunction) => Promise<unknown> | unknown) {
   return (req, res, next) => {
     Promise.resolve(handler(req, res, next)).catch(next);
   };

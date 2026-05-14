@@ -74,7 +74,7 @@ export function createAuditRouter({ db }) {
       const limit = parsePositiveInt(req.query.limit, 50, { min: 1, max: 100 });
       const offset = parsePositiveInt(req.query.offset, 0, { min: 0 });
       const where = ['accountId = ?'];
-      const params = [req.auth.accountId];
+      const params: any[] = [req.auth.accountId];
 
       if (req.query.entityType) {
         const entityType = String(req.query.entityType).trim();

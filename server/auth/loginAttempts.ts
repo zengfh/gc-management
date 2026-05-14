@@ -1,8 +1,26 @@
+import type Database from 'better-sqlite3';
+
+interface LoginAttemptStoreOptions {
+  maxAttempts?: number;
+  windowMs?: number;
+  now?: () => number;
+}
+
+interface SqliteLoginAttemptStoreOptions extends LoginAttemptStoreOptions {
+  db: Database.Database;
+}
+
+interface LoginAttemptRow {
+  key: string;
+  failures: number;
+  resetAt: number;
+}
+
 export function createLoginAttemptStore({
   maxAttempts = 5,
   windowMs = 15 * 60 * 1000,
   now = () => Date.now(),
-} = {}) {
+}: LoginAttemptStoreOptions = {}) {
   const attempts = new Map();
 
   function currentRecord(key) {
@@ -41,11 +59,11 @@ export function createSqliteLoginAttemptStore({
   maxAttempts = 5,
   windowMs = 15 * 60 * 1000,
   now = () => Date.now(),
-} = {}) {
+}: SqliteLoginAttemptStoreOptions) {
   function currentRecord(key) {
     const record = db
       .prepare('SELECT key, failures, resetAt FROM auth_login_attempts WHERE key = ?')
-      .get(key);
+      .get(key) as LoginAttemptRow | undefined;
     if (!record) {
       return null;
     }

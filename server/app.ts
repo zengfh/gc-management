@@ -1,10 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import express from 'express';
+import type { NextFunction, Request, Response } from 'express';
+import express, { type Express } from 'express';
 import session from 'express-session';
 import helmet from 'helmet';
 import { nanoid } from 'nanoid';
+import type Database from 'better-sqlite3';
 import { createSqliteLoginAttemptStore } from './auth/loginAttempts.js';
 import { createSqliteSessionStore } from './auth/sqliteSessionStore.js';
 import { verifyDatabase } from './db/index.js';
@@ -25,10 +27,19 @@ import { createUsersRouter } from './routes/users.js';
 import { csrfProtection } from './security/csrf.js';
 
 const appDir = path.dirname(fileURLToPath(import.meta.url));
-const projectRoot = path.resolve(appDir, '..');
+const projectRoot = path.basename(appDir) === 'server' && path.basename(path.dirname(appDir)) === 'build'
+  ? path.resolve(appDir, '..', '..')
+  : path.resolve(appDir, '..');
 const defaultStaticDir = path.join(projectRoot, 'dist');
 
-function envBoolean(name) {
+interface CreateAppOptions {
+  db?: Database.Database;
+  logger?: Console;
+  serveStatic?: boolean;
+  staticDir?: string;
+}
+
+function envBoolean(name: string): boolean | undefined {
   const value = process.env[name];
   if (value === undefined) {
     return undefined;
@@ -42,7 +53,7 @@ function envBoolean(name) {
   return undefined;
 }
 
-function shouldServeStatic(serveStatic) {
+function shouldServeStatic(serveStatic?: boolean): boolean {
   if (serveStatic !== undefined) {
     return serveStatic;
   }
@@ -73,7 +84,7 @@ function shouldUseSecureSessionCookie() {
   return process.env.NODE_ENV === 'production';
 }
 
-function assertStaticBuild(staticDir) {
+function assertStaticBuild(staticDir: string) {
   const indexPath = path.join(staticDir, 'index.html');
   if (!fs.existsSync(indexPath)) {
     throw new Error(
@@ -82,7 +93,7 @@ function assertStaticBuild(staticDir) {
   }
 }
 
-function setStaticCacheHeaders(res, filePath, staticDir) {
+function setStaticCacheHeaders(res: Response, filePath: string, staticDir: string) {
   const relativePath = path.relative(staticDir, filePath);
   if (relativePath.split(path.sep)[0] === 'assets') {
     res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
@@ -92,7 +103,7 @@ function setStaticCacheHeaders(res, filePath, staticDir) {
   res.setHeader('Cache-Control', 'no-cache');
 }
 
-function installStaticRoutes(app, staticDir) {
+function installStaticRoutes(app: Express, staticDir: string) {
   const indexPath = path.join(staticDir, 'index.html');
 
   app.use(
@@ -102,7 +113,7 @@ function installStaticRoutes(app, staticDir) {
     }),
   );
 
-  app.use((req, res, next) => {
+  app.use((req: Request, res: Response, next: NextFunction) => {
     if (!['GET', 'HEAD'].includes(req.method) || req.path.startsWith('/api/') || path.extname(req.path)) {
       next();
       return;
@@ -124,7 +135,7 @@ function assertProductionConfig() {
   }
 }
 
-export function createApp({ db, logger = console, serveStatic, staticDir = defaultStaticDir } = {}) {
+export function createApp({ db, logger = console, serveStatic, staticDir = defaultStaticDir }: CreateAppOptions = {}) {
   assertProductionConfig();
 
   const app = express();
@@ -235,7 +246,7 @@ export function createApp({ db, logger = console, serveStatic, staticDir = defau
     });
   });
 
-  app.use((err, req, res, _next) => {
+  app.use((err: any, req: Request, res: Response, _next: NextFunction) => {
     if (err.status && err.code) {
       res.status(err.status).json(errorResponse(err, req.requestId));
       return;

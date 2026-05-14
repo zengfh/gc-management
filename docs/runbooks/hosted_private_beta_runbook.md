@@ -9,8 +9,8 @@ This runbook is for a single-node private hosted deployment. It is not a multi-i
 
 The production app is one Node/Express process:
 
-- `npm run build` creates the Vite frontend bundle in `dist/`.
-- `npm start` runs `server/index.js`.
+- `npm run build` creates the Vite frontend bundle in `dist/` and compiles the backend into `build/server/`.
+- `npm start` runs `build/server/index.js`.
 - Express serves both the built frontend and `/api/*` from the same origin.
 - Caddy or Nginx should terminate TLS and reverse proxy to the local app port.
 - The Vite dev server and `vite preview` are not part of production hosting.

@@ -1,15 +1,28 @@
 import session from 'express-session';
+import type Database from 'better-sqlite3';
 
 const oneDayMs = 24 * 60 * 60 * 1000;
 
-function nowIso(now) {
+type NowProvider = () => number;
+
+interface SqliteSessionStoreOptions {
+  db: Database.Database;
+  now?: NowProvider;
+}
+
+interface SessionRow {
+  sessionJson: string;
+  expiresAt: number;
+}
+
+function nowIso(now: NowProvider) {
   return new Date(now()).toISOString();
 }
 
-function sessionExpiresAt(sessionData, now) {
+function sessionExpiresAt(sessionData: session.SessionData, now: NowProvider) {
   const explicitExpires = sessionData?.cookie?.expires;
   if (explicitExpires) {
-    const parsed = Date.parse(explicitExpires);
+    const parsed = explicitExpires instanceof Date ? explicitExpires.getTime() : Date.parse(String(explicitExpires));
     if (!Number.isNaN(parsed)) {
       return parsed;
     }
@@ -20,7 +33,10 @@ function sessionExpiresAt(sessionData, now) {
 }
 
 export class SqliteSessionStore extends session.Store {
-  constructor({ db, now = () => Date.now() }) {
+  private readonly db: Database.Database;
+  private readonly now: NowProvider;
+
+  constructor({ db, now = () => Date.now() }: SqliteSessionStoreOptions) {
     super();
     this.db = db;
     this.now = now;
@@ -31,9 +47,9 @@ export class SqliteSessionStore extends session.Store {
     this.db.prepare('DELETE FROM web_sessions WHERE expiresAt <= ?').run(this.now());
   }
 
-  get(sid, callback) {
+  override get(sid: string, callback: (err: any, session?: session.SessionData | null) => void) {
     try {
-      const row = this.db.prepare('SELECT sessionJson, expiresAt FROM web_sessions WHERE sid = ?').get(sid);
+      const row = this.db.prepare('SELECT sessionJson, expiresAt FROM web_sessions WHERE sid = ?').get(sid) as SessionRow | undefined;
       if (!row) {
         callback(null, null);
         return;
@@ -49,7 +65,7 @@ export class SqliteSessionStore extends session.Store {
     }
   }
 
-  set(sid, sessionData, callback = () => {}) {
+  override set(sid: string, sessionData: session.SessionData, callback: (err?: any) => void = () => {}) {
     try {
       this.db
         .prepare(
@@ -72,7 +88,7 @@ export class SqliteSessionStore extends session.Store {
     }
   }
 
-  touch(sid, sessionData, callback = () => {}) {
+  override touch(sid: string, sessionData: session.SessionData, callback: (err?: any) => void = () => {}) {
     try {
       this.db
         .prepare('UPDATE web_sessions SET expiresAt = ?, updatedAt = ? WHERE sid = ?')
@@ -83,7 +99,7 @@ export class SqliteSessionStore extends session.Store {
     }
   }
 
-  destroy(sid, callback = () => {}) {
+  override destroy(sid: string, callback: (err?: any) => void = () => {}) {
     try {
       this.db.prepare('DELETE FROM web_sessions WHERE sid = ?').run(sid);
       callback(null);
@@ -93,6 +109,6 @@ export class SqliteSessionStore extends session.Store {
   }
 }
 
-export function createSqliteSessionStore(options) {
+export function createSqliteSessionStore(options: SqliteSessionStoreOptions) {
   return new SqliteSessionStore(options);
 }

@@ -36,7 +36,7 @@ function nowIso() {
 }
 
 function regenerateSession(req) {
-  return new Promise((resolve, reject) => {
+  return new Promise<void>((resolve, reject) => {
     req.session.regenerate((err) => {
       if (err) reject(err);
       else resolve();
@@ -45,7 +45,7 @@ function regenerateSession(req) {
 }
 
 function destroySession(req) {
-  return new Promise((resolve, reject) => {
+  return new Promise<void>((resolve, reject) => {
     req.session.destroy((err) => {
       if (err) reject(err);
       else resolve();
@@ -54,7 +54,7 @@ function destroySession(req) {
 }
 
 function saveSession(req) {
-  return new Promise((resolve, reject) => {
+  return new Promise<void>((resolve, reject) => {
     req.session.save((err) => {
       if (err) reject(err);
       else resolve();

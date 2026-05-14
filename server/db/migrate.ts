@@ -21,7 +21,11 @@ export function listMigrationFiles(directory = migrationsDir) {
     .sort();
 }
 
-export function runMigrations(db, options = {}) {
+interface MigrationOptions {
+  directory?: string;
+}
+
+export function runMigrations(db, options: MigrationOptions = {}) {
   const directory = options.directory || migrationsDir;
   ensureMigrationTable(db);
 

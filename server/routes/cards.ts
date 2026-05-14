@@ -229,7 +229,7 @@ function zodFieldErrors(error) {
   }));
 }
 
-function validateBody(schema, body) {
+function validateBody<T extends z.ZodTypeAny>(schema: T, body: unknown): z.infer<T> {
   const result = schema.safeParse(body);
   if (!result.success) {
     throw badRequest('VALIDATION_FAILED', 'Request validation failed.', zodFieldErrors(result.error));
@@ -815,10 +815,11 @@ export function createCardsRouter({ db }) {
       const offset = parsePositiveInt(req.query.offset, 0, { min: 0 });
       const sort = parseCardSort(req.query);
       const where = ['accountId = ?'];
-      const params = [req.auth.accountId];
+      const params: any[] = [req.auth.accountId];
 
       if (req.query.status) {
-        if (!activeStatuses.has(req.query.status) && !['sold', 'used_up', 'void'].includes(req.query.status)) {
+        const status = String(req.query.status);
+        if (!activeStatuses.has(status) && !['sold', 'used_up', 'void'].includes(status)) {
           throw badRequest('VALIDATION_FAILED', 'Request validation failed.', [
             {
               field: 'status',
@@ -828,7 +829,7 @@ export function createCardsRouter({ db }) {
           ]);
         }
         where.push('status = ?');
-        params.push(req.query.status);
+        params.push(status);
       }
 
       if (req.query.brand) {
@@ -1260,7 +1261,7 @@ export function createCardsRouter({ db }) {
     }),
   );
 
-  function mutateCardStatus({ req, cardId, transitionAction, body = {} }) {
+  function mutateCardStatus({ req, cardId, transitionAction, body = {} as any }) {
     const timestamp = nowIso();
 
     return db.transaction(() => {

@@ -5,7 +5,9 @@ export const roles = {
   admin: 'admin',
   operator: 'operator',
   viewer: 'viewer',
-};
+} as const;
+
+export type Role = (typeof roles)[keyof typeof roles];
 
 export const adminRoles = new Set([roles.owner, roles.admin]);
 export const operatorRoles = new Set([roles.owner, roles.admin, roles.operator]);

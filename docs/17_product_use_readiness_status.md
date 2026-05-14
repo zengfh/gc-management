@@ -66,7 +66,7 @@ Do not market this as a general multi-tenant product until these are done:
 Completed on 2026-05-14:
 
 - `npm run lint`
-- `npm test -- server/auth/sessionRevocation.test.js server/routes/users.test.js server/routes/auth.test.js`
+- `npm test -- server/auth/sessionRevocation.test.ts server/routes/users.test.ts server/routes/auth.test.ts`
 - `npm test`
 - `npm run build`
 - `E2E_CLIENT_PORT=5174 E2E_API_PORT=3002 npm run test:e2e`

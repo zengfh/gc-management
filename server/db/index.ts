@@ -12,7 +12,13 @@ export function getDatabasePath() {
   return process.env.GC_DB_PATH || defaultDbPath;
 }
 
-export function openDatabase(options = {}) {
+interface OpenDatabaseOptions {
+  filename?: string;
+  migrate?: boolean;
+  directory?: string;
+}
+
+export function openDatabase(options: OpenDatabaseOptions = {}) {
   const filename = options.filename || getDatabasePath();
   if (filename !== ':memory:') {
     fs.mkdirSync(path.dirname(filename), { recursive: true });

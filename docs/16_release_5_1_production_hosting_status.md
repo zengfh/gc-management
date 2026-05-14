@@ -25,6 +25,7 @@ References:
 ## Completed
 
 - Added production static serving to the Express app.
+- Added a compiled TypeScript backend runtime under `build/server/`.
 - Kept `/api/*` as API-only routes so missing API endpoints still return JSON 404 responses instead of the frontend shell.
 - Added SPA fallback for non-file frontend routes such as `/cards`.
 - Added long-lived immutable cache headers for built Vite assets under `/assets`.
@@ -32,7 +33,7 @@ References:
 - Added production startup failure when static serving is enabled but `dist/index.html` is missing.
 - Added environment controls for static serving, reverse-proxy trust, and secure session cookies.
 - Added `HOST=127.0.0.1` support so production can bind the Node process to loopback behind the HTTPS reverse proxy.
-- Added `npm start` and `npm run start:prod` scripts.
+- Added `npm start` and `npm run start:prod` scripts that run `build/server/index.js`.
 - Added deploy templates for systemd, Caddy, Nginx, and production environment variables.
 - Updated the hosted private-beta runbook for the single-process production shape.
 

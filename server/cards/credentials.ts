@@ -141,6 +141,8 @@ const profileSortOrder = {
 };
 
 export class CredentialValidationError extends Error {
+  fieldErrors: unknown[];
+
   constructor(message, fieldErrors = []) {
     super(message);
     this.name = 'CredentialValidationError';
@@ -424,7 +426,7 @@ function legacyShadowFromFields(fields) {
   };
 }
 
-export function buildCredentialModel(input, auth, options = {}) {
+export function buildCredentialModel(input, auth, options: { allowNetworkSecurityCodeStorage?: boolean } = {}) {
   const profile = inferProfile(input);
   const rawFields = inputFields(input, profile);
   const errors = [];

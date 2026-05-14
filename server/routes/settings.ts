@@ -28,7 +28,7 @@ function zodFieldErrors(error) {
   }));
 }
 
-function validateBody(schema, body) {
+function validateBody<T extends z.ZodTypeAny>(schema: T, body: unknown): z.infer<T> {
   const result = schema.safeParse(body);
   if (!result.success) {
     throw badRequest('VALIDATION_FAILED', 'Request validation failed.', zodFieldErrors(result.error));

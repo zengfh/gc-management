@@ -1,8 +1,15 @@
-export function objectResponse(data) {
+interface ErrorLike {
+  code?: string;
+  message?: string;
+  fieldErrors?: unknown[];
+  details?: unknown;
+}
+
+export function objectResponse<T>(data: T) {
   return { data };
 }
 
-export function errorResponse(error, requestId) {
+export function errorResponse(error: ErrorLike, requestId?: string) {
   return {
     error: {
       code: error.code || 'INTERNAL_ERROR',

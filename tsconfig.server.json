@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "module": "NodeNext",
+    "rootDir": "server",
+    "outDir": "build/server",
+    "types": ["node", "vitest/globals"]
+  },
+  "include": ["server/**/*.ts"],
+  "exclude": ["server/**/*.test.ts"]
+}

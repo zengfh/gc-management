@@ -22,6 +22,19 @@ import {
   X,
 } from 'lucide-react';
 
+interface ApiOptions {
+  method?: string;
+  body?: unknown;
+  csrfToken?: string | null;
+}
+
+interface ApiError extends Error {
+  code?: string;
+  fieldErrors?: unknown[];
+  requestId?: string | null;
+  status?: number;
+}
+
 const navItems = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'cards', label: 'Cards', icon: CreditCard },
@@ -529,8 +542,8 @@ function useDialogFocus(onClose) {
         return;
       }
 
-      const first = elements[0];
-      const last = elements[elements.length - 1];
+      const first = elements[0] as HTMLElement;
+      const last = elements[elements.length - 1] as HTMLElement;
       if (event.shiftKey && document.activeElement === first) {
         event.preventDefault();
         last.focus();
@@ -543,7 +556,7 @@ function useDialogFocus(onClose) {
     dialog.addEventListener('keydown', handleKeyDown);
     return () => {
       dialog.removeEventListener('keydown', handleKeyDown);
-      if (previousFocus?.focus) {
+      if (previousFocus instanceof HTMLElement) {
         previousFocus.focus();
       }
     };
@@ -559,8 +572,8 @@ function createUiIdempotencyKey() {
   return `ui_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
 }
 
-async function apiFetch(path, { method = 'GET', body, csrfToken } = {}) {
-  const options = {
+async function apiFetch(path, { method = 'GET', body, csrfToken }: ApiOptions = {}) {
+  const options: RequestInit & { headers: Record<string, string> } = {
     method,
     credentials: 'same-origin',
     headers: {
@@ -586,7 +599,7 @@ async function apiFetch(path, { method = 'GET', body, csrfToken } = {}) {
   if (!response.ok) {
     const requestId = payload.error?.requestId || response.headers.get('x-request-id');
     const message = payload.error?.message || 'Request failed.';
-    const error = new Error(requestId ? `${message} Request ID: ${requestId}` : message);
+    const error: ApiError = new Error(requestId ? `${message} Request ID: ${requestId}` : message);
     error.code = payload.error?.code;
     error.fieldErrors = payload.error?.fieldErrors || [];
     error.requestId = requestId;
@@ -597,8 +610,8 @@ async function apiFetch(path, { method = 'GET', body, csrfToken } = {}) {
   return payload;
 }
 
-async function apiDownload(path, { method = 'GET', body, csrfToken } = {}) {
-  const options = {
+async function apiDownload(path, { method = 'GET', body, csrfToken }: ApiOptions = {}) {
+  const options: RequestInit & { headers: Record<string, string> } = {
     method,
     credentials: 'same-origin',
     headers: {
@@ -623,7 +636,7 @@ async function apiDownload(path, { method = 'GET', body, csrfToken } = {}) {
     const payload = await response.json().catch(() => ({}));
     const requestId = payload.error?.requestId || response.headers.get('x-request-id');
     const message = payload.error?.message || 'Request failed.';
-    const error = new Error(requestId ? `${message} Request ID: ${requestId}` : message);
+    const error: ApiError = new Error(requestId ? `${message} Request ID: ${requestId}` : message);
     error.code = payload.error?.code;
     error.fieldErrors = payload.error?.fieldErrors || [];
     error.requestId = requestId;
@@ -2556,7 +2569,7 @@ function UserAdminRow({ user, onUpdateUser }) {
 
 function RecoveryCodesPanel({ activeCount, onGenerateRecoveryCodes }) {
   const [currentUnlockSecret, setCurrentUnlockSecret] = useState('');
-  const [codes, setCodes] = useState([]);
+  const [codes, setCodes] = useState<any[]>([]);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -3224,7 +3237,7 @@ function canUndoUsage(usage) {
   return !usage.isReversed && !usage.reversedAt && !usage.isWriteOff;
 }
 
-function HistoryList({ title, items, renderItem, emptyText, children }) {
+function HistoryList({ title, items, renderItem, emptyText, children = null }) {
   return (
     <section className="detail-section">
       <h3>{title}</h3>
@@ -3715,7 +3728,7 @@ function EditCardPanel({ card, onClose, onEditCard }) {
     setError('');
 
     const notes = form.notes.trim();
-    const payload = {
+    const payload: any = {
       rowVersion: card.rowVersion,
     };
 
@@ -4032,7 +4045,7 @@ function AddDealPanel({
   onCreateDeal,
   referenceValues = defaultReferenceValues,
   onLoadReferenceValues = async () => {},
-  onUpsertReferenceValues = async () => {},
+  onUpsertReferenceValues = async (_values?: any[]) => {},
   referenceValueHintsEnabled = true,
   features = defaultFeatureFlags,
 }) {
@@ -4068,7 +4081,7 @@ function AddDealPanel({
   });
   const [error, setError] = useState('');
   const [referenceError, setReferenceError] = useState('');
-  const [reviewItems, setReviewItems] = useState([]);
+  const [reviewItems, setReviewItems] = useState<any[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const dialogRef = useDialogFocus(onClose);
   const loadReferenceValuesRef = useRef(onLoadReferenceValues);
@@ -4777,7 +4790,7 @@ function ReserveCardPanel({ card, onClose, onReserveCard }) {
           </label>
           <label>
             <span>Reservation notes</span>
-            <textarea rows="3" value={reservedNotes} onChange={(event) => setReservedNotes(event.target.value)} />
+            <textarea rows={3} value={reservedNotes} onChange={(event) => setReservedNotes(event.target.value)} />
           </label>
           <FieldError message={error} />
           <div className="panel-actions">
@@ -5727,19 +5740,19 @@ function WorkSurface({
 
 export default function App() {
   const [auth, setAuth] = useState(null);
-  const [cards, setCards] = useState([]);
+  const [cards, setCards] = useState<any[]>([]);
   const [cardsPage, setCardsPage] = useState(defaultPage);
-  const [cardCriteria, setCardCriteria] = useState({});
-  const [deals, setDeals] = useState([]);
-  const [auditEvents, setAuditEvents] = useState([]);
+  const [cardCriteria, setCardCriteria] = useState<Record<string, any>>({});
+  const [deals, setDeals] = useState<any[]>([]);
+  const [auditEvents, setAuditEvents] = useState<any[]>([]);
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditError, setAuditError] = useState('');
   const [backupSettings, setBackupSettings] = useState(defaultBackupSettings);
   const [backupSettingsLoading, setBackupSettingsLoading] = useState(false);
   const [backupSettingsLoaded, setBackupSettingsLoaded] = useState(false);
   const [backupSettingsError, setBackupSettingsError] = useState('');
-  const [users, setUsers] = useState([]);
-  const [userInvites, setUserInvites] = useState([]);
+  const [users, setUsers] = useState<any[]>([]);
+  const [userInvites, setUserInvites] = useState<any[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
   const [usersLoaded, setUsersLoaded] = useState(false);
   const [usersError, setUsersError] = useState('');
@@ -5773,7 +5786,7 @@ export default function App() {
     }
   }
 
-  async function handleSearchCards(criteria = {}) {
+  async function handleSearchCards(criteria: Record<string, any> = {}) {
     const nextCriteria = {
       ...cardCriteria,
       ...criteria,
@@ -5856,7 +5869,7 @@ export default function App() {
     });
   }
 
-  async function handleLoadAudit(criteria = {}) {
+  async function handleLoadAudit(criteria: Record<string, any> = {}) {
     const params = new URLSearchParams();
     const entityType = criteriaValue(criteria.entityType);
     const action = criteriaValue(criteria.action);

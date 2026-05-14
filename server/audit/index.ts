@@ -1,5 +1,20 @@
+import type Database from 'better-sqlite3';
+
+interface AuditEventInput {
+  accountId: number;
+  userId?: number | null;
+  requestId?: string | null;
+  entityType: string;
+  entityId?: number | string | null;
+  action: string;
+  oldValue?: unknown;
+  newValue?: unknown;
+  metadata?: unknown;
+  timestamp?: string;
+}
+
 export function insertAuditEvent(
-  db,
+  db: Database.Database,
   {
     accountId,
     userId,
@@ -11,7 +26,7 @@ export function insertAuditEvent(
     newValue = null,
     metadata = null,
     timestamp = new Date().toISOString(),
-  },
+  }: AuditEventInput,
 ) {
   db.prepare(
     `INSERT INTO audit_log (
