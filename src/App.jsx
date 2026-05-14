@@ -845,6 +845,8 @@ function BarcodePreview({ value, format }) {
 }
 
 function SetupScreen({ onSetup }) {
+  const [email, setEmail] = useState('');
+  const [displayName, setDisplayName] = useState('Owner');
   const [unlockSecret, setUnlockSecret] = useState('');
   const [confirmation, setConfirmation] = useState('');
   const [acknowledged, setAcknowledged] = useState(false);
@@ -867,7 +869,7 @@ function SetupScreen({ onSetup }) {
 
     setSubmitting(true);
     try {
-      await onSetup(unlockSecret);
+      await onSetup({ email: email.trim(), displayName: displayName.trim(), unlockSecret });
     } catch (caught) {
       setError(caught.message);
     } finally {
@@ -882,12 +884,30 @@ function SetupScreen({ onSetup }) {
           <ShieldCheck aria-hidden="true" size={28} />
         </div>
         <p className="eyebrow">First run setup</p>
-        <h1 id="setup-title">Create unlock secret</h1>
+          <h1 id="setup-title">Create unlock secret</h1>
         <p className="auth-copy">
           This passphrase protects encrypted card credentials. Store it safely; losing it can make
           encrypted card data inaccessible.
         </p>
         <form className="auth-form" onSubmit={submitSetup}>
+          <label>
+            <span>Owner email</span>
+            <input
+              type="email"
+              autoComplete="username"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              required
+            />
+          </label>
+          <label>
+            <span>Display name</span>
+            <input
+              value={displayName}
+              onChange={(event) => setDisplayName(event.target.value)}
+              required
+            />
+          </label>
           <label>
             <span>Unlock secret</span>
             <input
@@ -927,10 +947,20 @@ function SetupScreen({ onSetup }) {
   );
 }
 
-function UnlockScreen({ onLogin }) {
+function UnlockScreen({ onLogin, onAcceptInvite, onRecoverAccess }) {
+  const [mode, setMode] = useState('login');
   const [email, setEmail] = useState('');
   const [unlockSecret, setUnlockSecret] = useState('');
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteCode, setInviteCode] = useState('');
+  const [inviteUnlockSecret, setInviteUnlockSecret] = useState('');
+  const [inviteConfirmation, setInviteConfirmation] = useState('');
+  const [recoveryEmail, setRecoveryEmail] = useState('');
+  const [recoveryCode, setRecoveryCode] = useState('');
+  const [recoveryUnlockSecret, setRecoveryUnlockSecret] = useState('');
+  const [recoveryConfirmation, setRecoveryConfirmation] = useState('');
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   async function submitLogin(event) {
@@ -939,6 +969,58 @@ function UnlockScreen({ onLogin }) {
     setSubmitting(true);
     try {
       await onLogin({ email: email.trim(), unlockSecret });
+    } catch (caught) {
+      setError(caught.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function submitInvite(event) {
+    event.preventDefault();
+    setError('');
+    setSuccess('');
+    if (inviteUnlockSecret !== inviteConfirmation) {
+      setError('Unlock secrets do not match.');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await onAcceptInvite({
+        email: inviteEmail.trim(),
+        inviteCode,
+        unlockSecret: inviteUnlockSecret,
+      });
+    } catch (caught) {
+      setError(caught.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function submitRecovery(event) {
+    event.preventDefault();
+    setError('');
+    setSuccess('');
+    if (recoveryUnlockSecret !== recoveryConfirmation) {
+      setError('Unlock secrets do not match.');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await onRecoverAccess({
+        email: recoveryEmail.trim(),
+        recoveryCode,
+        newUnlockSecret: recoveryUnlockSecret,
+      });
+      setRecoveryCode('');
+      setRecoveryUnlockSecret('');
+      setRecoveryConfirmation('');
+      setSuccess('Unlock secret reset. Sign in with the new unlock secret.');
+      setMode('login');
+      setEmail(recoveryEmail.trim());
     } catch (caught) {
       setError(caught.message);
     } finally {
@@ -957,32 +1039,146 @@ function UnlockScreen({ onLogin }) {
         <p className="auth-copy">
           Enter your unlock secret to load the encryption key into memory for this session.
         </p>
-        <form className="auth-form" onSubmit={submitLogin}>
-          <label>
-            <span>Email</span>
-            <input
-              type="email"
-              autoComplete="username"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-            />
-          </label>
-          <label>
-            <span>Unlock secret</span>
-            <input
-              type="password"
-              autoComplete="current-password"
-              value={unlockSecret}
-              onChange={(event) => setUnlockSecret(event.target.value)}
-              required
-            />
-          </label>
-          <FieldError message={error} />
-          <button type="submit" className="primary-action" disabled={submitting}>
-            <Lock aria-hidden="true" size={18} />
-            {submitting ? 'Unlocking...' : 'Unlock'}
+        <div className="auth-mode-switch" role="tablist" aria-label="Access method">
+          <button
+            type="button"
+            aria-label="Show unlock form"
+            className={mode === 'login' ? 'active' : ''}
+            onClick={() => setMode('login')}
+          >
+            Unlock
           </button>
-        </form>
+          <button
+            type="button"
+            aria-label="Show invite form"
+            className={mode === 'invite' ? 'active' : ''}
+            onClick={() => setMode('invite')}
+          >
+            Accept invite
+          </button>
+          <button
+            type="button"
+            aria-label="Show recovery form"
+            className={mode === 'recover' ? 'active' : ''}
+            onClick={() => setMode('recover')}
+          >
+            Recover
+          </button>
+        </div>
+        {mode === 'login' ? (
+          <form className="auth-form" onSubmit={submitLogin}>
+            <label>
+              <span>Email</span>
+              <input
+                type="email"
+                autoComplete="username"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+              />
+            </label>
+            <label>
+              <span>Unlock secret</span>
+              <input
+                type="password"
+                autoComplete="current-password"
+                value={unlockSecret}
+                onChange={(event) => setUnlockSecret(event.target.value)}
+                required
+              />
+            </label>
+            <FieldError message={error} />
+            {success ? <p className="success-copy">{success}</p> : null}
+            <button type="submit" className="primary-action" disabled={submitting}>
+              <Lock aria-hidden="true" size={18} />
+              {submitting ? 'Unlocking...' : 'Unlock'}
+            </button>
+          </form>
+        ) : null}
+        {mode === 'invite' ? (
+          <form className="auth-form" onSubmit={submitInvite}>
+            <label>
+              <span>Email</span>
+              <input
+                type="email"
+                autoComplete="username"
+                value={inviteEmail}
+                onChange={(event) => setInviteEmail(event.target.value)}
+                required
+              />
+            </label>
+            <label>
+              <span>Invite code</span>
+              <input value={inviteCode} onChange={(event) => setInviteCode(event.target.value)} required />
+            </label>
+            <label>
+              <span>New unlock secret</span>
+              <input
+                type="password"
+                autoComplete="new-password"
+                value={inviteUnlockSecret}
+                onChange={(event) => setInviteUnlockSecret(event.target.value)}
+                required
+              />
+            </label>
+            <label>
+              <span>Confirm unlock secret</span>
+              <input
+                type="password"
+                autoComplete="new-password"
+                value={inviteConfirmation}
+                onChange={(event) => setInviteConfirmation(event.target.value)}
+                required
+              />
+            </label>
+            <FieldError message={error} />
+            <button type="submit" className="primary-action" disabled={submitting}>
+              <ShieldCheck aria-hidden="true" size={18} />
+              {submitting ? 'Accepting...' : 'Accept invite'}
+            </button>
+          </form>
+        ) : null}
+        {mode === 'recover' ? (
+          <form className="auth-form" onSubmit={submitRecovery}>
+            <label>
+              <span>Email</span>
+              <input
+                type="email"
+                autoComplete="username"
+                value={recoveryEmail}
+                onChange={(event) => setRecoveryEmail(event.target.value)}
+              />
+            </label>
+            <label>
+              <span>Recovery code</span>
+              <input value={recoveryCode} onChange={(event) => setRecoveryCode(event.target.value)} required />
+            </label>
+            <label>
+              <span>New unlock secret</span>
+              <input
+                type="password"
+                autoComplete="new-password"
+                value={recoveryUnlockSecret}
+                onChange={(event) => setRecoveryUnlockSecret(event.target.value)}
+                required
+              />
+            </label>
+            <label>
+              <span>Confirm unlock secret</span>
+              <input
+                type="password"
+                autoComplete="new-password"
+                value={recoveryConfirmation}
+                onChange={(event) => setRecoveryConfirmation(event.target.value)}
+                required
+              />
+            </label>
+            <FieldError message={error} />
+            <button type="submit" className="primary-action" disabled={submitting}>
+              <RefreshCw aria-hidden="true" size={18} />
+              {submitting ? 'Resetting...' : 'Reset unlock secret'}
+            </button>
+          </form>
+        ) : null}
       </section>
     </main>
   );
@@ -2132,12 +2328,21 @@ function BackupSettingsForm({ settings, onUpdateBackupSettings }) {
   );
 }
 
-function UserAdminPanel({ users, loading, loaded, error, onCreateUser, onUpdateUser }) {
+function UserAdminPanel({
+  users,
+  invites,
+  loading,
+  loaded,
+  error,
+  onCreateInvite,
+  onRevokeInvite,
+  onUpdateUser,
+}) {
   const [email, setEmail] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [role, setRole] = useState('operator');
-  const [unlockSecret, setUnlockSecret] = useState('');
   const [currentUnlockSecret, setCurrentUnlockSecret] = useState('');
+  const [createdInvite, setCreatedInvite] = useState(null);
   const [formError, setFormError] = useState('');
   const [success, setSuccess] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -2148,19 +2353,18 @@ function UserAdminPanel({ users, loading, loaded, error, onCreateUser, onUpdateU
     setSuccess('');
     setSubmitting(true);
     try {
-      const created = await onCreateUser({
+      const created = await onCreateInvite({
         currentUnlockSecret,
         email,
         displayName,
         role,
-        unlockSecret,
       });
       setEmail('');
       setDisplayName('');
       setRole('operator');
-      setUnlockSecret('');
       setCurrentUnlockSecret('');
-      setSuccess(`${created.displayName} added.`);
+      setCreatedInvite(created);
+      setSuccess(`Invite created for ${created.displayName}.`);
     } catch (caught) {
       setFormError(caught.message);
     } finally {
@@ -2192,6 +2396,43 @@ function UserAdminPanel({ users, loading, loaded, error, onCreateUser, onUpdateU
           </table>
         </div>
       ) : null}
+      {loaded && invites?.length ? (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Pending invite</th>
+                <th>Role</th>
+                <th>Expires</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {invites.map((invite) => (
+                <tr key={invite.id}>
+                  <td>
+                    <strong>{invite.displayName}</strong>
+                    <span className="muted-block">{invite.email}</span>
+                  </td>
+                  <td>{formatDisplayValue(invite.role)}</td>
+                  <td>{formatDateTime(invite.expiresAt)}</td>
+                  <td>
+                    <button
+                      type="button"
+                      className="table-action danger"
+                      onClick={() => {
+                        void onRevokeInvite(invite.id);
+                      }}
+                    >
+                      Revoke
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
       <form className="settings-form user-create-form" onSubmit={submitCreate}>
         <label>
           <span>User email</span>
@@ -2216,16 +2457,6 @@ function UserAdminPanel({ users, loading, loaded, error, onCreateUser, onUpdateU
           </select>
         </label>
         <label>
-          <span>Temporary unlock secret</span>
-          <input
-            type="password"
-            autoComplete="new-password"
-            value={unlockSecret}
-            onChange={(event) => setUnlockSecret(event.target.value)}
-            required
-          />
-        </label>
-        <label>
           <span>Your unlock secret</span>
           <input
             type="password"
@@ -2238,11 +2469,17 @@ function UserAdminPanel({ users, loading, loaded, error, onCreateUser, onUpdateU
         <div className="backup-actions">
           <button type="submit" className="primary-action" disabled={submitting}>
             <ShieldCheck aria-hidden="true" size={17} />
-            {submitting ? 'Adding...' : 'Add user'}
+            {submitting ? 'Creating...' : 'Create invite'}
           </button>
         </div>
         <FieldError message={formError} />
         {success ? <p className="success-copy">{success}</p> : null}
+        {createdInvite?.inviteCode ? (
+          <div className="one-time-secret" role="status">
+            <span>Invite code shown once</span>
+            <code>{createdInvite.inviteCode}</code>
+          </div>
+        ) : null}
       </form>
     </div>
   );
@@ -2314,6 +2551,65 @@ function UserAdminRow({ user, onUpdateUser }) {
         </button>
       </td>
     </tr>
+  );
+}
+
+function RecoveryCodesPanel({ activeCount, onGenerateRecoveryCodes }) {
+  const [currentUnlockSecret, setCurrentUnlockSecret] = useState('');
+  const [codes, setCodes] = useState([]);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  async function generateCodes(event) {
+    event.preventDefault();
+    setError('');
+    setSuccess('');
+    setCodes([]);
+    setSubmitting(true);
+    try {
+      const response = await onGenerateRecoveryCodes({ currentUnlockSecret });
+      setCodes(response.codes || []);
+      setCurrentUnlockSecret('');
+      setSuccess('Recovery codes regenerated. Store them now; they are shown once.');
+    } catch (caught) {
+      setError(caught.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <form className="settings-form" onSubmit={generateCodes}>
+      <p className="muted-text">
+        Active recovery codes: {activeCount || 0}. Regenerating codes revokes any unused older codes.
+      </p>
+      <label>
+        <span>Recovery setup unlock secret</span>
+        <input
+          type="password"
+          autoComplete="current-password"
+          value={currentUnlockSecret}
+          onChange={(event) => setCurrentUnlockSecret(event.target.value)}
+          required
+        />
+      </label>
+      <div className="backup-actions">
+        <button type="submit" className="primary-action" disabled={submitting}>
+          <ShieldCheck aria-hidden="true" size={17} />
+          {submitting ? 'Generating...' : 'Generate recovery codes'}
+        </button>
+      </div>
+      <FieldError message={error} />
+      {success ? <p className="success-copy">{success}</p> : null}
+      {codes.length ? (
+        <div className="recovery-code-grid" aria-label="New recovery codes">
+          {codes.map((code) => (
+            <code key={code}>{code}</code>
+          ))}
+        </div>
+      ) : null}
+    </form>
   );
 }
 
@@ -4818,6 +5114,7 @@ function WorkSurface({
   backupSettingsLoaded,
   backupSettingsError,
   users,
+  userInvites,
   usersLoading,
   usersLoaded,
   usersError,
@@ -4839,7 +5136,8 @@ function WorkSurface({
   onLoadUsers,
   onLoadSupportPolicy,
   onLoadDataPolicy,
-  onCreateUser,
+  onCreateInvite,
+  onRevokeInvite,
   onUpdateUser,
   onUpdateSupportPolicy,
   onUpdateDataPolicy,
@@ -4854,6 +5152,7 @@ function WorkSurface({
   onConfirmCsv,
   onImportBackup,
   onChangeUnlockSecret,
+  onGenerateRecoveryCodes,
   onLoadReferenceValues,
   onUpsertReferenceValues,
   onCreateDeal,
@@ -5281,11 +5580,20 @@ function WorkSurface({
                 <h3>User Access</h3>
                 <UserAdminPanel
                   users={users}
+                  invites={userInvites}
                   loading={usersLoading}
                   loaded={usersLoaded}
                   error={usersError}
-                  onCreateUser={onCreateUser}
+                  onCreateInvite={onCreateInvite}
+                  onRevokeInvite={onRevokeInvite}
                   onUpdateUser={onUpdateUser}
+                />
+              </section>
+              <section className="backup-block">
+                <h3>Recovery Codes</h3>
+                <RecoveryCodesPanel
+                  activeCount={auth?.recoveryCodes?.activeCount}
+                  onGenerateRecoveryCodes={onGenerateRecoveryCodes}
                 />
               </section>
               <section className="backup-block">
@@ -5431,6 +5739,7 @@ export default function App() {
   const [backupSettingsLoaded, setBackupSettingsLoaded] = useState(false);
   const [backupSettingsError, setBackupSettingsError] = useState('');
   const [users, setUsers] = useState([]);
+  const [userInvites, setUserInvites] = useState([]);
   const [usersLoading, setUsersLoading] = useState(false);
   const [usersLoaded, setUsersLoaded] = useState(false);
   const [usersError, setUsersError] = useState('');
@@ -5610,8 +5919,12 @@ export default function App() {
     setUsersLoading(true);
     setUsersError('');
     try {
-      const response = await apiFetch('/api/users');
+      const [response, invitesResponse] = await Promise.all([
+        apiFetch('/api/users'),
+        apiFetch('/api/users/invites'),
+      ]);
       setUsers(Array.isArray(response.data) ? response.data : []);
+      setUserInvites(Array.isArray(invitesResponse.data) ? invitesResponse.data : []);
       setUsersLoaded(true);
       return response;
     } catch (caught) {
@@ -5622,14 +5935,23 @@ export default function App() {
     }
   }
 
-  async function handleCreateUser(payload) {
-    const response = await apiFetch('/api/users', {
+  async function handleCreateInvite(payload) {
+    const response = await apiFetch('/api/users/invites', {
       method: 'POST',
       body: payload,
       csrfToken: auth.csrfToken,
     });
-    setUsers((current) => [...current, response.data]);
+    setUserInvites((current) => [response.data, ...current.filter((invite) => invite.id !== response.data.id)]);
     setUsersLoaded(true);
+    return response.data;
+  }
+
+  async function handleRevokeInvite(inviteId) {
+    const response = await apiFetch(`/api/users/invites/${inviteId}`, {
+      method: 'DELETE',
+      csrfToken: auth.csrfToken,
+    });
+    setUserInvites((current) => current.filter((invite) => invite.id !== response.data.id));
     return response.data;
   }
 
@@ -5790,6 +6112,21 @@ export default function App() {
     });
   }
 
+  async function handleGenerateRecoveryCodes(payload) {
+    const response = await apiFetch('/api/auth/recovery-codes', {
+      method: 'POST',
+      body: payload,
+      csrfToken: auth.csrfToken,
+    });
+    setAuth((current) => ({
+      ...current,
+      recoveryCodes: {
+        activeCount: response.data.activeCount,
+      },
+    }));
+    return response.data;
+  }
+
   async function loadDeals({ includeArchived = false } = {}) {
     const query = includeArchived ? '?includeArchived=true' : '';
     setInventoryLoading(true);
@@ -5833,10 +6170,10 @@ export default function App() {
     };
   }, []);
 
-  async function handleSetup(unlockSecret) {
+  async function handleSetup(payload) {
     const response = await apiFetch('/api/auth/setup', {
       method: 'POST',
-      body: { unlockSecret },
+      body: payload,
     });
     setAuth(response.data);
     await loadInventory();
@@ -5852,6 +6189,22 @@ export default function App() {
     });
     setAuth(response.data);
     await loadInventory();
+  }
+
+  async function handleAcceptInvite(payload) {
+    const response = await apiFetch('/api/auth/accept-invite', {
+      method: 'POST',
+      body: payload,
+    });
+    setAuth(response.data);
+    await loadInventory();
+  }
+
+  async function handleRecoverAccess(payload) {
+    return apiFetch('/api/auth/recover', {
+      method: 'POST',
+      body: payload,
+    });
   }
 
   async function handleLogout() {
@@ -5873,6 +6226,7 @@ export default function App() {
     setBackupSettingsLoaded(false);
     setBackupSettingsError('');
     setUsers([]);
+    setUserInvites([]);
     setUsersLoaded(false);
     setUsersError('');
     setSupportPolicy(defaultSupportPolicy);
@@ -6078,7 +6432,13 @@ export default function App() {
   }
 
   if (!auth.sessionValid || !auth.dekLoaded) {
-    return <UnlockScreen onLogin={handleLogin} />;
+    return (
+      <UnlockScreen
+        onLogin={handleLogin}
+        onAcceptInvite={handleAcceptInvite}
+        onRecoverAccess={handleRecoverAccess}
+      />
+    );
   }
 
   return (
@@ -6095,6 +6455,7 @@ export default function App() {
       backupSettingsLoaded={backupSettingsLoaded}
       backupSettingsError={backupSettingsError}
       users={users}
+      userInvites={userInvites}
       usersLoading={usersLoading}
       usersLoaded={usersLoaded}
       usersError={usersError}
@@ -6116,7 +6477,8 @@ export default function App() {
       onLoadUsers={handleLoadUsers}
       onLoadSupportPolicy={handleLoadSupportPolicy}
       onLoadDataPolicy={handleLoadDataPolicy}
-      onCreateUser={handleCreateUser}
+      onCreateInvite={handleCreateInvite}
+      onRevokeInvite={handleRevokeInvite}
       onUpdateUser={handleUpdateUser}
       onUpdateSupportPolicy={handleUpdateSupportPolicy}
       onUpdateDataPolicy={handleUpdateDataPolicy}
@@ -6131,6 +6493,7 @@ export default function App() {
       onConfirmCsv={handleConfirmCsv}
       onImportBackup={handleImportBackup}
       onChangeUnlockSecret={handleChangeUnlockSecret}
+      onGenerateRecoveryCodes={handleGenerateRecoveryCodes}
       onLoadReferenceValues={handleLoadReferenceValues}
       onUpsertReferenceValues={handleUpsertReferenceValues}
       onCreateDeal={handleCreateDeal}

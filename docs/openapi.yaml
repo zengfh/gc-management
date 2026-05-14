@@ -107,6 +107,82 @@ paths:
                 $ref: "#/components/schemas/AuthStatusResponse"
         "403":
           $ref: "#/components/responses/Forbidden"
+  /api/auth/accept-invite:
+    post:
+      tags: [Auth]
+      summary: Accept a one-time user invite and create the invited user's unlock secret
+      operationId: acceptInvite
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AcceptInviteRequest"
+      responses:
+        "201":
+          description: Invite accepted and session unlocked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthStatusResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /api/auth/recovery-codes:
+    post:
+      tags: [Auth]
+      summary: Generate replacement one-time recovery codes for the current user
+      operationId: generateRecoveryCodes
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenerateRecoveryCodesRequest"
+      responses:
+        "201":
+          description: Recovery codes generated and shown once
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecoveryCodesResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/auth/recover:
+    post:
+      tags: [Auth]
+      summary: Reset an unlock secret with a one-time recovery code
+      operationId: recoverUnlockSecret
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecoverUnlockSecretRequest"
+      responses:
+        "200":
+          description: Unlock secret reset; user must sign in with the new unlock secret
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ObjectResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
   /api/auth/change-unlock-secret:
     post:
       tags: [Auth]
@@ -869,31 +945,41 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
+  /api/users/invites:
+    get:
+      tags: [Users]
+      summary: List pending user invites
+      operationId: listUserInvites
+      responses:
+        "200":
+          description: Pending user invites
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserInviteListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
     post:
       tags: [Users]
-      summary: Create an account user
-      operationId: createUser
+      summary: Create a one-time user invite
+      operationId: createUserInvite
       parameters:
         - $ref: "#/components/parameters/CsrfToken"
-        - $ref: "#/components/parameters/IdempotencyKey"
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/UserCreateRequest"
+              $ref: "#/components/schemas/UserInviteCreateRequest"
       responses:
         "201":
-          description: Created user
+          description: Invite created; inviteCode is shown once
           content:
             application/json:
               schema:
-                allOf:
-                  - $ref: "#/components/schemas/ObjectResponse"
-                  - type: object
-                    properties:
-                      data:
-                        $ref: "#/components/schemas/User"
+                $ref: "#/components/schemas/UserInviteCreateResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -902,6 +988,36 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "409":
           $ref: "#/components/responses/Conflict"
+  /api/users/invites/{inviteId}:
+    delete:
+      tags: [Users]
+      summary: Revoke a pending user invite
+      operationId: revokeUserInvite
+      parameters:
+        - name: inviteId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "200":
+          description: Invite revoked
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ObjectResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/UserInvite"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /api/users/{userId}:
     put:
       tags: [Users]
@@ -1303,6 +1419,12 @@ components:
               $ref: "#/components/schemas/AuthUser"
             csrfToken:
               type: string
+            recoveryCodes:
+              type: object
+              properties:
+                activeCount:
+                  type: integer
+                  minimum: 0
     PublicFeatureFlags:
       type: object
       required:
@@ -1401,6 +1523,58 @@ components:
           description: Required when more than one active user exists.
         unlockSecret:
           type: string
+    AcceptInviteRequest:
+      type: object
+      required: [email, inviteCode, unlockSecret]
+      properties:
+        email:
+          type: string
+          format: email
+        inviteCode:
+          type: string
+          description: One-time invite code shown once to an admin when the invite is created.
+        unlockSecret:
+          type: string
+          minLength: 8
+          description: User-chosen unlock secret; admins do not create this secret for the user.
+    GenerateRecoveryCodesRequest:
+      type: object
+      required: [currentUnlockSecret]
+      properties:
+        currentUnlockSecret:
+          type: string
+    RecoveryCodesResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [codes, generatedAt, activeCount]
+          properties:
+            codes:
+              type: array
+              description: One-time recovery codes shown once. Older unused codes are revoked.
+              items:
+                type: string
+            generatedAt:
+              type: string
+              format: date-time
+            activeCount:
+              type: integer
+              minimum: 0
+    RecoverUnlockSecretRequest:
+      type: object
+      required: [recoveryCode, newUnlockSecret]
+      properties:
+        email:
+          type: string
+          format: email
+          description: Required when more than one active user exists.
+        recoveryCode:
+          type: string
+        newUnlockSecret:
+          type: string
+          minLength: 8
     ChangeUnlockSecretRequest:
       type: object
       required: [oldUnlockSecret, newUnlockSecret]
@@ -2132,9 +2306,53 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/User"
-    UserCreateRequest:
+    UserInvite:
       type: object
-      required: [currentUnlockSecret, email, displayName, role, unlockSecret]
+      required: [id, accountId, email, displayName, role, expiresAt, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        accountId:
+          type: integer
+        email:
+          type: string
+          format: email
+        displayName:
+          type: string
+        role:
+          type: string
+          enum: [admin, operator, viewer]
+        invitedByUserId:
+          type: integer
+          nullable: true
+        expiresAt:
+          type: string
+          format: date-time
+        usedAt:
+          type: string
+          format: date-time
+          nullable: true
+        revokedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    UserInviteListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserInvite"
+    UserInviteCreateRequest:
+      type: object
+      required: [currentUnlockSecret, email, displayName, role]
       properties:
         currentUnlockSecret:
           type: string
@@ -2146,10 +2364,19 @@ components:
         role:
           type: string
           enum: [admin, operator, viewer]
-        unlockSecret:
-          type: string
-          minLength: 8
-          description: Temporary unlock secret for the new user.
+    UserInviteCreateResponse:
+      allOf:
+        - $ref: "#/components/schemas/ObjectResponse"
+        - type: object
+          properties:
+            data:
+              allOf:
+                - $ref: "#/components/schemas/UserInvite"
+                - type: object
+                  properties:
+                    inviteCode:
+                      type: string
+                      description: Shown once and never returned by list endpoints.
     UserUpdateRequest:
       type: object
       properties:

@@ -171,6 +171,33 @@ p {
   background: var(--color-surface);
 }
 
+.auth-mode-switch {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 20px;
+  padding: 4px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-muted);
+}
+
+.auth-mode-switch button {
+  min-height: 34px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-muted-strong);
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.auth-mode-switch button.active {
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: var(--shadow-sm);
+}
+
 input,
 select,
 textarea {
@@ -961,7 +988,9 @@ tbody tr:hover {
 .settings-form .backup-actions,
 .settings-form .field-error,
 .settings-form .success-copy,
-.settings-form .warning-copy {
+.settings-form .warning-copy,
+.settings-form .one-time-secret,
+.settings-form .recovery-code-grid {
   grid-column: 1 / -1;
 }
 
@@ -1051,6 +1080,44 @@ tbody tr:hover {
 .backup-actions {
   display: flex;
   justify-content: flex-start;
+}
+
+.one-time-secret,
+.recovery-code-grid {
+  display: grid;
+  gap: 8px;
+  border: 1px solid #fedf89;
+  border-radius: var(--radius-md);
+  background: #fffbeb;
+  padding: 12px;
+}
+
+.one-time-secret span {
+  color: #92400e;
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.one-time-secret code,
+.recovery-code-grid code {
+  width: 100%;
+  overflow-wrap: anywhere;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  padding: 8px 10px;
+  font-family:
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Consolas,
+    monospace;
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.recovery-code-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .success-copy {

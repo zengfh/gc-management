@@ -27,6 +27,7 @@ Files:
 19. `14_release_5_acceptance_trial.md` - Synthetic acceptance dataset, source research, and manual/automated Release 5 trial steps.
 20. `15_release_5_private_trial_and_5_1_backlog.md` - Private trial runbook, backup discipline, and Release 5.1 polish backlog.
 21. `16_release_5_1_production_hosting_status.md` - Production-style hosting research, implementation status, hosted VPS runtime, and remaining hosting work.
+22. `17_product_use_readiness_status.md` - Product-use identity lifecycle hardening, research inputs, and remaining commercial SaaS blockers.
 
 Scope note:
 

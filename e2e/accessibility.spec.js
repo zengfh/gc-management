@@ -13,6 +13,8 @@ async function ensureUnlocked(page) {
   await expect(setupHeading.or(unlockHeading).or(dashboardHeading)).toBeVisible();
 
   if (await setupHeading.isVisible()) {
+    await page.getByLabel(/^owner email$/i).fill('accessibility-owner@example.com');
+    await page.getByLabel(/^display name$/i).fill('Accessibility Owner');
     await page.getByLabel(/^unlock secret$/i).fill(unlockSecret);
     await page.getByLabel(/confirm unlock secret/i).fill(unlockSecret);
     await page.getByRole('checkbox', { name: /required to unlock encrypted card data/i }).check();

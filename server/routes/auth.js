@@ -16,7 +16,10 @@ import {
   getUnlockedSession,
   unlockSession,
 } from '../auth/unlockStore.js';
+import { clearUserSessions } from '../auth/sessionRevocation.js';
 import { createLoginAttemptStore } from '../auth/loginAttempts.js';
+import { generateOneTimeSecret, normalizeOneTimeSecret } from '../auth/oneTimeSecrets.js';
+import { verifyFreshUnlockSecret } from '../auth/verifyUnlockSecret.js';
 import {
   asyncHandler,
   badRequest,
@@ -114,6 +117,20 @@ function cryptoRandomToken() {
   return `csrf_${nanoid(32)}`;
 }
 
+function activeRecoveryCodeCount(db, accountId, userId, timestamp = nowIso()) {
+  return db
+    .prepare(
+      `SELECT COUNT(*) AS count
+       FROM user_recovery_codes
+       WHERE accountId = ?
+         AND userId = ?
+         AND usedAt IS NULL
+         AND revokedAt IS NULL
+         AND (expiresAt IS NULL OR expiresAt > ?)`,
+    )
+    .get(accountId, userId, timestamp).count;
+}
+
 function authStatus(db, req) {
   const sessionValid = Boolean(req.session?.userId);
   const unlocked = sessionValid ? getUnlockedSession(req.sessionID) : null;
@@ -134,7 +151,61 @@ function authStatus(db, req) {
         }
       : {}),
     ...(sessionValid ? { csrfToken: ensureCsrfToken(req) } : {}),
+    ...(sessionValid
+      ? {
+          recoveryCodes: {
+            activeCount: activeRecoveryCodeCount(db, req.session.accountId, req.session.userId),
+          },
+        }
+      : {}),
   };
+}
+
+function genericInviteError() {
+  return unauthorized('INVALID_INVITE', 'Invite code is invalid or expired.');
+}
+
+function genericRecoveryError() {
+  return unauthorized('INVALID_RECOVERY_CODE', 'Recovery code is invalid or expired.');
+}
+
+function loadInviteCandidates(db, email, timestamp) {
+  return db
+    .prepare(
+      `SELECT *
+       FROM user_invites
+       WHERE LOWER(email) = LOWER(?)
+         AND usedAt IS NULL
+         AND revokedAt IS NULL
+         AND expiresAt > ?
+       ORDER BY createdAt DESC`,
+    )
+    .all(email, timestamp);
+}
+
+function activeUserEmailExists(db, accountId, email) {
+  return db
+    .prepare('SELECT id FROM users WHERE accountId = ? AND LOWER(email) = LOWER(?) AND disabledAt IS NULL')
+    .get(accountId, email);
+}
+
+function loadRecoveryUser(db, email) {
+  const normalizedEmail = normalizeEmail(email);
+  if (normalizedEmail) {
+    return db
+      .prepare(
+        `SELECT users.*
+         FROM users
+         WHERE LOWER(users.email) = ?
+           AND users.disabledAt IS NULL
+         ORDER BY users.id
+         LIMIT 1`,
+      )
+      .get(normalizedEmail);
+  }
+
+  const activeUsers = db.prepare('SELECT * FROM users WHERE disabledAt IS NULL ORDER BY id').all();
+  return activeUsers.length === 1 ? activeUsers[0] : null;
 }
 
 export function createAuthRouter({ db, loginAttempts = createLoginAttemptStore() }) {
@@ -210,6 +281,120 @@ export function createAuthRouter({ db, loginAttempts = createLoginAttemptStore()
   );
 
   router.post(
+    '/accept-invite',
+    asyncHandler(async (req, res) => {
+      const { email, inviteCode, unlockSecret } = req.body || {};
+      const normalizedEmail = normalizeEmail(email);
+      if (!normalizedEmail || !inviteCode) {
+        throw genericInviteError();
+      }
+
+      const inviteKey = `invite:${req.ip || 'unknown'}:${normalizedEmail}`;
+      if (loginAttempts.isBlocked(inviteKey)) {
+        throw rateLimited('INVITE_RATE_LIMITED', 'Too many failed invite attempts. Try again later.');
+      }
+
+      const validation = validateUnlockSecret(unlockSecret);
+      if (!validation.valid) {
+        throw badRequest(
+          'WEAK_UNLOCK_SECRET',
+          'Unlock secret does not meet strength requirements.',
+          validation.fieldErrors,
+        );
+      }
+
+      const timestamp = nowIso();
+      const normalizedInviteCode = normalizeOneTimeSecret(inviteCode);
+      const candidates = loadInviteCandidates(db, normalizedEmail, timestamp);
+      let matchedInvite = null;
+      for (const candidate of candidates) {
+        if (await bcrypt.compare(normalizedInviteCode, candidate.inviteCodeHash)) {
+          matchedInvite = candidate;
+          break;
+        }
+      }
+
+      if (!matchedInvite) {
+        loginAttempts.recordFailure(inviteKey);
+        throw genericInviteError();
+      }
+      loginAttempts.recordSuccess(inviteKey);
+
+      if (activeUserEmailExists(db, matchedInvite.accountId, normalizedEmail)) {
+        throw conflict('USER_EMAIL_EXISTS', 'A user with this email already exists.');
+      }
+
+      const inviteKek = deriveKEK(normalizedInviteCode, matchedInvite.encryptionSalt);
+      const dek = unwrapDEK(matchedInvite.encryptedDEK, inviteKek);
+      const userSalt = generateSalt();
+      const userKek = deriveKEK(unlockSecret, userSalt);
+      const encryptedDEK = wrapDEK(dek, userKek);
+      const unlockSecretHash = await bcrypt.hash(unlockSecret, bcryptCost);
+
+      const user = db.transaction(() => {
+        const info = db
+          .prepare(
+            `INSERT INTO users (
+              accountId, email, displayName, role, unlockSecretHash,
+              encryptionSalt, encryptedDEK, keyVersion, createdAt, updatedAt
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+          )
+          .run(
+            matchedInvite.accountId,
+            normalizedEmail,
+            matchedInvite.displayName,
+            matchedInvite.role,
+            unlockSecretHash,
+            userSalt,
+            encryptedDEK,
+            timestamp,
+            timestamp,
+          );
+        const created = db.prepare('SELECT * FROM users WHERE id = ?').get(info.lastInsertRowid);
+        db.prepare('UPDATE user_invites SET usedAt = ?, acceptedByUserId = ?, updatedAt = ? WHERE id = ?').run(
+          timestamp,
+          created.id,
+          timestamp,
+          matchedInvite.id,
+        );
+        db.prepare(
+          `INSERT INTO audit_log (
+            accountId, userId, requestId, entityType, entityId, action, metadata, timestamp
+          ) VALUES (?, ?, ?, 'auth', ?, 'user.invite_accept', ?, ?)`,
+        ).run(
+          matchedInvite.accountId,
+          created.id,
+          req.requestId,
+          matchedInvite.id,
+          JSON.stringify({ email: normalizedEmail, role: matchedInvite.role }),
+          timestamp,
+        );
+        return created;
+      })();
+
+      await regenerateSession(req);
+      req.session.userId = user.id;
+      req.session.accountId = user.accountId;
+      req.session.role = user.role;
+      req.session.email = user.email;
+      req.session.displayName = user.displayName;
+      ensureCsrfToken(req);
+      unlockSession(req.sessionID, {
+        userId: user.id,
+        accountId: user.accountId,
+        role: user.role,
+        email: user.email,
+        displayName: user.displayName,
+        dek,
+        blindIndexKey: deriveBlindIndexKey(dek),
+      });
+      await saveSession(req);
+
+      res.status(201).json(objectResponse(authStatus(db, req)));
+    }),
+  );
+
+  router.post(
     '/login',
     asyncHandler(async (req, res) => {
       const { email, unlockSecret } = req.body || {};
@@ -274,6 +459,151 @@ export function createAuthRouter({ db, loginAttempts = createLoginAttemptStore()
           features: getPublicFeatureFlags(),
         }),
       );
+    }),
+  );
+
+  router.post(
+    '/recovery-codes',
+    asyncHandler(async (req, res) => {
+      const unlocked = getUnlockedSession(req.sessionID);
+      if (!req.session?.userId || !unlocked) {
+        throw unauthorized('LOCKED', 'Encrypted data is locked.');
+      }
+
+      const { currentUnlockSecret } = req.body || {};
+      await verifyFreshUnlockSecret(db, unlocked, currentUnlockSecret);
+
+      const timestamp = nowIso();
+      const codes = Array.from({ length: 10 }, () => generateOneTimeSecret('GC-REC'));
+      db.transaction(() => {
+        db.prepare(
+          `UPDATE user_recovery_codes
+           SET revokedAt = ?
+           WHERE accountId = ?
+             AND userId = ?
+             AND usedAt IS NULL
+             AND revokedAt IS NULL`,
+        ).run(timestamp, unlocked.accountId, unlocked.userId);
+
+        const insertCode = db.prepare(
+          `INSERT INTO user_recovery_codes (
+            accountId, userId, codeHash, encryptionSalt, encryptedDEK, createdAt
+          ) VALUES (?, ?, ?, ?, ?, ?)`,
+        );
+        for (const code of codes) {
+          const normalizedCode = normalizeOneTimeSecret(code);
+          const encryptionSalt = generateSalt();
+          const kek = deriveKEK(normalizedCode, encryptionSalt);
+          insertCode.run(
+            unlocked.accountId,
+            unlocked.userId,
+            bcrypt.hashSync(normalizedCode, bcryptCost),
+            encryptionSalt,
+            wrapDEK(unlocked.dek, kek),
+            timestamp,
+          );
+        }
+        db.prepare(
+          `INSERT INTO audit_log (
+            accountId, userId, requestId, entityType, entityId, action, metadata, timestamp
+          ) VALUES (?, ?, ?, 'auth', ?, 'auth.recovery_codes_generate', ?, ?)`,
+        ).run(
+          unlocked.accountId,
+          unlocked.userId,
+          req.requestId,
+          unlocked.userId,
+          JSON.stringify({ count: codes.length }),
+          timestamp,
+        );
+      })();
+
+      res.status(201).json(
+        objectResponse({
+          codes,
+          generatedAt: timestamp,
+          activeCount: activeRecoveryCodeCount(db, unlocked.accountId, unlocked.userId, timestamp),
+        }),
+      );
+    }),
+  );
+
+  router.post(
+    '/recover',
+    asyncHandler(async (req, res) => {
+      const { email, recoveryCode, newUnlockSecret } = req.body || {};
+      if (!recoveryCode) {
+        throw genericRecoveryError();
+      }
+
+      const recoveryKey = `recovery:${req.ip || 'unknown'}:${normalizeEmail(email) || 'single-user'}`;
+      if (loginAttempts.isBlocked(recoveryKey)) {
+        throw rateLimited('RECOVERY_RATE_LIMITED', 'Too many failed recovery attempts. Try again later.');
+      }
+
+      const validation = validateUnlockSecret(newUnlockSecret);
+      if (!validation.valid) {
+        throw badRequest(
+          'WEAK_UNLOCK_SECRET',
+          'Unlock secret does not meet strength requirements.',
+          validation.fieldErrors,
+        );
+      }
+
+      const user = loadRecoveryUser(db, email);
+      const timestamp = nowIso();
+      const normalizedCode = normalizeOneTimeSecret(recoveryCode);
+      const candidates = user
+        ? db
+            .prepare(
+              `SELECT *
+               FROM user_recovery_codes
+               WHERE accountId = ?
+                 AND userId = ?
+                 AND usedAt IS NULL
+                 AND revokedAt IS NULL
+                 AND (expiresAt IS NULL OR expiresAt > ?)
+               ORDER BY createdAt DESC`,
+            )
+            .all(user.accountId, user.id, timestamp)
+        : [];
+
+      let matchedCode = null;
+      for (const candidate of candidates) {
+        if (await bcrypt.compare(normalizedCode, candidate.codeHash)) {
+          matchedCode = candidate;
+          break;
+        }
+      }
+
+      if (!user || !matchedCode) {
+        loginAttempts.recordFailure(recoveryKey);
+        throw genericRecoveryError();
+      }
+      loginAttempts.recordSuccess(recoveryKey);
+
+      const recoveryKek = deriveKEK(normalizedCode, matchedCode.encryptionSalt);
+      const dek = unwrapDEK(matchedCode.encryptedDEK, recoveryKek);
+      const encryptionSalt = generateSalt();
+      const kek = deriveKEK(newUnlockSecret, encryptionSalt);
+      const encryptedDEK = wrapDEK(dek, kek);
+      const unlockSecretHash = await bcrypt.hash(newUnlockSecret, bcryptCost);
+
+      db.transaction(() => {
+        db.prepare(
+          `UPDATE users
+           SET unlockSecretHash = ?, encryptionSalt = ?, encryptedDEK = ?, updatedAt = ?
+           WHERE id = ? AND accountId = ?`,
+        ).run(unlockSecretHash, encryptionSalt, encryptedDEK, timestamp, user.id, user.accountId);
+        db.prepare('UPDATE user_recovery_codes SET usedAt = ? WHERE id = ?').run(timestamp, matchedCode.id);
+        db.prepare(
+          `INSERT INTO audit_log (
+            accountId, userId, requestId, entityType, entityId, action, timestamp
+          ) VALUES (?, ?, ?, 'auth', ?, 'auth.recovery_reset', ?)`,
+        ).run(user.accountId, user.id, req.requestId, user.id, timestamp);
+      })();
+      clearUserSessions(db, user.id);
+
+      res.json(objectResponse({ reset: true }));
     }),
   );
 

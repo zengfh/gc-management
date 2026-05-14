@@ -98,6 +98,7 @@ Completed 2026-05-14:
 - Updated the hosted private-beta runbook and Release 5.1 hosting status doc.
 - Configured `gc.hankzeng.com` through Caddy with automatic Let's Encrypt TLS.
 - Bound the Node app to `127.0.0.1:5180` behind Caddy and enabled HTTPS-safe cookie/proxy settings.
+- Added product-use identity lifecycle hardening: first-run owner email, one-time user invites, invite acceptance, recovery-code generation, and recovery-code reset.
 
 1. Add a small UI checklist or runbook link for first-time private backup setup after vault creation.
 2. Expand brand-specific credential templates after the owner tests real cards, especially issuers that need labels other than PIN or access code.

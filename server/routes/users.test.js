@@ -35,18 +35,32 @@ describe('user admin and RBAC routes', () => {
   }
 
   async function createUser(csrfToken, overrides = {}) {
-    const response = await withCsrf(ownerAgent.post('/api/users'), csrfToken).send({
+    const email = overrides.email || 'operator@example.com';
+    const unlockSecret = overrides.unlockSecret || 'operator strong unlock phrase';
+    const inviteResponse = await withCsrf(ownerAgent.post('/api/users/invites'), csrfToken).send({
       currentUnlockSecret: ownerSecret,
-      email: overrides.email || 'operator@example.com',
+      email,
       displayName: overrides.displayName || 'Operator',
       role: overrides.role || 'operator',
-      unlockSecret: overrides.unlockSecret || 'operator strong unlock phrase',
     });
-    expect(response.status).toBe(201);
-    return response.body.data;
+    expect(inviteResponse.status).toBe(201);
+
+    const invitedAgent = request.agent(app);
+    const acceptResponse = await invitedAgent.post('/api/auth/accept-invite').send({
+      email,
+      inviteCode: inviteResponse.body.data.inviteCode,
+      unlockSecret,
+    });
+    expect(acceptResponse.status).toBe(201);
+
+    const usersResponse = await ownerAgent.get('/api/users');
+    expect(usersResponse.status).toBe(200);
+    const created = usersResponse.body.data.find((user) => user.email === email);
+    expect(created).toBeTruthy();
+    return created;
   }
 
-  it('allows owner/admin users to create and list users without exposing secret material', async () => {
+  it('allows owner/admin users to invite and list users without exposing secret material', async () => {
     const csrfToken = await setupOwner();
     const created = await createUser(csrfToken);
 
@@ -66,10 +80,101 @@ describe('user admin and RBAC routes', () => {
       expect.objectContaining({ email: 'operator@example.com', role: 'operator' }),
     ]);
 
-    const audit = db.prepare("SELECT metadata FROM audit_log WHERE action = 'user.create'").get();
+    const audit = db
+      .prepare("SELECT metadata FROM audit_log WHERE action IN ('user.invite_create', 'user.invite_accept')")
+      .all();
     expect(JSON.stringify(audit)).not.toContain('operator strong unlock phrase');
     expect(JSON.stringify(audit)).not.toContain('encryptedDEK');
   }, 45_000);
+
+  it('creates one-time invites that users accept with their own unlock secret', async () => {
+    const csrfToken = await setupOwner();
+
+    const inviteResponse = await withCsrf(ownerAgent.post('/api/users/invites'), csrfToken).send({
+      currentUnlockSecret: ownerSecret,
+      email: 'invited@example.com',
+      displayName: 'Invited User',
+      role: 'viewer',
+    });
+    expect(inviteResponse.status).toBe(201);
+    expect(inviteResponse.body.data).toMatchObject({
+      email: 'invited@example.com',
+      displayName: 'Invited User',
+      role: 'viewer',
+      usedAt: null,
+      revokedAt: null,
+    });
+    expect(inviteResponse.body.data.inviteCode).toMatch(/^GC-INV-/);
+
+    const listInvites = await ownerAgent.get('/api/users/invites');
+    expect(listInvites.status).toBe(200);
+    expect(listInvites.body.data).toEqual([
+      expect.objectContaining({
+        email: 'invited@example.com',
+        role: 'viewer',
+      }),
+    ]);
+    expect(JSON.stringify(listInvites.body)).not.toContain(inviteResponse.body.data.inviteCode);
+
+    const invitedAgent = request.agent(app);
+    const acceptResponse = await invitedAgent.post('/api/auth/accept-invite').send({
+      email: 'invited@example.com',
+      inviteCode: inviteResponse.body.data.inviteCode,
+      unlockSecret: 'invited user strong unlock phrase',
+    });
+    expect(acceptResponse.status).toBe(201);
+    expect(acceptResponse.body.data).toMatchObject({
+      sessionValid: true,
+      dekLoaded: true,
+      user: {
+        email: 'invited@example.com',
+        role: 'viewer',
+      },
+    });
+
+    const users = await ownerAgent.get('/api/users');
+    expect(users.body.data).toEqual([
+      expect.objectContaining({ email: 'owner@example.com', role: 'owner' }),
+      expect.objectContaining({ email: 'invited@example.com', role: 'viewer' }),
+    ]);
+
+    const reuseResponse = await request(app).post('/api/auth/accept-invite').send({
+      email: 'invited@example.com',
+      inviteCode: inviteResponse.body.data.inviteCode,
+      unlockSecret: 'another strong unlock phrase',
+    });
+    expect(reuseResponse.status).toBe(401);
+    expect(reuseResponse.body.error.code).toBe('INVALID_INVITE');
+
+    const audit = db.prepare("SELECT metadata FROM audit_log WHERE action = 'user.invite_create'").get();
+    expect(JSON.stringify(audit)).not.toContain(inviteResponse.body.data.inviteCode);
+  }, 60_000);
+
+  it('revokes active invites', async () => {
+    const csrfToken = await setupOwner();
+    const inviteResponse = await withCsrf(ownerAgent.post('/api/users/invites'), csrfToken).send({
+      currentUnlockSecret: ownerSecret,
+      email: 'revoked@example.com',
+      displayName: 'Revoked User',
+      role: 'operator',
+    });
+    expect(inviteResponse.status).toBe(201);
+
+    const revokeResponse = await withCsrf(
+      ownerAgent.delete(`/api/users/invites/${inviteResponse.body.data.id}`),
+      csrfToken,
+    ).send({});
+    expect(revokeResponse.status).toBe(200);
+    expect(revokeResponse.body.data.revokedAt).toEqual(expect.any(String));
+
+    const acceptResponse = await request(app).post('/api/auth/accept-invite').send({
+      email: 'revoked@example.com',
+      inviteCode: inviteResponse.body.data.inviteCode,
+      unlockSecret: 'revoked user strong unlock phrase',
+    });
+    expect(acceptResponse.status).toBe(401);
+    expect(acceptResponse.body.error.code).toBe('INVALID_INVITE');
+  }, 60_000);
 
   it('lets operators mutate inventory but blocks admin settings', async () => {
     const csrfToken = await setupOwner();

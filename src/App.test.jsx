@@ -93,6 +93,9 @@ describe('App', () => {
 
     expect(await screen.findByRole('heading', { name: /create unlock secret/i })).toBeInTheDocument();
 
+    await user.type(screen.getByLabelText(/^owner email$/i), 'owner@example.com');
+    await user.clear(screen.getByLabelText(/^display name$/i));
+    await user.type(screen.getByLabelText(/^display name$/i), 'Owner');
     await user.type(screen.getByLabelText(/^unlock secret$/i), 'a strong unlock phrase');
     await user.type(screen.getByLabelText(/confirm unlock secret/i), 'a strong unlock phrase');
     await user.click(screen.getByRole('checkbox', { name: /required to unlock encrypted card data/i }));
@@ -104,7 +107,11 @@ describe('App', () => {
       '/api/auth/setup',
       expect.objectContaining({
         method: 'POST',
-        body: JSON.stringify({ unlockSecret: 'a strong unlock phrase' }),
+        body: JSON.stringify({
+          email: 'owner@example.com',
+          displayName: 'Owner',
+          unlockSecret: 'a strong unlock phrase',
+        }),
       }),
     );
   });
@@ -139,7 +146,7 @@ describe('App', () => {
     expect(await screen.findByRole('heading', { name: /unlock card data/i })).toBeInTheDocument();
 
     await user.type(screen.getByLabelText(/^unlock secret$/i), 'a strong unlock phrase');
-    await user.click(screen.getByRole('button', { name: /unlock/i }));
+    await user.click(screen.getByRole('button', { name: /^unlock$/i }));
 
     await screen.findByRole('heading', { name: /dashboard/i });
     expect(globalThis.fetch).toHaveBeenNthCalledWith(
@@ -148,6 +155,98 @@ describe('App', () => {
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({ unlockSecret: 'a strong unlock phrase' }),
+      }),
+    );
+  });
+
+  it('accepts an invite from the locked screen', async () => {
+    globalThis.fetch
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            setupComplete: true,
+            sessionValid: false,
+            dekLoaded: false,
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            data: {
+              setupComplete: true,
+              sessionValid: true,
+              dekLoaded: true,
+              csrfToken: 'csrf_invited',
+            },
+          },
+          201,
+        ),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }));
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByRole('heading', { name: /unlock card data/i });
+    await user.click(screen.getByRole('button', { name: /^show invite form$/i }));
+    await user.type(screen.getByLabelText(/^email$/i), 'viewer@example.com');
+    await user.type(screen.getByLabelText(/^invite code$/i), 'GC-INV-ABCD-EFGH-IJKL-MNOP-QRST-UVWX');
+    await user.type(screen.getByLabelText(/^new unlock secret$/i), 'viewer strong unlock phrase');
+    await user.type(screen.getByLabelText(/^confirm unlock secret$/i), 'viewer strong unlock phrase');
+    await user.click(screen.getByRole('button', { name: /^accept invite$/i }));
+
+    await screen.findByRole('heading', { name: /dashboard/i });
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(
+      2,
+      '/api/auth/accept-invite',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          email: 'viewer@example.com',
+          inviteCode: 'GC-INV-ABCD-EFGH-IJKL-MNOP-QRST-UVWX',
+          unlockSecret: 'viewer strong unlock phrase',
+        }),
+      }),
+    );
+  });
+
+  it('resets an unlock secret with a recovery code from the locked screen', async () => {
+    globalThis.fetch
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            setupComplete: true,
+            sessionValid: false,
+            dekLoaded: false,
+          },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: { reset: true } }));
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByRole('heading', { name: /unlock card data/i });
+    await user.click(screen.getByRole('button', { name: /^show recovery form$/i }));
+    await user.type(screen.getByLabelText(/^email$/i), 'owner@example.com');
+    await user.type(screen.getByLabelText(/^recovery code$/i), 'GC-REC-ABCD-EFGH-IJKL-MNOP-QRST-UVWX');
+    await user.type(screen.getByLabelText(/^new unlock secret$/i), 'recovered strong unlock phrase');
+    await user.type(screen.getByLabelText(/^confirm unlock secret$/i), 'recovered strong unlock phrase');
+    await user.click(screen.getByRole('button', { name: /^reset unlock secret$/i }));
+
+    expect(await screen.findByText(/unlock secret reset/i)).toBeInTheDocument();
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(
+      2,
+      '/api/auth/recover',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          email: 'owner@example.com',
+          recoveryCode: 'GC-REC-ABCD-EFGH-IJKL-MNOP-QRST-UVWX',
+          newUnlockSecret: 'recovered strong unlock phrase',
+        }),
       }),
     );
   });
@@ -1147,6 +1246,7 @@ describe('App', () => {
         }),
       )
       .mockResolvedValueOnce(jsonResponse({ data: [] }))
+      .mockResolvedValueOnce(jsonResponse({ data: [] }))
       .mockResolvedValueOnce(supportPolicyResponse())
       .mockResolvedValueOnce(dataPolicyResponse())
       .mockResolvedValueOnce(jsonResponse({ data: { changed: true } }));
@@ -1205,6 +1305,7 @@ describe('App', () => {
           },
         }),
       )
+      .mockResolvedValueOnce(jsonResponse({ data: [] }))
       .mockResolvedValueOnce(jsonResponse({ data: [] }))
       .mockResolvedValueOnce(supportPolicyResponse())
       .mockResolvedValueOnce(dataPolicyResponse())
@@ -1282,6 +1383,7 @@ describe('App', () => {
         }),
       )
       .mockResolvedValueOnce(jsonResponse({ data: [] }))
+      .mockResolvedValueOnce(jsonResponse({ data: [] }))
       .mockResolvedValueOnce(supportPolicyResponse())
       .mockResolvedValueOnce(dataPolicyResponse());
 
@@ -1343,6 +1445,7 @@ describe('App', () => {
           ],
         }),
       )
+      .mockResolvedValueOnce(jsonResponse({ data: [] }))
       .mockResolvedValueOnce(supportPolicyResponse())
       .mockResolvedValueOnce(dataPolicyResponse())
       .mockResolvedValueOnce(
@@ -1353,8 +1456,10 @@ describe('App', () => {
               email: 'viewer@example.com',
               displayName: 'Viewer A',
               role: 'viewer',
-              disabledAt: null,
-              lastLoginAt: null,
+              inviteCode: 'GC-INV-ABCD-EFGH-IJKL-MNOP-QRST-UVWX',
+              usedAt: null,
+              revokedAt: null,
+              expiresAt: '2026-05-21T00:00:00.000Z',
             },
           },
           201,
@@ -1371,14 +1476,13 @@ describe('App', () => {
     await user.type(screen.getByLabelText(/^user email$/i), 'viewer@example.com');
     await user.type(screen.getByLabelText(/^display name$/i), 'Viewer A');
     await user.selectOptions(screen.getByLabelText(/^role$/i), 'viewer');
-    await user.type(screen.getByLabelText(/^temporary unlock secret$/i), 'temporary unlock phrase');
     await user.type(screen.getByLabelText(/^your unlock secret$/i), 'owner unlock phrase');
-    await user.click(screen.getByRole('button', { name: /^add user$/i }));
+    await user.click(screen.getByRole('button', { name: /^create invite$/i }));
 
-    expect(await screen.findByText(/viewer a added/i)).toBeInTheDocument();
-    expect(screen.getByText('viewer@example.com')).toBeInTheDocument();
+    expect(await screen.findByText(/invite created for viewer a/i)).toBeInTheDocument();
+    expect(screen.getByText('GC-INV-ABCD-EFGH-IJKL-MNOP-QRST-UVWX')).toBeInTheDocument();
     expect(globalThis.fetch).toHaveBeenLastCalledWith(
-      '/api/users',
+      '/api/users/invites',
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({
@@ -1386,7 +1490,6 @@ describe('App', () => {
           email: 'viewer@example.com',
           displayName: 'Viewer A',
           role: 'viewer',
-          unlockSecret: 'temporary unlock phrase',
         }),
         headers: expect.objectContaining({
           'X-CSRF-Token': 'csrf_ready',
@@ -1429,6 +1532,7 @@ describe('App', () => {
           },
         }),
       )
+      .mockResolvedValueOnce(jsonResponse({ data: [] }))
       .mockResolvedValueOnce(jsonResponse({ data: [] }))
       .mockResolvedValueOnce(supportPolicyResponse())
       .mockResolvedValueOnce(dataPolicyResponse())

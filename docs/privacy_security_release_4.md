@@ -39,12 +39,16 @@ Audit and observability data:
 ## Authentication and Authorization
 
 - The app uses a setup flow to create the first owner user.
+- First-run setup records owner email and display name for multi-user login and recovery flows.
 - Sessions are HTTP-only and SameSite strict.
 - Production mode requires an explicit `SESSION_SECRET`.
 - Authenticated roles are owner, admin, operator, and viewer.
 - Admin operations are limited to owner/admin roles.
 - Inventory mutations are limited to owner/admin/operator roles.
 - Viewers can read inventory but cannot reveal credentials or mutate data.
+- Owner/admin users can create one-time invites so invited users choose their own unlock secret.
+- Each user can generate one-time recovery codes while unlocked; recovery codes rewrap the vault key under a new unlock secret and are shown once.
+- Recovery reset does not auto-login the user.
 
 ## CSRF, Headers, and Browser Safety
 
@@ -61,6 +65,7 @@ Audit and observability data:
 - Plaintext and raw database exports require a fresh unlock secret.
 - Backup/export audit events include only summary metadata.
 - Raw SQLite exports are sensitive because encrypted card credentials and key material are present in the database file.
+- Recovery codes and backup passphrases should be stored in the owner's password manager, not in git, docs, shell history, or chat transcripts.
 
 ## Data Retention and Deletion
 
@@ -103,3 +108,4 @@ Do not run multi-instance deployments yet. `GC_DEPLOYMENT_MODE=multi-instance` f
 - The process memory contains decrypted key material while a user session is unlocked.
 - Browser compromise, host compromise, or leaked backups can expose sensitive value.
 - Commercial launch still needs legal/privacy review, compliance review, and independent security assessment.
+- MFA/passkey support and true multi-tenant isolation remain future requirements before broad third-party use.

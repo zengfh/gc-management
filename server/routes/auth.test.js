@@ -162,6 +162,68 @@ describe('auth routes', () => {
     expect(newLogin.body.data.dekLoaded).toBe(true);
   }, 45_000);
 
+  it('generates one-time recovery codes and resets a forgotten unlock secret', async () => {
+    const setupResponse = await agent.post('/api/auth/setup').send({
+      email: 'owner@example.com',
+      displayName: 'Owner',
+      unlockSecret: 'a strong unlock phrase',
+    });
+    expect(setupResponse.status).toBe(201);
+
+    const recoveryCodes = await postWithCsrf(
+      '/api/auth/recovery-codes',
+      setupResponse.body.data.csrfToken,
+    ).send({
+      currentUnlockSecret: 'a strong unlock phrase',
+    });
+    expect(recoveryCodes.status).toBe(201);
+    expect(recoveryCodes.body.data.codes).toHaveLength(10);
+    expect(recoveryCodes.body.data.codes[0]).toMatch(/^GC-REC-/);
+    expect(recoveryCodes.body.data.activeCount).toBe(10);
+
+    const audit = db.prepare("SELECT metadata FROM audit_log WHERE action = 'auth.recovery_codes_generate'").get();
+    expect(JSON.stringify(audit)).not.toContain(recoveryCodes.body.data.codes[0]);
+
+    await postWithCsrf('/api/auth/logout', setupResponse.body.data.csrfToken);
+
+    const badRecovery = await request(app).post('/api/auth/recover').send({
+      email: 'owner@example.com',
+      recoveryCode: 'GC-REC-WRONG-CODE',
+      newUnlockSecret: 'a recovered strong unlock phrase',
+    });
+    expect(badRecovery.status).toBe(401);
+    expect(badRecovery.body.error.code).toBe('INVALID_RECOVERY_CODE');
+
+    const recovery = await request(app).post('/api/auth/recover').send({
+      email: 'owner@example.com',
+      recoveryCode: recoveryCodes.body.data.codes[0],
+      newUnlockSecret: 'a recovered strong unlock phrase',
+    });
+    expect(recovery.status).toBe(200);
+    expect(recovery.body).toEqual({ data: { reset: true } });
+
+    const oldLogin = await request(app).post('/api/auth/login').send({
+      email: 'owner@example.com',
+      unlockSecret: 'a strong unlock phrase',
+    });
+    expect(oldLogin.status).toBe(401);
+
+    const newLogin = await request(app).post('/api/auth/login').send({
+      email: 'owner@example.com',
+      unlockSecret: 'a recovered strong unlock phrase',
+    });
+    expect(newLogin.status).toBe(200);
+    expect(newLogin.body.data.dekLoaded).toBe(true);
+
+    const reuseRecovery = await request(app).post('/api/auth/recover').send({
+      email: 'owner@example.com',
+      recoveryCode: recoveryCodes.body.data.codes[0],
+      newUnlockSecret: 'another recovered strong unlock phrase',
+    });
+    expect(reuseRecovery.status).toBe(401);
+    expect(reuseRecovery.body.error.code).toBe('INVALID_RECOVERY_CODE');
+  }, 90_000);
+
   it('rejects authenticated state changes without a valid CSRF token and trusted origin', async () => {
     const setupResponse = await setupOwner();
 
