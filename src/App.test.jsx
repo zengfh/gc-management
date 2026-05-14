@@ -1957,6 +1957,212 @@ describe('App', () => {
     });
   });
 
+  it('uses a single primary field for claim-code cards in Add Deal', async () => {
+    globalThis.fetch
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            setupComplete: true,
+            sessionValid: true,
+            dekLoaded: true,
+            csrfToken: 'csrf_ready',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            deal_name: [],
+            source: [{ id: 1, type: 'source', value: 'Direct', usageCount: 1 }],
+            card_brand: [{ id: 2, type: 'card_brand', value: 'DoorDash', usageCount: 1 }],
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            { id: 1, type: 'source', value: 'Direct', usageCount: 2 },
+            { id: 2, type: 'card_brand', value: 'DoorDash', usageCount: 2 },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            data: {
+              deal: { id: 30, name: 'Direct', source: 'Direct', inputTotalCostCents: null, rowVersion: 1 },
+              cards: [
+                {
+                  id: 31,
+                  dealId: 30,
+                  brand: 'DoorDash',
+                  credentialProfile: 'claim_code',
+                  status: 'available',
+                  faceValueCents: 2500,
+                  remainingBalanceCents: 2500,
+                  purchaseCostCents: 0,
+                },
+              ],
+            },
+          },
+          201,
+        ),
+      );
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByRole('heading', { name: /dashboard/i });
+    await user.click(screen.getByRole('button', { name: /add deal/i }));
+    await user.type(screen.getByLabelText(/^source$/i), 'Direct');
+    await user.type(screen.getByLabelText(/^card brand$/i), 'DoorDash');
+    await user.type(screen.getByLabelText(/^face value$/i), '25.00');
+    expect(screen.getByLabelText(/^credential type$/i)).toHaveValue('claim_code');
+    expect(screen.queryByLabelText(/^PIN$/i)).not.toBeInTheDocument();
+    await user.type(screen.getByLabelText(/^code \/ pin \/ claim code$/i), 'DDTESTCODE11');
+    await user.click(screen.getByRole('button', { name: /^create deal$/i }));
+
+    await waitFor(() => {
+      expect(globalThis.fetch).toHaveBeenLastCalledWith(
+        '/api/deals',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({
+            source: 'Direct',
+            cards: [
+              {
+                brand: 'DoorDash',
+                cardType: 'merchant',
+                credentialProfile: 'claim_code',
+                credentials: {
+                  profile: 'claim_code',
+                  fields: [
+                    {
+                      fieldKey: 'primary_code',
+                      label: 'Code / PIN / Claim code',
+                      fieldKind: 'primary_code',
+                      value: 'DDTESTCODE11',
+                    },
+                  ],
+                },
+                faceValueCents: 2500,
+              },
+            ],
+          }),
+        }),
+      );
+    });
+  });
+
+  it('uses card number plus access code for Target-style Add Deal entry', async () => {
+    globalThis.fetch
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            setupComplete: true,
+            sessionValid: true,
+            dekLoaded: true,
+            csrfToken: 'csrf_ready',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            deal_name: [],
+            source: [{ id: 1, type: 'source', value: 'Direct', usageCount: 1 }],
+            card_brand: [{ id: 2, type: 'card_brand', value: 'Target', usageCount: 1 }],
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            { id: 1, type: 'source', value: 'Direct', usageCount: 2 },
+            { id: 2, type: 'card_brand', value: 'Target', usageCount: 2 },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            data: {
+              deal: { id: 32, name: 'Direct', source: 'Direct', inputTotalCostCents: null, rowVersion: 1 },
+              cards: [
+                {
+                  id: 33,
+                  dealId: 32,
+                  brand: 'Target',
+                  credentialProfile: 'merchant_number_pin',
+                  status: 'available',
+                  faceValueCents: 5000,
+                  remainingBalanceCents: 5000,
+                  purchaseCostCents: 0,
+                },
+              ],
+            },
+          },
+          201,
+        ),
+      );
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByRole('heading', { name: /dashboard/i });
+    await user.click(screen.getByRole('button', { name: /add deal/i }));
+    await user.type(screen.getByLabelText(/^source$/i), 'Direct');
+    await user.type(screen.getByLabelText(/^card brand$/i), 'Target');
+    await user.type(screen.getByLabelText(/^face value$/i), '50.00');
+    expect(screen.getByLabelText(/^credential type$/i)).toHaveValue('merchant_number_access');
+    expect(screen.queryByLabelText(/^PIN$/i)).not.toBeInTheDocument();
+    await user.type(screen.getByLabelText(/^card number$/i), '990000000000502');
+    await user.type(screen.getByLabelText(/^access code$/i), '05512345');
+    await user.click(screen.getByRole('button', { name: /^create deal$/i }));
+
+    await waitFor(() => {
+      expect(globalThis.fetch).toHaveBeenLastCalledWith(
+        '/api/deals',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({
+            source: 'Direct',
+            cards: [
+              {
+                brand: 'Target',
+                cardType: 'merchant',
+                credentialProfile: 'merchant_number_pin',
+                credentials: {
+                  profile: 'merchant_number_pin',
+                  fields: [
+                    {
+                      fieldKey: 'card_number',
+                      label: 'Card number',
+                      fieldKind: 'card_number',
+                      value: '990000000000502',
+                    },
+                    {
+                      fieldKey: 'access_code',
+                      label: 'Access code',
+                      fieldKind: 'access_code',
+                      value: '05512345',
+                    },
+                  ],
+                },
+                cardNumber: '990000000000502',
+                faceValueCents: 5000,
+              },
+            ],
+          }),
+        }),
+      );
+    });
+  });
+
   it('suggests indexed card brands when an add-deal value looks mistyped', async () => {
     globalThis.fetch
       .mockResolvedValueOnce(

@@ -147,7 +147,7 @@ Labels:
 
 ### 6.3 Credential Field
 
-Release 5 note: credential fields are profile-driven. The UI must support code-only, number-plus-PIN/access, barcode/QR, network prepaid, and custom credential profiles instead of always rendering "Card number".
+Release 5 note: credential fields are profile-driven. The UI must support code-only, card-number-plus-PIN, card-number-plus-access-code, barcode/QR, network prepaid, and custom credential entry instead of always rendering "Card number".
 
 Default state:
 
@@ -367,7 +367,8 @@ Batch grid columns:
 - Face value
 - Purchase cost override
 - Credential profile
-- Profile-specific credential fields, e.g. claim code, card number, PIN/access code, barcode value/format, valid-through date, cardholder name, billing ZIP/address
+- Profile-specific credential fields, e.g. single code/PIN/claim code, card number plus PIN, card number plus access code, barcode value/format, valid-through date, cardholder name, billing ZIP/address.
+- Merchant card entry should not show PIN, access code, and billing ZIP as one combined default form. Best Buy/Home Depot-style cards need card number plus PIN; Target-style cards need card number plus access code or PIN; DoorDash-style cards need one primary code only.
 - Expiration
 - Format
 - Notes

@@ -98,8 +98,8 @@ const csvImportTemplates = [
     label: 'Prepaid',
     filename: 'prepaid-import-template.csv',
     csv: [
-      'Issuer,Card Category,Payment Network,Face Amount,Cost Basis,Account Number,PIN,Billing Postal Code,Exp Date,Medium,Purchase Source,Description',
-      'Vanilla,prepaid,visa,200.00,190.00,4111111111111111,1234,94105,2029-04-30,plastic,Giftcards.com,Activation batch',
+      'Issuer,Card Category,Payment Network,Face Amount,Cost Basis,Account Number,Billing Postal Code,Exp Date,Medium,Purchase Source,Description',
+      'Vanilla,prepaid,visa,200.00,190.00,4111111111111111,94105,2029-04-30,plastic,Giftcards.com,Activation batch',
     ].join('\n'),
   },
   {
@@ -107,8 +107,8 @@ const csvImportTemplates = [
     label: 'Code only',
     filename: 'code-only-import-template.csv',
     csv: [
-      'brand,credentialProfile,faceValue,purchaseCost,redemptionCode,pin,format,source,notes',
-      'Amazon,claim_code,50.00,45.00,A1B2-C3D4-E5F6,,digital,Amazon Promo,Claim-code card',
+      'brand,credentialProfile,faceValue,purchaseCost,redemptionCode,format,source,notes',
+      'Amazon,claim_code,50.00,45.00,A1B2-C3D4-E5F6,digital,Amazon Promo,Claim-code card',
     ].join('\n'),
   },
   {
@@ -116,8 +116,8 @@ const csvImportTemplates = [
     label: 'Barcode',
     filename: 'barcode-import-template.csv',
     csv: [
-      'brand,credentialProfile,faceValue,purchaseCost,barcodeValue,barcodeFormat,pin,format,source,notes',
-      'Starbucks,barcode,25.00,20.00,123456789012,code128,,digital,Gift card mall,Scanner-first card',
+      'brand,credentialProfile,faceValue,purchaseCost,barcodeValue,barcodeFormat,format,source,notes',
+      'Starbucks,barcode,25.00,20.00,123456789012,code128,digital,Gift card mall,Scanner-first card',
     ].join('\n'),
   },
   {
@@ -144,17 +144,19 @@ const terminalCardStatuses = new Set(['sold', 'used_up', 'void']);
 const adminRoleSet = new Set(['owner', 'admin']);
 const operatorRoleSet = new Set(['owner', 'admin', 'operator']);
 
-const credentialProfileLabels = {
-  claim_code: 'Redemption code',
-  merchant_number_pin: 'Number + PIN',
-  barcode: 'Barcode',
-  network_prepaid: 'Prepaid card',
-  custom: 'Custom',
-};
+const credentialProfileOptions = [
+  { value: 'claim_code', label: 'Single code / PIN' },
+  { value: 'merchant_number_pin', label: 'Card number + PIN' },
+  { value: 'merchant_number_access', label: 'Card number + access code' },
+  { value: 'barcode', label: 'Barcode / QR' },
+  { value: 'network_prepaid', label: 'Network prepaid card' },
+  { value: 'custom', label: 'Custom' },
+];
 
 const networkBrandPattern = /\b(visa|mastercard|master card|amex|american express|discover|vanilla|serve)\b/i;
 const claimCodeBrandPattern = /\b(amazon|apple|doordash|door dash|uber|ubereats|steam|google play|playstation|xbox)\b/i;
 const barcodeBrandPattern = /\b(starbucks|dunkin|chipotle|mcdonald|panera)\b/i;
+const accessCodeBrandPattern = /\b(target)\b/i;
 const customCredentialFieldKinds = [
   { value: 'primary_code', label: 'Secret code' },
   { value: 'card_number', label: 'Card number' },
@@ -176,6 +178,9 @@ function inferCredentialProfileForBrand(brand) {
   }
   if (claimCodeBrandPattern.test(brand)) {
     return 'claim_code';
+  }
+  if (accessCodeBrandPattern.test(brand)) {
+    return 'merchant_number_access';
   }
   return 'merchant_number_pin';
 }
@@ -3859,8 +3864,7 @@ function AddDealPanel({
     };
 
     if (form.credentialProfile === 'claim_code') {
-      push('primary_code', 'Redemption code', 'primary_code', form.redemptionCode);
-      push('pin', 'PIN', 'pin', form.pin);
+      push('primary_code', 'Code / PIN / Claim code', 'primary_code', form.redemptionCode);
       return fields;
     }
 
@@ -3868,7 +3872,6 @@ function AddDealPanel({
       push('barcode_value', 'Barcode', 'barcode_value', form.barcodeValue, {
         barcodeFormat: form.barcodeFormat,
       });
-      push('pin', 'PIN', 'pin', form.pin);
       return fields;
     }
 
@@ -3900,15 +3903,21 @@ function AddDealPanel({
       return fields;
     }
 
+    if (form.credentialProfile === 'merchant_number_access') {
+      push('card_number', 'Card number', 'card_number', form.cardNumber);
+      push('access_code', 'Access code', 'access_code', form.accessCode);
+      return fields;
+    }
+
     push('card_number', 'Card number', 'card_number', form.cardNumber);
     push('pin', 'PIN', 'pin', form.pin);
-    push('access_code', 'Access code', 'access_code', form.accessCode);
-    push('billing_postal_code', 'Billing ZIP', 'billing_postal_code', form.billingZip);
     return fields;
   }
 
   function dealPayload(totalCostCents, faceValueCents) {
-    const profile = form.credentialProfile;
+    const profile = form.credentialProfile === 'merchant_number_access'
+      ? 'merchant_number_pin'
+      : form.credentialProfile;
     const fields = credentialFields();
     const network = profile === 'network_prepaid'
       ? inferNetworkFromBrand(form.cardBrand)
@@ -3930,8 +3939,8 @@ function AddDealPanel({
           ...(form.cardNumber.trim() && ['merchant_number_pin', 'network_prepaid'].includes(profile)
             ? { cardNumber: form.cardNumber.trim() }
             : {}),
-          ...(form.pin.trim() ? { pin: form.pin.trim() } : {}),
-          ...(form.billingZip.trim() ? { billingZip: form.billingZip.trim() } : {}),
+          ...(form.pin.trim() && form.credentialProfile === 'merchant_number_pin' ? { pin: form.pin.trim() } : {}),
+          ...(form.billingZip.trim() && profile === 'network_prepaid' ? { billingZip: form.billingZip.trim() } : {}),
           faceValueCents,
         },
       ],
@@ -3987,9 +3996,9 @@ function AddDealPanel({
   function renderCredentialInputs() {
     if (form.credentialProfile === 'claim_code') {
       return (
-        <>
+        <div className="credential-mode-block">
           <label>
-            <span>Redemption code</span>
+            <span>Code / PIN / Claim code</span>
             <input
               className="mono"
               autoComplete="off"
@@ -3997,22 +4006,16 @@ function AddDealPanel({
               onChange={(event) => updateField('redemptionCode', event.target.value)}
             />
           </label>
-          <label>
-            <span>PIN</span>
-            <input
-              className="mono"
-              autoComplete="off"
-              value={form.pin}
-              onChange={(event) => updateField('pin', event.target.value)}
-            />
-          </label>
-        </>
+          <p className="muted-text">
+            Use this for one-secret cards such as DoorDash, Uber, Amazon-style claim codes, or cards that call the only redeemable value a PIN.
+          </p>
+        </div>
       );
     }
 
     if (form.credentialProfile === 'barcode') {
       return (
-        <>
+        <div className="credential-mode-block">
           <label>
             <span>Barcode value</span>
             <input
@@ -4033,16 +4036,10 @@ function AddDealPanel({
               <option value="other">Other</option>
             </select>
           </label>
-          <label>
-            <span>PIN</span>
-            <input
-              className="mono"
-              autoComplete="off"
-              value={form.pin}
-              onChange={(event) => updateField('pin', event.target.value)}
-            />
-          </label>
-        </>
+          <p className="muted-text">
+            Use Custom if the barcode card also needs a separate PIN or issuer-specific field.
+          </p>
+        </div>
       );
     }
 
@@ -4189,8 +4186,36 @@ function AddDealPanel({
       );
     }
 
+    if (form.credentialProfile === 'merchant_number_access') {
+      return (
+        <div className="credential-mode-block">
+          <label>
+            <span>Card number</span>
+            <input
+              className="mono"
+              autoComplete="off"
+              value={form.cardNumber}
+              onChange={(event) => updateField('cardNumber', event.target.value)}
+            />
+          </label>
+          <label>
+            <span>Access code</span>
+            <input
+              className="mono"
+              autoComplete="off"
+              value={form.accessCode}
+              onChange={(event) => updateField('accessCode', event.target.value)}
+            />
+          </label>
+          <p className="muted-text">
+            Use this for Target-style cards that ask for a card number plus Access Number or PIN.
+          </p>
+        </div>
+      );
+    }
+
     return (
-      <>
+      <div className="credential-mode-block">
         <label>
           <span>Card number</span>
           <input
@@ -4209,20 +4234,10 @@ function AddDealPanel({
             onChange={(event) => updateField('pin', event.target.value)}
           />
         </label>
-        <label>
-          <span>Access code</span>
-          <input
-            className="mono"
-            autoComplete="off"
-            value={form.accessCode}
-            onChange={(event) => updateField('accessCode', event.target.value)}
-          />
-        </label>
-        <label>
-          <span>Billing ZIP</span>
-          <input value={form.billingZip} onChange={(event) => updateField('billingZip', event.target.value)} />
-        </label>
-      </>
+        <p className="muted-text">
+          Use this for Best Buy, Home Depot, and similar cards that ask for a gift-card number plus PIN.
+        </p>
+      </div>
     );
   }
 
@@ -4282,9 +4297,9 @@ function AddDealPanel({
           <label>
             <span>Credential type</span>
             <select value={form.credentialProfile} onChange={(event) => updateCredentialProfile(event.target.value)}>
-              {Object.entries(credentialProfileLabels).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
+              {credentialProfileOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
                 </option>
               ))}
             </select>

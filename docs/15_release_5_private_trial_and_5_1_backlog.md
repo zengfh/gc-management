@@ -34,7 +34,7 @@ Trial cards to add manually:
 
 - Code-only card, such as an app gift code.
 - Merchant number-plus-PIN card.
-- Merchant number-plus-access-code card if available.
+- Merchant number-plus-access-code card if available, such as Target-style cards.
 - Barcode/QR card.
 - Network prepaid card without storing security code by default.
 - Custom odd-issuer card with at least two custom fields.
@@ -84,9 +84,14 @@ Automated Release 5 restore coverage:
 
 These are polish items discovered or confirmed during Release 5 acceptance hardening:
 
+Completed 2026-05-14:
+
+- Corrected Add Deal credential entry so one-code cards use one field, merchant cards choose either number-plus-PIN or number-plus-access-code, barcode cards do not show a default PIN field, and network prepaid billing fields remain separate from merchant gift-card fields.
+- Verification passed with unit/integration tests, full browser e2e, focused Release 5 browser acceptance, lint, build, and whitespace checks.
+
 1. Add a first-class production static-server/reverse-proxy deployment path so private hosted use does not depend on the Vite dev server.
 2. Add a small UI checklist or runbook link for first-time private backup setup after vault creation.
-3. Add brand-specific credential templates for common issuers after the owner tests real cards.
+3. Expand brand-specific credential templates after the owner tests real cards, especially issuers that need labels other than PIN or access code.
 4. Improve mobile/tablet card table behavior for dense credential summaries and action buttons.
 5. Add camera/image barcode scanning as a future optional enhancement.
 6. Add import-preview filters for valid/invalid rows if larger CSV imports become common.
