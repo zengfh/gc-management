@@ -1,0 +1,6 @@
+# Replace gc.hankzeng.com if you deploy under a different hostname.
+gc.hankzeng.com {
+  encode zstd gzip
+
+  reverse_proxy 127.0.0.1:5180
+}

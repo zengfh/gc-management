@@ -9,7 +9,8 @@ Release tag: `v0.5.0-release5`
 
 VPS runtime paths:
 
-- Production-style UI and API: `http://127.0.0.1:5180`
+- Public HTTPS UI and API: `https://gc.hankzeng.com`
+- Local app listener behind Caddy: `http://127.0.0.1:5180`
 - Runtime database: `/home/opc/gc-management-data/release5/gcmanager.db`
 - Runtime logs: `journalctl --user -u gc-management.service`
 - Runtime environment: `/home/opc/gc-management-data/release5/prod.env`
@@ -17,13 +18,16 @@ VPS runtime paths:
 - Future encrypted backup directory: `/home/opc/gc-management-data/release5/backups/`
 - Restore-drill workspace: `/home/opc/gc-management-data/release5/restore-drills/`
 
-Laptop access via SSH tunnel:
+Laptop access:
+
+- Preferred: open `https://gc.hankzeng.com`.
+- SSH tunnel fallback, useful only if the HTTPS edge is unavailable:
 
 ```bash
 ssh -L 5180:127.0.0.1:5180 <user>@<vps-host>
 ```
 
-Then open `http://localhost:5180`.
+Then open `http://localhost:5180`. Login cookies are configured for HTTPS in the hosted setup, so normal browser use should use the public HTTPS URL.
 
 Private data rule: real gift-card credentials, backup files, database files, runtime logs, and passphrases must stay outside git.
 
@@ -92,6 +96,8 @@ Completed 2026-05-14:
 - Added a first-class production static-server/reverse-proxy deployment path so private hosted use no longer depends on the Vite dev server.
 - Added systemd, Nginx, and environment templates under `deploy/`.
 - Updated the hosted private-beta runbook and Release 5.1 hosting status doc.
+- Configured `gc.hankzeng.com` through Caddy with automatic Let's Encrypt TLS.
+- Bound the Node app to `127.0.0.1:5180` behind Caddy and enabled HTTPS-safe cookie/proxy settings.
 
 1. Add a small UI checklist or runbook link for first-time private backup setup after vault creation.
 2. Expand brand-specific credential templates after the owner tests real cards, especially issuers that need labels other than PIN or access code.

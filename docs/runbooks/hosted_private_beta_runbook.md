@@ -12,13 +12,14 @@ The production app is one Node/Express process:
 - `npm run build` creates the Vite frontend bundle in `dist/`.
 - `npm start` runs `server/index.js`.
 - Express serves both the built frontend and `/api/*` from the same origin.
-- Nginx should terminate TLS and reverse proxy to the local app port.
+- Caddy or Nginx should terminate TLS and reverse proxy to the local app port.
 - The Vite dev server and `vite preview` are not part of production hosting.
 
 Research basis:
 
 - Vite production deployment uses `vite build`, writes to `dist` by default, and states that `vite preview` is for local preview rather than production serving: https://vite.dev/guide/static-deploy.html
 - Express supports serving static files with the built-in `express.static` middleware: https://expressjs.com/en/starter/static-files.html
+- Caddy can serve HTTPS sites with automatic certificate management and reverse proxying: https://caddyserver.com/docs/quick-starts/reverse-proxy
 - Nginx documents reverse proxying requests to an upstream HTTP server with `proxy_pass`: https://docs.nginx.com/nginx/admin-guide/web-server/reverse-proxy/
 - systemd service units provide restart supervision, while `systemd.exec` covers `WorkingDirectory`, `EnvironmentFile`, `StateDirectory`, `LogsDirectory`, and hardening controls: https://www.freedesktop.org/software/systemd/man/systemd.service.html and https://www.freedesktop.org/software/systemd/man/systemd.exec.html
 
@@ -47,6 +48,7 @@ Blocked:
 ```bash
 NODE_ENV=production
 PORT=3001
+HOST=127.0.0.1
 SESSION_SECRET=<long-random-secret>
 GC_DB_PATH=/var/lib/gc-management/gcmanager.db
 APP_ORIGIN=https://giftcards.example.com
@@ -85,11 +87,12 @@ Recommended host layout:
 Repository templates:
 
 - `deploy/env/gc-management.env.example`
+- `deploy/caddy/gc-management.Caddyfile`
 - `deploy/systemd/gc-management.service`
 - `deploy/systemd/gc-management.user.service`
 - `deploy/nginx/gc-management.conf`
 
-The user-level systemd template is for private SSH-tunnel trials on a VPS without DNS/TLS. The system-level service and Nginx templates are the target for public HTTPS hosting.
+The user-level systemd template is for private SSH-tunnel trials on a VPS without DNS/TLS. The Caddy template is the preferred HTTPS edge on this VPS because Caddy is already installed and bound to ports 80 and 443. The Nginx template remains available for hosts that standardize on Nginx.
 
 ## Reverse Proxy Checklist
 
@@ -107,10 +110,10 @@ The user-level systemd template is for private SSH-tunnel trials on a VPS withou
 3. Build the frontend with `npm run build`.
 4. Copy `deploy/env/gc-management.env.example` to `/etc/gc-management/gc-management.env` and replace all secrets and origins.
 5. Copy `deploy/systemd/gc-management.service` to `/etc/systemd/system/gc-management.service`.
-6. Copy `deploy/nginx/gc-management.conf` to the Nginx site config directory and replace the domain and certificate paths.
+6. Configure either Caddy with `deploy/caddy/gc-management.Caddyfile` or Nginx with `deploy/nginx/gc-management.conf`.
 7. Run `sudo systemctl daemon-reload`.
 8. Run `sudo systemctl enable --now gc-management`.
-9. Run `sudo nginx -t` and reload Nginx.
+9. Validate and reload the reverse proxy.
 10. Verify `GET /api/health` through both `http://127.0.0.1:$PORT` and the public HTTPS origin.
 11. Verify `/` and a deep SPA path such as `/cards` return the built frontend.
 12. Complete setup or login.
