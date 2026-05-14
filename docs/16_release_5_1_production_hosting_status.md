@@ -17,8 +17,8 @@ References:
 - https://vite.dev/guide/static-deploy.html
 - https://expressjs.com/en/starter/static-files.html
 - https://docs.nginx.com/nginx/admin-guide/web-server/reverse-proxy/
-- https://www.freedesktop.org/software/systemd/man/latest/systemd.service.html
-- https://www.freedesktop.org/software/systemd/man/latest/systemd.exec.html
+- https://www.freedesktop.org/software/systemd/man/systemd.service.html
+- https://www.freedesktop.org/software/systemd/man/systemd.exec.html
 
 ## Completed
 

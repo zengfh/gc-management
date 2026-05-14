@@ -20,7 +20,7 @@ Research basis:
 - Vite production deployment uses `vite build`, writes to `dist` by default, and states that `vite preview` is for local preview rather than production serving: https://vite.dev/guide/static-deploy.html
 - Express supports serving static files with the built-in `express.static` middleware: https://expressjs.com/en/starter/static-files.html
 - Nginx documents reverse proxying requests to an upstream HTTP server with `proxy_pass`: https://docs.nginx.com/nginx/admin-guide/web-server/reverse-proxy/
-- systemd service units provide restart supervision, while `systemd.exec` covers `WorkingDirectory`, `EnvironmentFile`, `StateDirectory`, `LogsDirectory`, and hardening controls: https://www.freedesktop.org/software/systemd/man/latest/systemd.service.html and https://www.freedesktop.org/software/systemd/man/latest/systemd.exec.html
+- systemd service units provide restart supervision, while `systemd.exec` covers `WorkingDirectory`, `EnvironmentFile`, `StateDirectory`, `LogsDirectory`, and hardening controls: https://www.freedesktop.org/software/systemd/man/systemd.service.html and https://www.freedesktop.org/software/systemd/man/systemd.exec.html
 
 ## Supported Deployment Shape
 
