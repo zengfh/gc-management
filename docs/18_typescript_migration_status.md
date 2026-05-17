@@ -30,6 +30,9 @@ Status: TypeScript migration and second hardening pass complete
 - Split credential-profile inference and credential summary helpers into `src/credentialHelpers.ts`.
 - Split barcode preview rendering into `src/BarcodePreview.tsx`.
 - Split shared form error rendering into `src/formUi.tsx`.
+- Split shared frontend defaults into `src/defaults.ts`.
+- Split backup import/export and backup settings UI into `src/backupComponents.tsx`.
+- Split user access, recovery, support policy, data policy, data operations, and unlock-secret UI into `src/settingsComponents.tsx`.
 - Enabled `noUncheckedIndexedAccess` globally in `tsconfig.base.json`.
 
 ## Current Type Safety Shape
@@ -43,11 +46,11 @@ This is still a compatibility-first TypeScript codebase rather than a fully stri
 - `noImplicitAny` is enabled globally.
 - `noUncheckedIndexedAccess` is enabled globally.
 - Database row shapes are now explicit at the module boundary for the main route/helper modules touched during the migration.
-- `src/App.tsx` remains large, but common app types, reference-value behavior, credential display logic, file helpers, display helpers, and dialog focus behavior now have dedicated modules.
+- `src/App.tsx` remains large, but common app types, reference-value behavior, credential display logic, file helpers, display helpers, dialog focus behavior, backup workflows, settings/admin panels, and default state now have dedicated modules.
 
 ## Remaining Type Hardening
 
-- Continue splitting `src/App.tsx` into smaller feature modules, starting with backup/settings panels or card/deal panels.
+- Continue splitting `src/App.tsx` into smaller feature modules, next focusing on card/deal detail panels and add/edit/use/sell/void workflows.
 - Gradually enable stricter compiler flags after module splitting: `strictNullChecks`, `exactOptionalPropertyTypes`, then full `strict`.
 - Consider generated or hand-maintained OpenAPI-derived request/response types so server route responses and frontend API calls cannot drift.
 - Add more focused unit coverage around backup import/export typing and CSV credential-profile parsing before stricter null/index checks.
@@ -71,6 +74,16 @@ Completed on 2026-05-17:
 - `npx tsc -p tsconfig.client.json --strict true --pretty false` was probed but not enabled; remaining errors are mostly deliberate nullability and exact-optional cleanup in `src/App.tsx`, test URL mocks, `src/main.tsx`, and `src/api.ts`.
 - `npx tsc -p tsconfig.client.json --strictNullChecks true --exactOptionalPropertyTypes true --pretty false` was probed but not enabled for the same reason.
 - `npm run typecheck -- --pretty false`
+
+## Verification Completed For Frontend Module Split
+
+Completed on 2026-05-17:
+
+- `npm run lint`
+- `npm run typecheck -- --pretty false`
+- `npm test`
+- `npm run build`
+- `git diff --check`
 
 ## Verification Completed
 
