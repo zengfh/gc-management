@@ -1,7 +1,7 @@
 # TypeScript Migration Status
 
 Date: 2026-05-17
-Status: TypeScript migration and second hardening pass complete
+Status: TypeScript migration and compiler hardening complete
 
 ## Completed
 
@@ -44,10 +44,11 @@ Status: TypeScript migration and second hardening pass complete
 - Enabled `strictNullChecks` for the server TypeScript project.
 - Enabled `strictNullChecks` for the e2e and performance-script TypeScript project.
 - Enabled `exactOptionalPropertyTypes` globally in `tsconfig.base.json`.
+- Enabled full `strict` mode globally in `tsconfig.base.json`.
 
 ## Current Type Safety Shape
 
-This is still a compatibility-first TypeScript codebase rather than a fully strict rewrite, but implicit `any`, unchecked indexed access, accidental null/undefined access, and ambiguous optional-property writes are now blocked across the checked source tree.
+This is now a strict TypeScript codebase with compatibility-focused runtime behavior preserved during migration.
 
 - TypeScript is active for app/server source.
 - Runtime behavior is preserved.
@@ -56,6 +57,7 @@ This is still a compatibility-first TypeScript codebase rather than a fully stri
 - `noImplicitAny` is enabled globally.
 - `noUncheckedIndexedAccess` is enabled globally.
 - `exactOptionalPropertyTypes` is enabled globally.
+- `strict` is enabled globally.
 - `strictNullChecks` is enabled for frontend, React tests, backend, Playwright specs, and performance scripts.
 - Database row shapes are now explicit at the module boundary for the main route/helper modules touched during the migration.
 - `src/App.tsx` now mostly owns auth status, data state, and API handlers, while common app types, reference-value behavior, credential display logic, file helpers, display helpers, dialog focus behavior, auth/setup screens, the authenticated app shell, backup workflows, settings/admin panels, card/deal panels, add-deal/reference UI, table/search UI, shared status rendering, and default state have dedicated modules.
@@ -63,7 +65,7 @@ This is still a compatibility-first TypeScript codebase rather than a fully stri
 ## Remaining Type Hardening
 
 - Group API handlers and state reducers to keep `src/App.tsx` smaller and make authenticated request paths easier to audit.
-- Gradually enable full `strict` after the remaining compatibility cleanup.
+- Continue reducing module size and API type duplication now that strict compiler checks are the baseline.
 - Consider generated or hand-maintained OpenAPI-derived request/response types so server route responses and frontend API calls cannot drift.
 - Add more focused unit coverage around backup import/export typing and CSV credential-profile parsing before stricter null/index checks.
 - Keep any future scripts and test helpers in `npm run typecheck` so new implicit-any regressions fail early.
@@ -88,6 +90,7 @@ Completed on 2026-05-17:
 - `npx tsc -p tsconfig.server.json --strictNullChecks true --pretty false` passed after hardening auth/session request boundaries, encrypted backup import passphrase narrowing, credential sorting, CSV import parsing, route ID handling, settings parsing, and nullable database aggregate reads. The flag is enabled in `tsconfig.server.json`.
 - `npx tsc -p tsconfig.e2e.json --pretty false` passed after enabling strict null checks and hardening the performance load percentile helper for empty samples. The flag is enabled in `tsconfig.e2e.json`.
 - `npx tsc -p tsconfig.client.json --exactOptionalPropertyTypes true --pretty false`, `npx tsc -p tsconfig.server.json --exactOptionalPropertyTypes true --pretty false`, and `npx tsc -p tsconfig.e2e.json --exactOptionalPropertyTypes true --pretty false` passed after tightening optional React props, API error fields, card search criteria, credential DTO inputs, and reserve mutation bodies. The flag is enabled globally in `tsconfig.base.json`.
+- `npx tsc -p tsconfig.client.json --strict true --pretty false`, `npx tsc -p tsconfig.server.json --strict true --pretty false`, and `npx tsc -p tsconfig.e2e.json --strict true --pretty false` passed. Full strict mode is enabled globally in `tsconfig.base.json`.
 - `npm run typecheck -- --pretty false`
 
 ## Verification Completed For Frontend Module Split
