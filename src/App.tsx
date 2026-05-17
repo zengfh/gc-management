@@ -10,6 +10,7 @@ import {
 } from './defaults';
 import { WorkSurface } from './WorkSurface';
 import { useInventoryController } from './useInventoryController';
+import { useReferenceValuesController } from './useReferenceValuesController';
 import type {
   ApiPayload,
   CountSummary,
@@ -20,11 +21,6 @@ import {
   criteriaValue,
   errorMessage,
 } from './display';
-import {
-  defaultReferenceValues,
-  mergeReferenceValueState,
-  normalizeReferenceValuePayload,
-} from './referenceValues';
 import type {
   AuditCriteria,
   AuditEvent,
@@ -33,8 +29,6 @@ import type {
   BackupSettings,
   DataPolicy,
   FeatureFlags,
-  ReferenceValue,
-  ReferenceValueState,
   SupportPolicy,
   UserInvite,
   AuthUser,
@@ -69,7 +63,6 @@ export default function App() {
   const [dataPolicyLoading, setDataPolicyLoading] = useState(false);
   const [dataPolicyLoaded, setDataPolicyLoaded] = useState(false);
   const [dataPolicyError, setDataPolicyError] = useState('');
-  const [referenceValues, setReferenceValues] = useState<ReferenceValueState>(defaultReferenceValues);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const features = authFeatures(auth);
@@ -82,6 +75,10 @@ export default function App() {
   }
 
   const inventory = useInventoryController({
+    csrfToken: () => authenticatedAuth().csrfToken,
+  });
+  const referenceValues = useReferenceValuesController({
+    features,
     csrfToken: () => authenticatedAuth().csrfToken,
   });
   const { loadInventory } = inventory;
@@ -426,31 +423,7 @@ export default function App() {
     setDataPolicy(defaultDataPolicy);
     setDataPolicyLoaded(false);
     setDataPolicyError('');
-    setReferenceValues(defaultReferenceValues);
-  }
-
-  async function handleLoadReferenceValues() {
-    if (!features.referenceValueHints) {
-      setReferenceValues(defaultReferenceValues);
-      return defaultReferenceValues;
-    }
-    const response = await apiFetch<ApiResponse<ReferenceValueState>>('/api/reference-values?types=deal_name,source,card_brand&limit=200');
-    const nextValues = normalizeReferenceValuePayload(response.data);
-    setReferenceValues(nextValues);
-    return nextValues;
-  }
-
-  async function handleUpsertReferenceValues(values: ReferenceValue[] = []) {
-    if (!features.referenceValueHints || !values.length) {
-      return [];
-    }
-    const response = await apiFetch<ApiResponse<ReferenceValue[]>>('/api/reference-values', {
-      method: 'POST',
-      body: { values },
-      csrfToken: authenticatedAuth().csrfToken,
-    });
-    setReferenceValues((current) => mergeReferenceValueState(current, response.data || []));
-    return response.data || [];
+    referenceValues.resetReferenceValues();
   }
 
   if (loading) {
@@ -522,7 +495,7 @@ export default function App() {
       dataPolicyLoaded={dataPolicyLoaded}
       dataPolicyError={dataPolicyError}
       features={features}
-      referenceValues={referenceValues}
+      referenceValues={referenceValues.referenceValues}
       loading={inventory.loading}
       onRefresh={inventory.loadInventory}
       onLogout={handleLogout}
@@ -548,8 +521,8 @@ export default function App() {
       onImportBackup={handleImportBackup}
       onChangeUnlockSecret={handleChangeUnlockSecret}
       onGenerateRecoveryCodes={handleGenerateRecoveryCodes}
-      onLoadReferenceValues={handleLoadReferenceValues}
-      onUpsertReferenceValues={handleUpsertReferenceValues}
+      onLoadReferenceValues={referenceValues.loadReferenceValues}
+      onUpsertReferenceValues={referenceValues.upsertReferenceValues}
       onCreateDeal={inventory.createDeal}
       onLoadDeals={(includeArchived) => inventory.loadDeals({ includeArchived })}
       onEditDeal={inventory.editDeal}
