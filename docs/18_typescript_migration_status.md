@@ -38,6 +38,7 @@ Status: TypeScript migration and second hardening pass complete
 - Split add-deal, credential-mode, and reference-review UI into `src/AddDealPanel.tsx`.
 - Split metrics, cards/deals tables, audit table/filter, card search, and pagination UI into `src/tableComponents.tsx`.
 - Split first-run setup, unlock, invite acceptance, and recovery screens into `src/authScreens.tsx`.
+- Split the authenticated app shell and view orchestration into `src/WorkSurface.tsx`.
 - Enabled `noUncheckedIndexedAccess` globally in `tsconfig.base.json`.
 
 ## Current Type Safety Shape
@@ -51,11 +52,11 @@ This is still a compatibility-first TypeScript codebase rather than a fully stri
 - `noImplicitAny` is enabled globally.
 - `noUncheckedIndexedAccess` is enabled globally.
 - Database row shapes are now explicit at the module boundary for the main route/helper modules touched during the migration.
-- `src/App.tsx` remains large, but common app types, reference-value behavior, credential display logic, file helpers, display helpers, dialog focus behavior, auth/setup screens, backup workflows, settings/admin panels, card/deal panels, add-deal/reference UI, table/search UI, shared status rendering, and default state now have dedicated modules.
+- `src/App.tsx` now mostly owns auth status, data state, and API handlers, while common app types, reference-value behavior, credential display logic, file helpers, display helpers, dialog focus behavior, auth/setup screens, the authenticated app shell, backup workflows, settings/admin panels, card/deal panels, add-deal/reference UI, table/search UI, shared status rendering, and default state have dedicated modules.
 
 ## Remaining Type Hardening
 
-- Continue splitting `src/App.tsx` into smaller feature modules, next focusing on app shell orchestration boundaries and API handler grouping.
+- Continue splitting root behavior by grouping API handlers and state reducers, then probe `strictNullChecks` again.
 - Gradually enable stricter compiler flags after module splitting: `strictNullChecks`, `exactOptionalPropertyTypes`, then full `strict`.
 - Consider generated or hand-maintained OpenAPI-derived request/response types so server route responses and frontend API calls cannot drift.
 - Add more focused unit coverage around backup import/export typing and CSV credential-profile parsing before stricter null/index checks.
