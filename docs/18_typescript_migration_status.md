@@ -51,6 +51,7 @@ Status: TypeScript migration and compiler hardening complete
 - Split reference-value loading and upsert workflows into `src/useReferenceValuesController.ts`.
 - Split backup settings and backup import/export workflows into `src/useBackupController.ts`.
 - Split user access, support policy, data policy, retention, data export, and account deletion workflows into `src/useAdminController.ts`.
+- Split audit log query/loading state into `src/useAuditController.ts`.
 
 ## Current Type Safety Shape
 
@@ -71,7 +72,7 @@ This is now a strict TypeScript codebase with compatibility-focused runtime beha
 ## Remaining Type Hardening
 
 - Group API handlers and state reducers to keep `src/App.tsx` smaller and make authenticated request paths easier to audit.
-- Keep `src/App.tsx` focused on auth/session bootstrap, audit loading, security actions, and top-level screen orchestration; move those remaining areas only if they grow.
+- Keep `src/App.tsx` focused on auth/session bootstrap, security actions, controller wiring, and top-level screen orchestration; move those remaining areas only if they grow.
 - Consider generated or hand-maintained OpenAPI-derived request/response types so server route responses and frontend API calls cannot drift.
 - Add more focused unit coverage around backup import/export typing and CSV credential-profile parsing before stricter null/index checks.
 - Keep any future scripts and test helpers in `npm run typecheck` so new implicit-any regressions fail early.
