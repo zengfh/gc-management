@@ -56,7 +56,8 @@ This is still a compatibility-first TypeScript codebase rather than a fully stri
 
 ## Remaining Type Hardening
 
-- Continue splitting root behavior by grouping API handlers and state reducers, then probe `strictNullChecks` again.
+- Group API handlers so authenticated calls use a non-null auth/session context instead of repeatedly reading nullable root auth state.
+- Fix the remaining `strictNullChecks` findings in backup CSV template selection, reference-value normalization, `main.tsx` root lookup, and test URL mocks.
 - Gradually enable stricter compiler flags after module splitting: `strictNullChecks`, `exactOptionalPropertyTypes`, then full `strict`.
 - Consider generated or hand-maintained OpenAPI-derived request/response types so server route responses and frontend API calls cannot drift.
 - Add more focused unit coverage around backup import/export typing and CSV credential-profile parsing before stricter null/index checks.
@@ -77,8 +78,8 @@ Completed on 2026-05-17:
 - `npx tsc -p tsconfig.client.json --noUncheckedIndexedAccess true --pretty false`
 - `npx tsc -p tsconfig.server.json --noUncheckedIndexedAccess true --pretty false`
 - `npx tsc -p tsconfig.e2e.json --noUncheckedIndexedAccess true --pretty false`
-- `npx tsc -p tsconfig.client.json --strict true --pretty false` was probed but not enabled; remaining errors are mostly deliberate nullability and exact-optional cleanup in `src/App.tsx`, test URL mocks, `src/main.tsx`, and `src/api.ts`.
-- `npx tsc -p tsconfig.client.json --strictNullChecks true --exactOptionalPropertyTypes true --pretty false` was probed but not enabled for the same reason.
+- `npx tsc -p tsconfig.client.json --strict true --pretty false` was probed but not enabled; remaining errors are mostly deliberate nullability and exact-optional cleanup.
+- `npx tsc -p tsconfig.client.json --strictNullChecks true --pretty false` was re-probed after the frontend module split. Remaining errors are concentrated in nullable root auth reads in `src/App.tsx`, one detail-card ID guard in `src/WorkSurface.tsx`, backup CSV template fallback narrowing, reference-value indexed arrays, `src/main.tsx` root lookup, and test URL mock cleanup.
 - `npm run typecheck -- --pretty false`
 
 ## Verification Completed For Frontend Module Split
