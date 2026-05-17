@@ -1362,10 +1362,16 @@ export function createBackupRouter({ db }: { db: Database.Database }) {
       try {
         const response = await runIdempotentJsonAsync(db, req, async () => {
           const timestamp = new Date().toISOString();
-          const importPayload =
-            body.payload.exportType === 'encrypted_portable_json'
-              ? decryptPortableBackupPayload(body.payload, body.backupPassphrase)
-              : body.payload;
+          let importPayload: PlaintextImportPayload;
+          if (body.payload.exportType === 'encrypted_portable_json') {
+            const backupPassphrase = body.backupPassphrase;
+            if (!backupPassphrase) {
+              throw badRequest('BACKUP_PASSPHRASE_REQUIRED', 'Backup passphrase is required for encrypted imports.');
+            }
+            importPayload = decryptPortableBackupPayload(body.payload, backupPassphrase);
+          } else {
+            importPayload = body.payload;
+          }
           const backupInfo = body.mode === 'replace' ? await createPreReplaceBackup(db, timestamp) : null;
           const result = importPayloadIntoDatabase(
             db,

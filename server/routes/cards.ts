@@ -496,7 +496,7 @@ function csvCustomCredentialFields(record: Record<string, unknown>): CsvCustomCr
       if (!match || !value) {
         return null;
       }
-      const label = match[1].trim();
+      const label = match[1]?.trim();
       if (!label) {
         return null;
       }
@@ -578,7 +578,7 @@ function csvPrimaryCredentialPreview({
   barcodeValue,
   customFields,
 }: {
-  normalizedCardNumber: string;
+  normalizedCardNumber: string | null;
   primaryCode: string;
   barcodeValue: string;
   customFields: CsvCustomCredentialField[];
@@ -743,8 +743,8 @@ function previewCsvRow(
     parsed: {
       brand: brand || null,
       cardType: ['merchant', 'prepaid'].includes(cardType) ? cardType : null,
-      network: csvNetworkValues.has(network) ? network : null,
-      credentialProfile: isCredentialProfile(credentialProfile) ? credentialProfile : null,
+      network: network && csvNetworkValues.has(network) ? network : null,
+      credentialProfile: credentialProfile && isCredentialProfile(credentialProfile) ? credentialProfile : null,
       faceValueCents: faceValue.cents,
       purchaseCostCents: purchaseCost.cents,
       cardNumberLast4: normalizedCardNumber ? cardNumberLast4(normalizedCardNumber) : null,
@@ -753,7 +753,7 @@ function previewCsvRow(
       hasPin: Boolean(pin || accessCode || (normalizedCardNumber && primaryCode)),
       hasBillingZip: Boolean(billingZip),
       expirationDate: expirationDate || null,
-      format: ['digital', 'physical'].includes(format) ? format : null,
+      format: format && ['digital', 'physical'].includes(format) ? format : null,
       source: csvValue(record, csvColumnAliases.source) || null,
       notes: csvValue(record, csvColumnAliases.notes) || null,
     },
@@ -828,16 +828,16 @@ function csvRecordToCardInput(record: Record<string, unknown>): z.infer<typeof c
     brand: csvValue(record, csvColumnAliases.brand),
     cardType: normalizeCsvCardType(csvValue(record, csvColumnAliases.cardType)) as z.infer<typeof cardInputSchema>['cardType'],
     network: normalizeCsvNetwork(csvValue(record, csvColumnAliases.network)) as z.infer<typeof cardInputSchema>['network'],
-    ...(isCredentialProfile(credentialProfile) ? { credentialProfile } : {}),
+    ...(credentialProfile && isCredentialProfile(credentialProfile) ? { credentialProfile } : {}),
     faceValueCents: parseMoneyInput(
       csvValue(record, csvColumnAliases.faceValue),
       'faceValue',
       { required: true, positive: true },
-    ).cents,
+    ).cents ?? 0,
     purchaseCostCents: parseMoneyInput(
       csvValue(record, csvColumnAliases.purchaseCost),
       'purchaseCost',
-    ).cents,
+    ).cents ?? 0,
     cardNumber: normalizeCardNumber(csvValue(record, csvColumnAliases.cardNumber)),
     primaryCode: csvValue(record, csvColumnAliases.primaryCode) || null,
     pin: csvValue(record, csvColumnAliases.pin) || null,
@@ -856,9 +856,9 @@ function csvRecordToCardInput(record: Record<string, unknown>): z.infer<typeof c
     notes: csvValue(record, csvColumnAliases.notes) || null,
     ...(customFields.length > 0
       ? {
-          credentialProfile: isCredentialProfile(credentialProfile) ? credentialProfile : 'custom',
+          credentialProfile: credentialProfile && isCredentialProfile(credentialProfile) ? credentialProfile : 'custom',
           credentials: {
-            profile: isCredentialProfile(credentialProfile) ? credentialProfile : 'custom',
+            profile: credentialProfile && isCredentialProfile(credentialProfile) ? credentialProfile : 'custom',
             fields: customFields,
           },
         }
@@ -1426,7 +1426,7 @@ export function createCardsRouter({ db }: { db: Database.Database }) {
     '/:cardId/reveal',
     requireOperatorRole,
     asyncHandler(async (req, res) => {
-      const cardId = parsePositiveInt(req.params.cardId, null, { min: 1 });
+      const cardId = parsePositiveInt(req.params.cardId, 0, { min: 1 });
       const timestamp = nowIso();
       const card = loadCard(req.auth, cardId);
 
@@ -1523,7 +1523,7 @@ export function createCardsRouter({ db }: { db: Database.Database }) {
     '/:cardId',
     requireOperatorRole,
     asyncHandler(async (req, res) => {
-      const cardId = parsePositiveInt(req.params.cardId, null, { min: 1 });
+      const cardId = parsePositiveInt(req.params.cardId, 0, { min: 1 });
       const body = validateBody(updateCardSchema, req.body || {});
       const timestamp = nowIso();
       const updateFields = Object.keys(body).filter((field) => field !== 'rowVersion');
@@ -1596,7 +1596,7 @@ export function createCardsRouter({ db }: { db: Database.Database }) {
     '/:cardId',
     requireOperatorRole,
     asyncHandler(async (req, res) => {
-      const cardId = parsePositiveInt(req.params.cardId, null, { min: 1 });
+      const cardId = parsePositiveInt(req.params.cardId, 0, { min: 1 });
       const timestamp = nowIso();
 
       db.transaction(() => {
@@ -1635,7 +1635,7 @@ export function createCardsRouter({ db }: { db: Database.Database }) {
     '/:cardId/reserve',
     requireOperatorRole,
     asyncHandler(async (req, res) => {
-      const cardId = parsePositiveInt(req.params.cardId, null, { min: 1 });
+      const cardId = parsePositiveInt(req.params.cardId, 0, { min: 1 });
       const body = validateBody(reserveCardSchema, req.body || {});
       const response = runIdempotentJson(db, req, () => {
         const card = mutateCardStatus({
@@ -1658,7 +1658,7 @@ export function createCardsRouter({ db }: { db: Database.Database }) {
     '/:cardId/unreserve',
     requireOperatorRole,
     asyncHandler(async (req, res) => {
-      const cardId = parsePositiveInt(req.params.cardId, null, { min: 1 });
+      const cardId = parsePositiveInt(req.params.cardId, 0, { min: 1 });
       const response = runIdempotentJson(db, req, () => {
         const card = mutateCardStatus({
           req,
@@ -1679,7 +1679,7 @@ export function createCardsRouter({ db }: { db: Database.Database }) {
     '/:cardId/sell',
     requireOperatorRole,
     asyncHandler(async (req, res) => {
-      const cardId = parsePositiveInt(req.params.cardId, null, { min: 1 });
+      const cardId = parsePositiveInt(req.params.cardId, 0, { min: 1 });
       const body = validateBody(sellCardSchema, req.body);
       const timestamp = nowIso();
 
@@ -1750,7 +1750,7 @@ export function createCardsRouter({ db }: { db: Database.Database }) {
     '/:cardId/undo-sale',
     requireOperatorRole,
     asyncHandler(async (req, res) => {
-      const cardId = parsePositiveInt(req.params.cardId, null, { min: 1 });
+      const cardId = parsePositiveInt(req.params.cardId, 0, { min: 1 });
       const body = validateBody(undoSaleSchema, req.body);
       const timestamp = nowIso();
 
@@ -1847,7 +1847,7 @@ export function createCardsRouter({ db }: { db: Database.Database }) {
     '/:cardId/use',
     requireOperatorRole,
     asyncHandler(async (req, res) => {
-      const cardId = parsePositiveInt(req.params.cardId, null, { min: 1 });
+      const cardId = parsePositiveInt(req.params.cardId, 0, { min: 1 });
       const body = validateBody(useCardSchema, req.body);
       const timestamp = nowIso();
 
@@ -1920,7 +1920,7 @@ export function createCardsRouter({ db }: { db: Database.Database }) {
     '/:cardId/undo-usage',
     requireOperatorRole,
     asyncHandler(async (req, res) => {
-      const cardId = parsePositiveInt(req.params.cardId, null, { min: 1 });
+      const cardId = parsePositiveInt(req.params.cardId, 0, { min: 1 });
       const body = validateBody(undoUsageSchema, req.body);
       const timestamp = nowIso();
 
@@ -2009,7 +2009,7 @@ export function createCardsRouter({ db }: { db: Database.Database }) {
     '/:cardId/void',
     requireOperatorRole,
     asyncHandler(async (req, res) => {
-      const cardId = parsePositiveInt(req.params.cardId, null, { min: 1 });
+      const cardId = parsePositiveInt(req.params.cardId, 0, { min: 1 });
       const body = validateBody(voidCardSchema, req.body || {});
       const timestamp = nowIso();
 
@@ -2073,7 +2073,7 @@ export function createCardsRouter({ db }: { db: Database.Database }) {
   router.get(
     '/:cardId',
     asyncHandler(async (req, res) => {
-      const cardId = parsePositiveInt(req.params.cardId, null, { min: 1 });
+      const cardId = parsePositiveInt(req.params.cardId, 0, { min: 1 });
       res.json(objectResponse(cardDetail(req.auth, cardId)));
     }),
   );

@@ -41,10 +41,12 @@ Status: TypeScript migration and second hardening pass complete
 - Split the authenticated app shell and view orchestration into `src/WorkSurface.tsx`.
 - Enabled `noUncheckedIndexedAccess` globally in `tsconfig.base.json`.
 - Enabled `strictNullChecks` for the client and React test TypeScript project.
+- Enabled `strictNullChecks` for the server TypeScript project.
+- Enabled `strictNullChecks` for the e2e and performance-script TypeScript project.
 
 ## Current Type Safety Shape
 
-This is still a compatibility-first TypeScript codebase rather than a fully strict rewrite, but implicit `any` and unchecked indexed access are now blocked across the checked source tree.
+This is still a compatibility-first TypeScript codebase rather than a fully strict rewrite, but implicit `any`, unchecked indexed access, and accidental null/undefined access are now blocked across the checked source tree.
 
 - TypeScript is active for app/server source.
 - Runtime behavior is preserved.
@@ -52,14 +54,13 @@ This is still a compatibility-first TypeScript codebase rather than a fully stri
 - Existing tests remain the behavioral safety net.
 - `noImplicitAny` is enabled globally.
 - `noUncheckedIndexedAccess` is enabled globally.
-- `strictNullChecks` is enabled for frontend and React tests.
+- `strictNullChecks` is enabled for frontend, React tests, backend, Playwright specs, and performance scripts.
 - Database row shapes are now explicit at the module boundary for the main route/helper modules touched during the migration.
 - `src/App.tsx` now mostly owns auth status, data state, and API handlers, while common app types, reference-value behavior, credential display logic, file helpers, display helpers, dialog focus behavior, auth/setup screens, the authenticated app shell, backup workflows, settings/admin panels, card/deal panels, add-deal/reference UI, table/search UI, shared status rendering, and default state have dedicated modules.
 
 ## Remaining Type Hardening
 
 - Group API handlers and state reducers to keep `src/App.tsx` smaller and make authenticated request paths easier to audit.
-- Clean up server-side `strictNullChecks` findings in route/database row handling, then enable it for the server and e2e/performance projects.
 - Gradually enable stricter compiler flags after module splitting: `exactOptionalPropertyTypes`, then full `strict`.
 - Consider generated or hand-maintained OpenAPI-derived request/response types so server route responses and frontend API calls cannot drift.
 - Add more focused unit coverage around backup import/export typing and CSV credential-profile parsing before stricter null/index checks.
@@ -81,7 +82,9 @@ Completed on 2026-05-17:
 - `npx tsc -p tsconfig.server.json --noUncheckedIndexedAccess true --pretty false`
 - `npx tsc -p tsconfig.e2e.json --noUncheckedIndexedAccess true --pretty false`
 - `npx tsc -p tsconfig.client.json --strict true --pretty false` was probed but not enabled; remaining errors are mostly deliberate nullability and exact-optional cleanup.
-- `npx tsc -p tsconfig.client.json --strictNullChecks true --pretty false` passed after nullability cleanup in root auth reads, detail-card guards, backup CSV template fallback narrowing, reference-value indexed arrays, `src/main.tsx` root lookup, and test URL mocks. The flag is now enabled in `tsconfig.client.json`; server/e2e/performance enablement remains a separate cleanup batch because the e2e project imports performance scripts that touch server modules.
+- `npx tsc -p tsconfig.client.json --strictNullChecks true --pretty false` passed after nullability cleanup in root auth reads, detail-card guards, backup CSV template fallback narrowing, reference-value indexed arrays, `src/main.tsx` root lookup, and test URL mocks. The flag is enabled in `tsconfig.client.json`.
+- `npx tsc -p tsconfig.server.json --strictNullChecks true --pretty false` passed after hardening auth/session request boundaries, encrypted backup import passphrase narrowing, credential sorting, CSV import parsing, route ID handling, settings parsing, and nullable database aggregate reads. The flag is enabled in `tsconfig.server.json`.
+- `npx tsc -p tsconfig.e2e.json --pretty false` passed after enabling strict null checks and hardening the performance load percentile helper for empty samples. The flag is enabled in `tsconfig.e2e.json`.
 - `npm run typecheck -- --pretty false`
 
 ## Verification Completed For Frontend Module Split

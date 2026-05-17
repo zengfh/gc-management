@@ -178,7 +178,9 @@ function activeRecoveryCodeCount(
 }
 
 function authStatus(db: Database.Database, req: Request) {
-  const sessionValid = Boolean(req.session?.userId);
+  const sessionUserId = req.session?.userId;
+  const sessionAccountId = req.session?.accountId;
+  const sessionValid = sessionUserId !== undefined && sessionAccountId !== undefined;
   const unlocked = sessionValid ? getUnlockedSession(req.sessionID) : null;
   return {
     setupComplete: setupComplete(db),
@@ -188,8 +190,8 @@ function authStatus(db: Database.Database, req: Request) {
     ...(sessionValid
       ? {
           user: {
-            id: req.session.userId,
-            accountId: req.session.accountId,
+            id: sessionUserId,
+            accountId: sessionAccountId,
             role: req.session.role || unlocked?.role || null,
             email: req.session.email || unlocked?.email || null,
             displayName: req.session.displayName || unlocked?.displayName || null,
@@ -200,7 +202,7 @@ function authStatus(db: Database.Database, req: Request) {
     ...(sessionValid
       ? {
           recoveryCodes: {
-            activeCount: activeRecoveryCodeCount(db, req.session.accountId, req.session.userId),
+            activeCount: activeRecoveryCodeCount(db, sessionAccountId, sessionUserId),
           },
         }
       : {}),
@@ -251,7 +253,8 @@ function loadRecoveryUser(db: Database.Database, email: unknown): AuthUserRow | 
   }
 
   const activeUsers = db.prepare('SELECT * FROM users WHERE disabledAt IS NULL ORDER BY id').all() as AuthUserRow[];
-  return activeUsers.length === 1 ? activeUsers[0] : null;
+  const onlyActiveUser = activeUsers[0];
+  return activeUsers.length === 1 && onlyActiveUser ? onlyActiveUser : null;
 }
 
 export function createAuthRouter({

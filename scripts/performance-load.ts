@@ -158,9 +158,12 @@ function buildCsv(rowCount: number) {
 }
 
 function percentile(values: number[], ratio: number) {
+  if (values.length === 0) {
+    return 0;
+  }
   const sorted = [...values].sort((left, right) => left - right);
   const index = Math.min(sorted.length - 1, Math.ceil(sorted.length * ratio) - 1);
-  return sorted[index];
+  return sorted[index] ?? 0;
 }
 
 async function measureOne<T>(label: string, thresholdMs: number, action: () => Promise<T> | T): Promise<Measurement<T>> {

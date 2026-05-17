@@ -308,7 +308,7 @@ function allocateCardCosts(
     }
   });
 
-  const explicitSum = explicitIndexes.reduce((sum, index) => sum + cardsWithCosts[index].purchaseCostCents, 0);
+  const explicitSum = explicitIndexes.reduce((sum, index) => sum + (cardsWithCosts[index]?.purchaseCostCents ?? 0), 0);
   if (explicitSum > totalCostCents) {
     throw badRequest('COST_ALLOCATION_INVALID', 'Explicit card costs exceed total deal cost.');
   }
@@ -322,7 +322,7 @@ function allocateCardCosts(
 
   const remainingCost = totalCostCents - explicitSum;
   const totalFaceValue = proportionalIndexes.reduce(
-    (sum, index) => sum + cardsWithCosts[index].faceValueCents,
+    (sum, index) => sum + (cardsWithCosts[index]?.faceValueCents ?? 0),
     0,
   );
   let allocated = 0;
@@ -616,7 +616,7 @@ export function createDealsRouter({ db }: { db: Database.Database }) {
     '/:dealId',
     requireOperatorRole,
     asyncHandler(async (req, res) => {
-      const dealId = parsePositiveInt(req.params.dealId, null, { min: 1 });
+      const dealId = parsePositiveInt(req.params.dealId, 0, { min: 1 });
       const body = validateBody(updateDealSchema, req.body || {});
       const timestamp = nowIso();
 
@@ -708,7 +708,7 @@ export function createDealsRouter({ db }: { db: Database.Database }) {
     '/:dealId/archive',
     requireOperatorRole,
     asyncHandler(async (req, res) => {
-      const dealId = parsePositiveInt(req.params.dealId, null, { min: 1 });
+      const dealId = parsePositiveInt(req.params.dealId, 0, { min: 1 });
       archiveDeal({ req, dealId, archivedAt: nowIso() });
       res.json(objectResponse(dealDetail(req.auth, dealId)));
     }),
@@ -718,7 +718,7 @@ export function createDealsRouter({ db }: { db: Database.Database }) {
     '/:dealId/unarchive',
     requireOperatorRole,
     asyncHandler(async (req, res) => {
-      const dealId = parsePositiveInt(req.params.dealId, null, { min: 1 });
+      const dealId = parsePositiveInt(req.params.dealId, 0, { min: 1 });
       archiveDeal({ req, dealId, archivedAt: null });
       res.json(objectResponse(dealDetail(req.auth, dealId)));
     }),
@@ -727,7 +727,7 @@ export function createDealsRouter({ db }: { db: Database.Database }) {
   router.get(
     '/:dealId',
     asyncHandler(async (req, res) => {
-      const dealId = parsePositiveInt(req.params.dealId, null, { min: 1 });
+      const dealId = parsePositiveInt(req.params.dealId, 0, { min: 1 });
       res.json(objectResponse(dealDetail(req.auth, dealId)));
     }),
   );

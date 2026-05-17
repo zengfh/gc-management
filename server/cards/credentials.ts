@@ -488,7 +488,10 @@ function prepareCredentialField(
     barcodeFormat: barcodeFormats.includes(rawField.barcodeFormat as BarcodeFormat)
       ? rawField.barcodeFormat as BarcodeFormat
       : null,
-    sortOrder: Number.isInteger(rawField.sortOrder) ? rawField.sortOrder : profileOrder[fieldKind] ?? (index + 1) * 10,
+    sortOrder:
+      typeof rawField.sortOrder === 'number' && Number.isInteger(rawField.sortOrder)
+        ? rawField.sortOrder
+        : profileOrder[fieldKind] ?? (index + 1) * 10,
     copyable: rawField.copyable === false ? 0 : 1,
   };
 }

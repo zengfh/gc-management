@@ -4,6 +4,7 @@
     "module": "NodeNext",
     "rootDir": "server",
     "outDir": "build/server",
+    "strictNullChecks": true,
     "types": ["node", "vitest/globals"]
   },
   "include": ["server/**/*.ts"],

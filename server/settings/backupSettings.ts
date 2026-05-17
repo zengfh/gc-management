@@ -53,9 +53,8 @@ function validTimestamp(value: string | undefined): string | null {
 }
 
 function mostRecentTimestamp(timestamps: Array<string | null>): string | null {
-  return timestamps
-    .filter(Boolean)
-    .sort((left, right) => Date.parse(right) - Date.parse(left))[0] || null;
+  const validTimestamps = timestamps.filter((timestamp): timestamp is string => Boolean(timestamp));
+  return validTimestamps.sort((left, right) => Date.parse(right) - Date.parse(left))[0] || null;
 }
 
 function nextBackupDueAt(lastBackupAt: string | null, backupReminderDays: number): string | null {

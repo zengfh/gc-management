@@ -71,7 +71,11 @@ export function wrapDEK(dek: Buffer, kek: Buffer): string | null {
 }
 
 export function unwrapDEK(encryptedDEK: string, kek: Buffer): Buffer {
-  return Buffer.from(decryptString(encryptedDEK, kek), 'base64');
+  const decrypted = decryptString(encryptedDEK, kek);
+  if (!decrypted) {
+    throw new Error('Unable to decrypt data encryption key.');
+  }
+  return Buffer.from(decrypted, 'base64');
 }
 
 export function deriveBlindIndexKey(dek: Buffer): Buffer {

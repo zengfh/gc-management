@@ -300,7 +300,7 @@ export function createUsersRouter({ db }: { db: Database.Database }) {
   router.delete(
     '/invites/:inviteId',
     asyncHandler(async (req, res) => {
-      const inviteId = parsePositiveInt(req.params.inviteId, null, { min: 1 });
+      const inviteId = parsePositiveInt(req.params.inviteId, 0, { min: 1 });
       const before = loadInvite(db, req.auth.accountId, inviteId);
       if (before.usedAt || before.revokedAt) {
         res.json(objectResponse(toInviteResponse(before)));
@@ -339,7 +339,7 @@ export function createUsersRouter({ db }: { db: Database.Database }) {
   router.put(
     '/:userId',
     asyncHandler(async (req, res) => {
-      const userId = parsePositiveInt(req.params.userId, null, { min: 1 });
+      const userId = parsePositiveInt(req.params.userId, 0, { min: 1 });
       const body = validateBody(updateUserSchema, req.body || {});
       const before = loadUser(db, req.auth.accountId, userId);
       const nextRole = body.role ?? before.role;

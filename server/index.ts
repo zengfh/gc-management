@@ -2,7 +2,7 @@ import { createApp } from './app.js';
 import { openDatabase } from './db/index.js';
 
 const port = Number(process.env.PORT || 3001);
-const host = process.env.HOST;
+const host = process.env.HOST || '0.0.0.0';
 const db = openDatabase();
 const app = createApp({ db });
 

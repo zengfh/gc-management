@@ -29,7 +29,7 @@ function sessionExpiresAt(sessionData: session.SessionData, now: NowProvider) {
   }
 
   const originalMaxAge = sessionData?.cookie?.originalMaxAge;
-  return now() + (Number.isFinite(originalMaxAge) ? originalMaxAge : oneDayMs);
+      return now() + (typeof originalMaxAge === 'number' && Number.isFinite(originalMaxAge) ? originalMaxAge : oneDayMs);
 }
 
 export class SqliteSessionStore extends session.Store {

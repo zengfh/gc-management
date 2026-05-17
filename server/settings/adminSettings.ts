@@ -40,7 +40,7 @@ function parseBooleanSetting(value: string | undefined, fallback: boolean): bool
   return fallback;
 }
 
-function parseIntegerSetting(value: string | undefined, fallback: number | null): number | null {
+function parseIntegerSetting<T extends number | null>(value: string | undefined, fallback: T): number | T {
   const parsed = Number(value);
   return Number.isInteger(parsed) ? parsed : fallback;
 }

@@ -4,7 +4,7 @@ import { getUnlockedSession } from './unlockStore.js';
 
 export function requireUnlockedSession(req: Request, _res: Response, next: NextFunction) {
   const unlocked = getUnlockedSession(req.sessionID);
-  if (!req.session?.userId || !unlocked) {
+  if (!req.session?.userId || !req.session.accountId || !unlocked) {
     next(unauthorized('LOCKED', 'Encrypted data is locked.'));
     return;
   }
