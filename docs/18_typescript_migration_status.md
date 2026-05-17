@@ -33,6 +33,8 @@ Status: TypeScript migration and second hardening pass complete
 - Split shared frontend defaults into `src/defaults.ts`.
 - Split backup import/export and backup settings UI into `src/backupComponents.tsx`.
 - Split user access, recovery, support policy, data policy, data operations, and unlock-secret UI into `src/settingsComponents.tsx`.
+- Split reusable status badge rendering into `src/StatusBadge.tsx`.
+- Split card/deal detail and card/deal mutation panels into `src/cardDealPanels.tsx`.
 - Enabled `noUncheckedIndexedAccess` globally in `tsconfig.base.json`.
 
 ## Current Type Safety Shape
@@ -46,11 +48,11 @@ This is still a compatibility-first TypeScript codebase rather than a fully stri
 - `noImplicitAny` is enabled globally.
 - `noUncheckedIndexedAccess` is enabled globally.
 - Database row shapes are now explicit at the module boundary for the main route/helper modules touched during the migration.
-- `src/App.tsx` remains large, but common app types, reference-value behavior, credential display logic, file helpers, display helpers, dialog focus behavior, backup workflows, settings/admin panels, and default state now have dedicated modules.
+- `src/App.tsx` remains large, but common app types, reference-value behavior, credential display logic, file helpers, display helpers, dialog focus behavior, backup workflows, settings/admin panels, card/deal panels, shared status rendering, and default state now have dedicated modules.
 
 ## Remaining Type Hardening
 
-- Continue splitting `src/App.tsx` into smaller feature modules, next focusing on card/deal detail panels and add/edit/use/sell/void workflows.
+- Continue splitting `src/App.tsx` into smaller feature modules, next focusing on add-deal/reference review UI and table/search components.
 - Gradually enable stricter compiler flags after module splitting: `strictNullChecks`, `exactOptionalPropertyTypes`, then full `strict`.
 - Consider generated or hand-maintained OpenAPI-derived request/response types so server route responses and frontend API calls cannot drift.
 - Add more focused unit coverage around backup import/export typing and CSV credential-profile parsing before stricter null/index checks.
