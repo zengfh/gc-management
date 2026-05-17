@@ -31,6 +31,35 @@ import {
 } from 'lucide-react';
 import { apiDownload, apiFetch } from './api';
 import type {
+  AddDealCustomField,
+  AddDealFormState,
+  ApiPayload,
+  AsyncApiHandler,
+  CardDetailState,
+  CardMutationResult,
+  CardSalePayload,
+  CountSummary,
+  CsvImportResult,
+  CsvPreviewPayload,
+  CsvPreviewRow,
+  DealDetailState,
+  DealMutationResult,
+  ImportSummary,
+  PortableExportPayload,
+  ViewId,
+  VoidHandler,
+  WorkSurfaceProps,
+} from './appTypes';
+import {
+  buildReferenceReviewItems,
+  buildReferenceTouchValues,
+  defaultReferenceValues,
+  filterReferenceOptions,
+  mergeReferenceValueState,
+  normalizeReferenceValuePayload,
+  referenceValueTypes,
+} from './referenceValues';
+import type {
   AuditCriteria,
   AuditEvent,
   ApiResponse,
@@ -42,14 +71,12 @@ import type {
   CardStatus,
   CredentialField,
   CredentialFieldKind,
-  CredentialProfile,
   DataPolicy,
   Deal,
   DealDetail,
   FeatureFlags,
   Page,
   ReferenceReviewItem,
-  ReferenceValueType,
   ReferenceValue,
   ReferenceValueState,
   RevealedCredentials,
@@ -58,192 +85,6 @@ import type {
   AuthUser,
   Usage,
 } from '../shared/domain';
-
-type ViewId = 'dashboard' | 'cards' | 'deals' | 'backup' | 'audit' | 'settings';
-
-interface CountSummary {
-  cards?: number;
-  deals?: number;
-  auditLog?: number;
-  idempotencyKeys?: number;
-}
-
-interface PortableExportPayload {
-  exportedAt?: string;
-  cards?: Card[];
-  counts?: CountSummary;
-}
-
-interface ImportSummary {
-  mode: string;
-  cardCount: number;
-  dealCount: number;
-}
-
-interface CsvImportResult {
-  cards: Card[];
-}
-
-interface CsvPreviewRow {
-  rowNumber: number;
-  valid: boolean;
-  parsed?: {
-    brand?: string;
-    cardType?: string;
-    faceValueCents?: number;
-    purchaseCostCents?: number;
-    credentialHint?: string;
-    credentialLabel?: string;
-    hasPin?: boolean;
-    hasBillingZip?: boolean;
-  };
-  errors?: Array<{ field: string; code: string; message: string }>;
-}
-
-interface CsvPreviewPayload {
-  summary: {
-    validCount: number;
-    invalidCount: number;
-    rowCount: number;
-  };
-  rows: CsvPreviewRow[];
-}
-
-interface DealMutationResult {
-  deal: Deal;
-  cards: Card[];
-}
-
-interface CardMutationResult {
-  card: Card;
-}
-
-interface AddDealCustomField {
-  id: string;
-  label: string;
-  fieldKind: CredentialFieldKind;
-  value: string;
-}
-
-interface AddDealFormState {
-  name: string;
-  source: string;
-  totalCost: string;
-  cardBrand: string;
-  faceValue: string;
-  credentialProfile: CredentialProfile | 'merchant_number_access';
-  profileTouched: boolean;
-  cardNumber: string;
-  redemptionCode: string;
-  pin: string;
-  accessCode: string;
-  barcodeValue: string;
-  barcodeFormat: string;
-  expirationMonth: string;
-  expirationYear: string;
-  networkSecurityCode: string;
-  saveNetworkSecurityCode: boolean;
-  billingZip: string;
-  cardholderName: string;
-  billingAddress: string;
-  customFields: AddDealCustomField[];
-}
-
-interface CardDetailState {
-  card: Card;
-  data?: CardDetail | null;
-  error?: string;
-  loading: boolean;
-}
-
-interface DealDetailState {
-  deal: Deal;
-  data?: DealDetail | null;
-  error?: string;
-  loading: boolean;
-}
-
-interface WorkSurfaceProps {
-  auth: AuthState;
-  cards: Card[];
-  cardsPage: Page;
-  deals: Deal[];
-  auditEvents: AuditEvent[];
-  auditLoading: boolean;
-  auditError: string;
-  backupSettings: BackupSettings;
-  backupSettingsLoading: boolean;
-  backupSettingsLoaded: boolean;
-  backupSettingsError: string;
-  users: AuthUser[];
-  userInvites: UserInvite[];
-  usersLoading: boolean;
-  usersLoaded: boolean;
-  usersError: string;
-  supportPolicy: SupportPolicy;
-  supportPolicyLoading: boolean;
-  supportPolicyLoaded: boolean;
-  supportPolicyError: string;
-  dataPolicy: DataPolicy;
-  dataPolicyLoading: boolean;
-  dataPolicyLoaded: boolean;
-  dataPolicyError: string;
-  features?: FeatureFlags;
-  referenceValues: ReferenceValueState;
-  loading: boolean;
-  onRefresh: () => Promise<unknown>;
-  onLogout: () => Promise<unknown>;
-  onLoadAudit: (criteria?: AuditCriteria) => Promise<unknown>;
-  onLoadBackupSettings: () => Promise<unknown>;
-  onLoadUsers: () => Promise<unknown>;
-  onLoadSupportPolicy: () => Promise<unknown>;
-  onLoadDataPolicy: () => Promise<unknown>;
-  onCreateInvite: AsyncApiHandler<ApiPayload, UserInvite>;
-  onRevokeInvite: (inviteId: string) => Promise<UserInvite>;
-  onUpdateUser: (userId: string, payload: ApiPayload) => Promise<AuthUser>;
-  onUpdateSupportPolicy: AsyncApiHandler<ApiPayload, ApiResponse<SupportPolicy>>;
-  onUpdateDataPolicy: AsyncApiHandler<ApiPayload, ApiResponse<DataPolicy>>;
-  onExportAccountData: AsyncApiHandler<ApiPayload, ApiResponse<PortableExportPayload>>;
-  onRunRetention: AsyncApiHandler<ApiPayload, ApiResponse<{ counts?: CountSummary }>>;
-  onDeleteAccountData: AsyncApiHandler<ApiPayload, ApiResponse<{ counts?: CountSummary }>>;
-  onUpdateBackupSettings: AsyncApiHandler<ApiPayload, ApiResponse<BackupSettings>>;
-  onExportPlaintext: AsyncApiHandler<ApiPayload, ApiResponse<PortableExportPayload>>;
-  onExportEncrypted: AsyncApiHandler<ApiPayload, ApiResponse<PortableExportPayload>>;
-  onExportRawDatabase: AsyncApiHandler<ApiPayload, { blob: Blob; filename: string | null }>;
-  onPreviewCsv: AsyncApiHandler<{ csv: string }, ApiResponse<CsvPreviewPayload>>;
-  onConfirmCsv: AsyncApiHandler<{ csv: string }, ApiResponse<CsvImportResult>>;
-  onImportBackup: AsyncApiHandler<ApiPayload, ApiResponse<{ summary: ImportSummary }>>;
-  onChangeUnlockSecret: AsyncApiHandler<ApiPayload, ApiResponse<unknown>>;
-  onGenerateRecoveryCodes: AsyncApiHandler<{ currentUnlockSecret: string }, { codes: string[]; activeCount: number }>;
-  onLoadReferenceValues: () => Promise<ReferenceValueState>;
-  onUpsertReferenceValues: (values?: ReferenceValue[]) => Promise<ReferenceValue[]>;
-  onCreateDeal: AsyncApiHandler<ApiPayload, unknown>;
-  onLoadDeals: (includeArchived: boolean) => Promise<unknown>;
-  onEditDeal: (dealId: string, payload: ApiPayload) => Promise<unknown>;
-  onArchiveDeal: (deal: Deal, includeArchived: boolean) => Promise<unknown>;
-  onUnarchiveDeal: (deal: Deal, includeArchived: boolean) => Promise<unknown>;
-  onSearchCards: (criteria?: CardSearchCriteria) => Promise<unknown>;
-  onLoadCardDetail: (cardId: string) => Promise<ApiResponse<CardDetail>>;
-  onLoadDealDetail: (dealId: string) => Promise<ApiResponse<DealDetail>>;
-  onRevealCardCredentials: (cardId: string) => Promise<ApiResponse<RevealedCredentials>>;
-  onUseCard: (cardId: string, payload: ApiPayload) => Promise<unknown>;
-  onUndoUsage: (cardId: string, payload: ApiPayload) => Promise<ApiResponse<CardMutationResult>>;
-  onEditCard: (cardId: string, payload: ApiPayload) => Promise<unknown>;
-  onDeleteCard: (cardId: string) => Promise<unknown>;
-  onSellCard: (cardId: string, payload: CardSalePayload) => Promise<unknown>;
-  onUndoSale: (cardId: string, payload: ApiPayload) => Promise<unknown>;
-  onVoidCard: (cardId: string, payload: ApiPayload) => Promise<unknown>;
-  onReserveCard: (cardId: string, payload: ApiPayload) => Promise<unknown>;
-  onUnreserveCard: (card: Card) => Promise<unknown>;
-}
-
-type ApiPayload = Record<string, unknown>;
-type AsyncApiHandler<TPayload = ApiPayload, TResult = unknown> = (payload: TPayload) => Promise<TResult>;
-type VoidHandler = () => void;
-
-interface CardSalePayload extends ApiPayload {
-  salePriceCents: number;
-}
 
 const navItems: Array<{ id: ViewId; label: string; icon: LucideIcon }> = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -481,240 +322,6 @@ function authFeatures(auth: AuthState | null | undefined): FeatureFlags {
     ...defaultFeatureFlags,
     ...(auth?.features || {}),
   };
-}
-
-const referenceValueTypes = {
-  dealName: 'deal_name',
-  source: 'source',
-  cardBrand: 'card_brand',
-} as const;
-
-const defaultReferenceValues: ReferenceValueState = {
-  [referenceValueTypes.dealName]: [],
-  [referenceValueTypes.source]: [],
-  [referenceValueTypes.cardBrand]: [],
-};
-
-const addDealReferenceFields: Array<{
-  field: 'name' | 'source' | 'cardBrand';
-  type: ReferenceValueType;
-  label: string;
-}> = [
-  { field: 'name', type: referenceValueTypes.dealName, label: 'Deal name' },
-  { field: 'source', type: referenceValueTypes.source, label: 'Source' },
-  { field: 'cardBrand', type: referenceValueTypes.cardBrand, label: 'Card brand' },
-];
-
-function normalizeReferenceText(value: unknown): string {
-  return String(value || '').trim().toLowerCase();
-}
-
-function sortReferenceValues(values: ReferenceValue[]): ReferenceValue[] {
-  return [...values].sort((a, b) => {
-    const usageDelta = (b.usageCount || 0) - (a.usageCount || 0);
-    if (usageDelta) {
-      return usageDelta;
-    }
-    const updatedDelta = String(b.lastUsedAt || '').localeCompare(String(a.lastUsedAt || ''));
-    if (updatedDelta) {
-      return updatedDelta;
-    }
-    return String(a.value || '').localeCompare(String(b.value || ''), undefined, { sensitivity: 'base' });
-  });
-}
-
-function mergeReferenceValueState(current: ReferenceValueState, incomingRows: ReferenceValue[] = []): ReferenceValueState {
-  const next = {
-    [referenceValueTypes.dealName]: [...(current?.[referenceValueTypes.dealName] || [])],
-    [referenceValueTypes.source]: [...(current?.[referenceValueTypes.source] || [])],
-    [referenceValueTypes.cardBrand]: [...(current?.[referenceValueTypes.cardBrand] || [])],
-  };
-
-  for (const row of incomingRows || []) {
-    if (!row?.type || !next[row.type]) {
-      continue;
-    }
-    const normalized = normalizeReferenceText(row.value);
-    const existingIndex = next[row.type].findIndex(
-      (value) => normalizeReferenceText(value.value) === normalized,
-    );
-    if (existingIndex >= 0) {
-      next[row.type][existingIndex] = row;
-    } else {
-      next[row.type].push(row);
-    }
-  }
-
-  return {
-    [referenceValueTypes.dealName]: sortReferenceValues(next[referenceValueTypes.dealName]),
-    [referenceValueTypes.source]: sortReferenceValues(next[referenceValueTypes.source]),
-    [referenceValueTypes.cardBrand]: sortReferenceValues(next[referenceValueTypes.cardBrand]),
-  };
-}
-
-function normalizeReferenceValuePayload(data: Partial<ReferenceValueState> | null | undefined): ReferenceValueState {
-  return {
-    [referenceValueTypes.dealName]: Array.isArray(data?.[referenceValueTypes.dealName])
-      ? sortReferenceValues(data[referenceValueTypes.dealName])
-      : [],
-    [referenceValueTypes.source]: Array.isArray(data?.[referenceValueTypes.source])
-      ? sortReferenceValues(data[referenceValueTypes.source])
-      : [],
-    [referenceValueTypes.cardBrand]: Array.isArray(data?.[referenceValueTypes.cardBrand])
-      ? sortReferenceValues(data[referenceValueTypes.cardBrand])
-      : [],
-  };
-}
-
-function filterReferenceOptions(options: ReferenceValue[], query: string, limit = 8): ReferenceValue[] {
-  const normalizedQuery = normalizeReferenceText(query);
-  const ranked = (options || [])
-    .filter((option) => {
-      if (!option?.value) {
-        return false;
-      }
-      if (!normalizedQuery) {
-        return true;
-      }
-      return normalizeReferenceText(option.value).includes(normalizedQuery);
-    })
-    .map((option) => {
-      const normalizedValue = normalizeReferenceText(option.value);
-      let rank = 3;
-      if (normalizedValue === normalizedQuery) {
-        rank = 0;
-      } else if (normalizedValue.startsWith(normalizedQuery)) {
-        rank = 1;
-      } else if (normalizedValue.includes(normalizedQuery)) {
-        rank = 2;
-      }
-      return { option, rank };
-    })
-    .sort((a, b) => {
-      if (a.rank !== b.rank) {
-        return a.rank - b.rank;
-      }
-      const usageDelta = (b.option.usageCount || 0) - (a.option.usageCount || 0);
-      if (usageDelta) {
-        return usageDelta;
-      }
-      return String(a.option.value).localeCompare(String(b.option.value), undefined, { sensitivity: 'base' });
-    });
-
-  return ranked.slice(0, limit).map(({ option }) => option);
-}
-
-function hasIndexedReferenceValue(options: ReferenceValue[], value: string): boolean {
-  const normalized = normalizeReferenceText(value);
-  return Boolean(normalized)
-    && (options || []).some((option) => normalizeReferenceText(option.value) === normalized);
-}
-
-function levenshteinDistance(left: string, right: string): number {
-  if (left === right) {
-    return 0;
-  }
-  if (!left.length) {
-    return right.length;
-  }
-  if (!right.length) {
-    return left.length;
-  }
-
-  const previous = Array.from({ length: right.length + 1 }, (_unused, index) => index);
-  const current = Array(right.length + 1).fill(0);
-
-  for (let leftIndex = 1; leftIndex <= left.length; leftIndex += 1) {
-    current[0] = leftIndex;
-    for (let rightIndex = 1; rightIndex <= right.length; rightIndex += 1) {
-      const substitutionCost = left[leftIndex - 1] === right[rightIndex - 1] ? 0 : 1;
-      current[rightIndex] = Math.min(
-        previous[rightIndex] + 1,
-        current[rightIndex - 1] + 1,
-        previous[rightIndex - 1] + substitutionCost,
-      );
-    }
-    previous.splice(0, previous.length, ...current);
-  }
-
-  return previous[right.length];
-}
-
-function typoSuggestions(options: ReferenceValue[], value: string): ReferenceValue[] {
-  const normalizedValue = normalizeReferenceText(value);
-  if (normalizedValue.length < 3) {
-    return [];
-  }
-  const maxDistance = normalizedValue.length >= 6 ? 2 : 1;
-
-  return (options || [])
-    .map((option) => ({
-      option,
-      distance: levenshteinDistance(normalizedValue, normalizeReferenceText(option.value)),
-    }))
-    .filter(({ distance }) => distance > 0 && distance <= maxDistance)
-    .sort((a, b) => {
-      if (a.distance !== b.distance) {
-        return a.distance - b.distance;
-      }
-      return (b.option.usageCount || 0) - (a.option.usageCount || 0);
-    })
-    .slice(0, 3)
-    .map(({ option }) => option);
-}
-
-function buildReferenceReviewItems(
-  form: { name: string; source: string; cardBrand: string },
-  referenceValues: ReferenceValueState,
-): ReferenceReviewItem[] {
-  return addDealReferenceFields
-    .map((config) => {
-      const value = String(form[config.field] || '').trim();
-      if (!value) {
-        return null;
-      }
-      const options = referenceValues?.[config.type] || [];
-      if (hasIndexedReferenceValue(options, value)) {
-        return null;
-      }
-      return {
-        key: `${config.type}:${normalizeReferenceText(value)}`,
-        ...config,
-        value,
-        suggestions: typoSuggestions(options, value),
-      };
-    })
-    .filter((item): item is ReferenceReviewItem => Boolean(item));
-}
-
-function buildReferenceTouchValues(
-  form: { name: string; source: string; cardBrand: string },
-  referenceValues: ReferenceValueState,
-  approvedItems: ReferenceReviewItem[] = [],
-): ReferenceValue[] {
-  const approvedKeys = new Set(
-    (approvedItems || []).map((item) => `${item.type}:${normalizeReferenceText(item.value)}`),
-  );
-  const touched: ReferenceValue[] = [];
-  const seen = new Set();
-
-  for (const config of addDealReferenceFields) {
-    const value = String(form[config.field] || '').trim();
-    if (!value) {
-      continue;
-    }
-    const key = `${config.type}:${normalizeReferenceText(value)}`;
-    const indexed = hasIndexedReferenceValue(referenceValues?.[config.type] || [], value);
-    if (!indexed && !approvedKeys.has(key)) {
-      continue;
-    }
-    if (!seen.has(key)) {
-      seen.add(key);
-      touched.push({ type: config.type, value });
-    }
-  }
-
-  return touched;
 }
 
 const dialogFocusableSelector = [

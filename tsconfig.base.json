@@ -5,7 +5,7 @@
     "moduleResolution": "NodeNext",
     "strict": false,
     "noImplicitAny": true,
-    "noUncheckedIndexedAccess": false,
+    "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": false,
     "noImplicitOverride": true,
     "noFallthroughCasesInSwitch": true,
