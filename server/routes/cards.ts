@@ -38,9 +38,9 @@ import type { AuthContext } from '../types/express.js';
 const activeStatuses = new Set(['available', 'reserved', 'in_use']);
 
 interface CardStatusMutationBody {
-  reservedFor?: string | null;
-  reservedUntil?: string | null;
-  reservedNotes?: string | null;
+  reservedFor?: string | null | undefined;
+  reservedUntil?: string | null | undefined;
+  reservedNotes?: string | null | undefined;
 }
 
 interface CountRow {

@@ -7,10 +7,10 @@ export interface ApiOptions {
 }
 
 export class ApiError extends Error {
-  code?: string;
+  code: string | undefined;
   fieldErrors: unknown[];
-  requestId?: string | null;
-  status?: number;
+  requestId: string | null | undefined;
+  status: number | undefined;
 
   constructor(message: string, payload: ApiErrorPayload = {}, status?: number) {
     super(message);

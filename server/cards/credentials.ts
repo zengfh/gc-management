@@ -146,42 +146,42 @@ const profileSortOrder: Record<CredentialProfile, Partial<Record<CredentialField
 };
 
 interface CredentialFieldInput {
-  fieldKey?: string | null;
-  key?: string | null;
-  label?: string | null;
-  fieldKind?: CredentialFieldKind | string | null;
+  fieldKey?: string | null | undefined;
+  key?: string | null | undefined;
+  label?: string | null | undefined;
+  fieldKind?: CredentialFieldKind | string | null | undefined;
   value?: unknown;
-  barcodeFormat?: BarcodeFormat | string | null;
-  sortOrder?: number | null;
-  copyable?: boolean | null;
+  barcodeFormat?: BarcodeFormat | string | null | undefined;
+  sortOrder?: number | null | undefined;
+  copyable?: boolean | null | undefined;
 }
 
 export interface CredentialInput {
-  credentialProfile?: CredentialProfile | string | null;
+  credentialProfile?: CredentialProfile | string | null | undefined;
   credentials?: {
-    profile?: CredentialProfile | string | null;
-    fields?: CredentialFieldInput[];
-  } | null;
-  barcode?: string | null;
-  barcodeValue?: string | null;
-  cardNumber?: string | null;
-  primaryCode?: string | null;
-  claimCode?: string | null;
-  redemptionCode?: string | null;
-  giftCode?: string | null;
-  cardType?: string | null;
-  network?: string | null;
-  pin?: string | null;
-  accessCode?: string | null;
-  barcodeFormat?: BarcodeFormat | string | null;
-  expirationMonth?: string | null;
-  expirationYear?: string | null;
-  networkSecurityCode?: string | null;
-  cvv?: string | null;
-  billingZip?: string | null;
-  billingPostalCode?: string | null;
-  cardholderName?: string | null;
-  billingAddress?: string | null;
+    profile?: CredentialProfile | string | null | undefined;
+    fields?: CredentialFieldInput[] | undefined;
+  } | null | undefined;
+  barcode?: string | null | undefined;
+  barcodeValue?: string | null | undefined;
+  cardNumber?: string | null | undefined;
+  primaryCode?: string | null | undefined;
+  claimCode?: string | null | undefined;
+  redemptionCode?: string | null | undefined;
+  giftCode?: string | null | undefined;
+  cardType?: string | null | undefined;
+  network?: string | null | undefined;
+  pin?: string | null | undefined;
+  accessCode?: string | null | undefined;
+  barcodeFormat?: BarcodeFormat | string | null | undefined;
+  expirationMonth?: string | null | undefined;
+  expirationYear?: string | null | undefined;
+  networkSecurityCode?: string | null | undefined;
+  cvv?: string | null | undefined;
+  billingZip?: string | null | undefined;
+  billingPostalCode?: string | null | undefined;
+  cardholderName?: string | null | undefined;
+  billingAddress?: string | null | undefined;
 }
 
 export interface PreparedCredentialField {

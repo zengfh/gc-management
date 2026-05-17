@@ -251,7 +251,7 @@ export function RecoveryCodesPanel({
   activeCount,
   onGenerateRecoveryCodes,
 }: {
-  activeCount?: number;
+  activeCount?: number | undefined;
   onGenerateRecoveryCodes: AsyncApiHandler<{ currentUnlockSecret: string }, { codes: string[]; activeCount: number }>;
 }) {
   const [currentUnlockSecret, setCurrentUnlockSecret] = useState('');

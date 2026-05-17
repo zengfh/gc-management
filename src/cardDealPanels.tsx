@@ -201,21 +201,21 @@ export function CardDetailPanel({
             fieldKey: 'cardNumber',
             label: 'Card number',
             fieldKind: 'card_number' as CredentialFieldKind,
-            value: credentials.cardNumber,
+            value: credentials.cardNumber ?? null,
             copyable: true,
           },
           {
             fieldKey: 'pin',
             label: 'PIN',
             fieldKind: 'pin' as CredentialFieldKind,
-            value: credentials.pin,
+            value: credentials.pin ?? null,
             copyable: true,
           },
           {
             fieldKey: 'billingZip',
             label: 'Billing ZIP',
             fieldKind: 'billing_postal_code' as CredentialFieldKind,
-            value: credentials.billingZip,
+            value: credentials.billingZip ?? null,
             copyable: true,
           },
         ].filter((field) => field.value)
@@ -241,7 +241,7 @@ export function CardDetailPanel({
         </div>
         <div className="detail-panel-body">
           {loading ? <div className="loading-strip">Loading card detail...</div> : null}
-          <FieldError message={error} />
+          <FieldError message={error ?? null} />
           <div className="detail-grid">
             <div className="preview-box">
               <span>Status</span>
@@ -326,7 +326,7 @@ export function CardDetailPanel({
                       ) : null}
                     </div>
                     {field.fieldKind === 'barcode_value' ? (
-                      <BarcodePreview value={field.value} format={field.barcodeFormat} />
+                      <BarcodePreview value={field.value ?? null} format={field.barcodeFormat ?? null} />
                     ) : null}
                   </div>
                 ))
@@ -455,7 +455,7 @@ export function DealDetailPanel({ detailState, onClose }: { detailState: DealDet
         </div>
         <div className="detail-panel-body">
           {loading ? <div className="loading-strip">Loading deal detail...</div> : null}
-          <FieldError message={error} />
+          <FieldError message={error ?? null} />
           <div className="detail-grid">
             <div className="preview-box">
               <span>Status</span>

@@ -441,6 +441,7 @@ export function CardSearchForm({
     setError('');
     setSubmitting(true);
     const [sortBy, sortDir] = sortValue ? sortValue.split(':') : [];
+    const sortCriteria = sortBy && sortDir ? { sortBy, sortDir } : {};
     try {
       await onSearchCards({
         cardNumber,
@@ -450,8 +451,7 @@ export function CardSearchForm({
         dealId,
         expiresBefore,
         text,
-        sortBy,
-        sortDir,
+        ...sortCriteria,
       });
     } catch (caught) {
       setError(errorMessage(caught));
