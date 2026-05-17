@@ -56,17 +56,21 @@ export function mergeReferenceValueState(
   };
 
   for (const row of incomingRows || []) {
-    if (!row?.type || !next[row.type]) {
+    if (!row?.type) {
+      continue;
+    }
+    const bucket = next[row.type];
+    if (!bucket) {
       continue;
     }
     const normalized = normalizeReferenceText(row.value);
-    const existingIndex = next[row.type].findIndex(
+    const existingIndex = bucket.findIndex(
       (value) => normalizeReferenceText(value.value) === normalized,
     );
     if (existingIndex >= 0) {
-      next[row.type][existingIndex] = row;
+      bucket[existingIndex] = row;
     } else {
-      next[row.type].push(row);
+      bucket.push(row);
     }
   }
 
@@ -80,15 +84,19 @@ export function mergeReferenceValueState(
 export function normalizeReferenceValuePayload(
   data: Partial<ReferenceValueState> | null | undefined,
 ): ReferenceValueState {
+  const dealNameRows = data?.[referenceValueTypes.dealName];
+  const sourceRows = data?.[referenceValueTypes.source];
+  const cardBrandRows = data?.[referenceValueTypes.cardBrand];
+
   return {
-    [referenceValueTypes.dealName]: Array.isArray(data?.[referenceValueTypes.dealName])
-      ? sortReferenceValues(data[referenceValueTypes.dealName])
+    [referenceValueTypes.dealName]: Array.isArray(dealNameRows)
+      ? sortReferenceValues(dealNameRows)
       : [],
-    [referenceValueTypes.source]: Array.isArray(data?.[referenceValueTypes.source])
-      ? sortReferenceValues(data[referenceValueTypes.source])
+    [referenceValueTypes.source]: Array.isArray(sourceRows)
+      ? sortReferenceValues(sourceRows)
       : [],
-    [referenceValueTypes.cardBrand]: Array.isArray(data?.[referenceValueTypes.cardBrand])
-      ? sortReferenceValues(data[referenceValueTypes.cardBrand])
+    [referenceValueTypes.cardBrand]: Array.isArray(cardBrandRows)
+      ? sortReferenceValues(cardBrandRows)
       : [],
   };
 }
@@ -156,15 +164,15 @@ export function levenshteinDistance(left: string, right: string): number {
     for (let rightIndex = 1; rightIndex <= right.length; rightIndex += 1) {
       const substitutionCost = left[leftIndex - 1] === right[rightIndex - 1] ? 0 : 1;
       current[rightIndex] = Math.min(
-        previous[rightIndex] + 1,
-        current[rightIndex - 1] + 1,
-        previous[rightIndex - 1] + substitutionCost,
+        (previous[rightIndex] ?? 0) + 1,
+        (current[rightIndex - 1] ?? 0) + 1,
+        (previous[rightIndex - 1] ?? 0) + substitutionCost,
       );
     }
     previous.splice(0, previous.length, ...current);
   }
 
-  return previous[right.length];
+  return previous[right.length] ?? 0;
 }
 
 export function typoSuggestions(options: ReferenceValue[], value: string): ReferenceValue[] {

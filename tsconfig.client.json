@@ -6,6 +6,7 @@
     "jsx": "react-jsx",
     "allowImportingTsExtensions": true,
     "noImplicitAny": true,
+    "strictNullChecks": true,
     "noEmit": true,
     "types": ["vite/client", "vitest/globals", "@testing-library/jest-dom"]
   },

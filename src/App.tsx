@@ -91,6 +91,13 @@ export default function App() {
   const [error, setError] = useState('');
   const features = authFeatures(auth);
 
+  function authenticatedAuth(): AuthState & { csrfToken: string } {
+    if (!auth?.csrfToken) {
+      throw new Error('Authenticated session is required.');
+    }
+    return auth as AuthState & { csrfToken: string };
+  }
+
   async function loadInventory() {
     setInventoryLoading(true);
     try {
@@ -186,7 +193,7 @@ export default function App() {
     return apiFetch<ApiResponse<RevealedCredentials>>(`/api/cards/${cardId}/reveal`, {
       method: 'POST',
       body: {},
-      csrfToken: auth.csrfToken,
+      csrfToken: authenticatedAuth().csrfToken,
     });
   }
 
@@ -242,7 +249,7 @@ export default function App() {
     const response = await apiFetch<ApiResponse<BackupSettings>>('/api/settings/backup', {
       method: 'PUT',
       body: payload,
-      csrfToken: auth.csrfToken,
+      csrfToken: authenticatedAuth().csrfToken,
     });
     setBackupSettings(response.data || defaultBackupSettings);
     setBackupSettingsLoaded(true);
@@ -273,7 +280,7 @@ export default function App() {
     const response = await apiFetch<ApiResponse<UserInvite>>('/api/users/invites', {
       method: 'POST',
       body: payload,
-      csrfToken: auth.csrfToken,
+      csrfToken: authenticatedAuth().csrfToken,
     });
     setUserInvites((current) => [response.data, ...current.filter((invite) => invite.id !== response.data.id)]);
     setUsersLoaded(true);
@@ -283,7 +290,7 @@ export default function App() {
   async function handleRevokeInvite(inviteId: string) {
     const response = await apiFetch<ApiResponse<UserInvite>>(`/api/users/invites/${inviteId}`, {
       method: 'DELETE',
-      csrfToken: auth.csrfToken,
+      csrfToken: authenticatedAuth().csrfToken,
     });
     setUserInvites((current) => current.filter((invite) => invite.id !== response.data.id));
     return response.data;
@@ -293,7 +300,7 @@ export default function App() {
     const response = await apiFetch<ApiResponse<AuthUser>>(`/api/users/${userId}`, {
       method: 'PUT',
       body: payload,
-      csrfToken: auth.csrfToken,
+      csrfToken: authenticatedAuth().csrfToken,
     });
     setUsers((current) => current.map((user) => (user.id === response.data.id ? response.data : user)));
     return response.data;
@@ -319,7 +326,7 @@ export default function App() {
     const response = await apiFetch<ApiResponse<SupportPolicy>>('/api/admin/support-policy', {
       method: 'PUT',
       body: payload,
-      csrfToken: auth.csrfToken,
+      csrfToken: authenticatedAuth().csrfToken,
     });
     setSupportPolicy(response.data || defaultSupportPolicy);
     setSupportPolicyLoaded(true);
@@ -346,7 +353,7 @@ export default function App() {
     const response = await apiFetch<ApiResponse<DataPolicy>>('/api/admin/data-policy', {
       method: 'PUT',
       body: payload,
-      csrfToken: auth.csrfToken,
+      csrfToken: authenticatedAuth().csrfToken,
     });
     setDataPolicy(response.data || defaultDataPolicy);
     setDataPolicyLoaded(true);
@@ -357,7 +364,7 @@ export default function App() {
     return apiFetch<ApiResponse<PortableExportPayload>>('/api/admin/data-export', {
       method: 'POST',
       body: payload,
-      csrfToken: auth.csrfToken,
+      csrfToken: authenticatedAuth().csrfToken,
     });
   }
 
@@ -365,7 +372,7 @@ export default function App() {
     return apiFetch<ApiResponse<{ counts?: CountSummary }>>('/api/admin/retention/run', {
       method: 'POST',
       body: payload,
-      csrfToken: auth.csrfToken,
+      csrfToken: authenticatedAuth().csrfToken,
     });
   }
 
@@ -373,7 +380,7 @@ export default function App() {
     const response = await apiFetch<ApiResponse<{ counts?: CountSummary }>>('/api/admin/data-delete', {
       method: 'POST',
       body: payload,
-      csrfToken: auth.csrfToken,
+      csrfToken: authenticatedAuth().csrfToken,
     });
     await loadInventory();
     return response;
@@ -383,7 +390,7 @@ export default function App() {
     return apiFetch<ApiResponse<PortableExportPayload>>('/api/backup/export', {
       method: 'POST',
       body: payload,
-      csrfToken: auth.csrfToken,
+      csrfToken: authenticatedAuth().csrfToken,
     });
   }
 
@@ -391,7 +398,7 @@ export default function App() {
     return apiFetch<ApiResponse<PortableExportPayload>>('/api/backup/export-encrypted', {
       method: 'POST',
       body: payload,
-      csrfToken: auth.csrfToken,
+      csrfToken: authenticatedAuth().csrfToken,
     });
   }
 
@@ -399,7 +406,7 @@ export default function App() {
     return apiDownload('/api/backup/db-file', {
       method: 'POST',
       body: payload,
-      csrfToken: auth.csrfToken,
+      csrfToken: authenticatedAuth().csrfToken,
     });
   }
 
@@ -407,7 +414,7 @@ export default function App() {
     return apiFetch<ApiResponse<CsvPreviewPayload>>('/api/cards/import-csv', {
       method: 'POST',
       body: payload,
-      csrfToken: auth.csrfToken,
+      csrfToken: authenticatedAuth().csrfToken,
     });
   }
 
@@ -415,7 +422,7 @@ export default function App() {
     const response = await apiFetch<ApiResponse<CsvImportResult>>('/api/cards/import-csv/confirm', {
       method: 'POST',
       body: payload,
-      csrfToken: auth.csrfToken,
+      csrfToken: authenticatedAuth().csrfToken,
     });
     setCards((current) => [
       ...response.data.cards,
@@ -432,7 +439,7 @@ export default function App() {
     const response = await apiFetch<ApiResponse<{ summary: ImportSummary }>>('/api/backup/import', {
       method: 'POST',
       body: payload,
-      csrfToken: auth.csrfToken,
+      csrfToken: authenticatedAuth().csrfToken,
     });
     await loadInventory();
     return response;
@@ -442,7 +449,7 @@ export default function App() {
     return apiFetch<ApiResponse<unknown>>('/api/auth/change-unlock-secret', {
       method: 'POST',
       body: payload,
-      csrfToken: auth.csrfToken,
+      csrfToken: authenticatedAuth().csrfToken,
     });
   }
 
@@ -450,7 +457,7 @@ export default function App() {
     const response = await apiFetch<ApiResponse<{ codes: string[]; activeCount: number }>>('/api/auth/recovery-codes', {
       method: 'POST',
       body: payload,
-      csrfToken: auth.csrfToken,
+      csrfToken: authenticatedAuth().csrfToken,
     });
     setAuth((current) => ({
       ...current,
@@ -546,7 +553,7 @@ export default function App() {
       await apiFetch<ApiResponse<unknown>>('/api/auth/logout', {
         method: 'POST',
         body: {},
-        csrfToken: auth.csrfToken,
+        csrfToken: authenticatedAuth().csrfToken,
       }).catch(() => {});
     }
     setAuth({ setupComplete: true, sessionValid: false, dekLoaded: false });
@@ -590,7 +597,7 @@ export default function App() {
     const response = await apiFetch<ApiResponse<ReferenceValue[]>>('/api/reference-values', {
       method: 'POST',
       body: { values },
-      csrfToken: auth.csrfToken,
+      csrfToken: authenticatedAuth().csrfToken,
     });
     setReferenceValues((current) => mergeReferenceValueState(current, response.data || []));
     return response.data || [];
@@ -600,7 +607,7 @@ export default function App() {
     const response = await apiFetch<ApiResponse<DealMutationResult>>('/api/deals', {
       method: 'POST',
       body: payload,
-      csrfToken: auth.csrfToken,
+      csrfToken: authenticatedAuth().csrfToken,
     });
     setDeals((current) => [response.data.deal, ...current.filter((deal) => deal.id !== response.data.deal.id)]);
     setCards((current) => [
@@ -613,7 +620,7 @@ export default function App() {
     const response = await apiFetch<ApiResponse<{ deal: Deal }>>(`/api/deals/${dealId}/${action}`, {
       method: 'POST',
       body: {},
-      csrfToken: auth.csrfToken,
+      csrfToken: authenticatedAuth().csrfToken,
     });
     const updatedDeal = response.data.deal;
     setDeals((current) => {
@@ -633,7 +640,7 @@ export default function App() {
     const response = await apiFetch<ApiResponse<{ deal: Deal }>>(`/api/deals/${dealId}`, {
       method: 'PUT',
       body: payload,
-      csrfToken: auth.csrfToken,
+      csrfToken: authenticatedAuth().csrfToken,
     });
     const updatedDeal = response.data.deal;
     setDeals((current) => current.map((deal) => (deal.id === updatedDeal.id ? updatedDeal : deal)));
@@ -644,7 +651,7 @@ export default function App() {
     const response = await apiFetch<ApiResponse<CardMutationResult>>(`/api/cards/${cardId}/use`, {
       method: 'POST',
       body: payload,
-      csrfToken: auth.csrfToken,
+      csrfToken: authenticatedAuth().csrfToken,
     });
     setCards((current) =>
       current.map((card) => (card.id === response.data.card.id ? response.data.card : card)),
@@ -655,7 +662,7 @@ export default function App() {
     const response = await apiFetch<ApiResponse<CardMutationResult>>(`/api/cards/${cardId}/undo-usage`, {
       method: 'POST',
       body: payload,
-      csrfToken: auth.csrfToken,
+      csrfToken: authenticatedAuth().csrfToken,
     });
     setCards((current) =>
       current.map((card) => (card.id === response.data.card.id ? response.data.card : card)),
@@ -667,7 +674,7 @@ export default function App() {
     const response = await apiFetch<ApiResponse<Card>>(`/api/cards/${cardId}`, {
       method: 'PUT',
       body: payload,
-      csrfToken: auth.csrfToken,
+      csrfToken: authenticatedAuth().csrfToken,
     });
     setCards((current) =>
       current.map((card) => (card.id === response.data.id ? response.data : card)),
@@ -678,7 +685,7 @@ export default function App() {
   async function handleDeleteCard(cardId: string) {
     await apiFetch<ApiResponse<unknown>>(`/api/cards/${cardId}`, {
       method: 'DELETE',
-      csrfToken: auth.csrfToken,
+      csrfToken: authenticatedAuth().csrfToken,
     });
     setCards((current) => current.filter((card) => card.id !== cardId));
   }
@@ -687,7 +694,7 @@ export default function App() {
     const response = await apiFetch<ApiResponse<CardMutationResult>>(`/api/cards/${cardId}/sell`, {
       method: 'POST',
       body: payload,
-      csrfToken: auth.csrfToken,
+      csrfToken: authenticatedAuth().csrfToken,
     });
     const soldCard = {
       ...response.data.card,
@@ -702,7 +709,7 @@ export default function App() {
     const response = await apiFetch<ApiResponse<CardMutationResult>>(`/api/cards/${cardId}/undo-sale`, {
       method: 'POST',
       body: payload,
-      csrfToken: auth.csrfToken,
+      csrfToken: authenticatedAuth().csrfToken,
     });
     setCards((current) =>
       current.map((card) =>
@@ -715,7 +722,7 @@ export default function App() {
     const response = await apiFetch<ApiResponse<CardMutationResult>>(`/api/cards/${cardId}/void`, {
       method: 'POST',
       body: payload,
-      csrfToken: auth.csrfToken,
+      csrfToken: authenticatedAuth().csrfToken,
     });
     setCards((current) =>
       current.map((card) => (card.id === response.data.card.id ? response.data.card : card)),
@@ -726,7 +733,7 @@ export default function App() {
     const response = await apiFetch<ApiResponse<Card>>(`/api/cards/${cardId}/${action}`, {
       method: 'POST',
       body: payload,
-      csrfToken: auth.csrfToken,
+      csrfToken: authenticatedAuth().csrfToken,
     });
     setCards((current) =>
       current.map((card) => (card.id === response.data.id ? response.data : card)),

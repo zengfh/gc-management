@@ -15,7 +15,14 @@ import { errorMessage, formatDateTime, formatMoney, isRecord } from './display';
 import { downloadBlobFile, downloadCsvFile, downloadJsonFile, readFileText } from './fileHelpers';
 import { FieldError } from './formUi';
 
-const csvImportTemplates = [
+type CsvImportTemplate = {
+  id: string;
+  label: string;
+  filename: string;
+  csv: string;
+};
+
+const csvImportTemplates: [CsvImportTemplate, ...CsvImportTemplate[]] = [
   {
     id: 'gc-manager',
     label: 'GC Manager',
@@ -71,6 +78,8 @@ const csvImportTemplates = [
     ].join('\n'),
   },
 ];
+
+const defaultCsvImportTemplate = csvImportTemplates[0];
 
 export function BackupExportForm({ onExportPlaintext }: { onExportPlaintext: AsyncApiHandler<ApiPayload, ApiResponse<PortableExportPayload>> }) {
   const [unlockSecret, setUnlockSecret] = useState('');
@@ -362,7 +371,7 @@ export function CsvImportPreviewForm({
 }) {
   const [csvText, setCsvText] = useState('');
   const [fileName, setFileName] = useState('');
-  const [selectedTemplateId, setSelectedTemplateId] = useState(csvImportTemplates[0].id);
+  const [selectedTemplateId, setSelectedTemplateId] = useState(defaultCsvImportTemplate.id);
   const [preview, setPreview] = useState<CsvPreviewPayload | null>(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -426,7 +435,7 @@ export function CsvImportPreviewForm({
 
   function downloadSelectedTemplate() {
     const template =
-      csvImportTemplates.find((candidate) => candidate.id === selectedTemplateId) || csvImportTemplates[0];
+      csvImportTemplates.find((candidate) => candidate.id === selectedTemplateId) || defaultCsvImportTemplate;
     downloadCsvFile(template.filename, template.csv);
   }
 

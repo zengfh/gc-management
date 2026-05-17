@@ -512,8 +512,8 @@ describe('App', () => {
   it('exports plaintext JSON from the backup view with confirmation controls', async () => {
     const originalCreateObjectURL = globalThis.URL.createObjectURL;
     const originalRevokeObjectURL = globalThis.URL.revokeObjectURL;
-    globalThis.URL.createObjectURL = undefined;
-    globalThis.URL.revokeObjectURL = undefined;
+    Object.defineProperty(globalThis.URL, 'createObjectURL', { configurable: true, writable: true, value: undefined });
+    Object.defineProperty(globalThis.URL, 'revokeObjectURL', { configurable: true, writable: true, value: undefined });
     fetchMock()
       .mockResolvedValueOnce(
         jsonResponse({
@@ -577,8 +577,8 @@ describe('App', () => {
   it('exports encrypted JSON from the backup view with a separate passphrase', async () => {
     const originalCreateObjectURL = globalThis.URL.createObjectURL;
     const originalRevokeObjectURL = globalThis.URL.revokeObjectURL;
-    globalThis.URL.createObjectURL = undefined;
-    globalThis.URL.revokeObjectURL = undefined;
+    Object.defineProperty(globalThis.URL, 'createObjectURL', { configurable: true, writable: true, value: undefined });
+    Object.defineProperty(globalThis.URL, 'revokeObjectURL', { configurable: true, writable: true, value: undefined });
     fetchMock()
       .mockResolvedValueOnce(
         jsonResponse({
@@ -656,8 +656,8 @@ describe('App', () => {
   it('exports the raw database file from the backup view', async () => {
     const originalCreateObjectURL = globalThis.URL.createObjectURL;
     const originalRevokeObjectURL = globalThis.URL.revokeObjectURL;
-    globalThis.URL.createObjectURL = undefined;
-    globalThis.URL.revokeObjectURL = undefined;
+    Object.defineProperty(globalThis.URL, 'createObjectURL', { configurable: true, writable: true, value: undefined });
+    Object.defineProperty(globalThis.URL, 'revokeObjectURL', { configurable: true, writable: true, value: undefined });
     fetchMock()
       .mockResolvedValueOnce(
         jsonResponse({
@@ -829,7 +829,9 @@ describe('App', () => {
       await user.click(screen.getByRole('button', { name: /^download template$/i }));
 
       expect(globalThis.URL.createObjectURL).toHaveBeenCalledWith(expect.any(Blob));
-      expect((createObjectUrlMock().mock.calls[0][0] as Blob).type).toBe('text/csv');
+      const [templateBlob] = createObjectUrlMock().mock.calls[0] ?? [];
+      expect(templateBlob).toBeInstanceOf(Blob);
+      expect((templateBlob as Blob).type).toBe('text/csv');
       expect(globalThis.URL.revokeObjectURL).toHaveBeenCalledWith('blob:csv-template');
     } finally {
       globalThis.URL.createObjectURL = originalCreateObjectURL;

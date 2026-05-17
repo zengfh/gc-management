@@ -40,6 +40,7 @@ Status: TypeScript migration and second hardening pass complete
 - Split first-run setup, unlock, invite acceptance, and recovery screens into `src/authScreens.tsx`.
 - Split the authenticated app shell and view orchestration into `src/WorkSurface.tsx`.
 - Enabled `noUncheckedIndexedAccess` globally in `tsconfig.base.json`.
+- Enabled `strictNullChecks` for the client and React test TypeScript project.
 
 ## Current Type Safety Shape
 
@@ -51,14 +52,15 @@ This is still a compatibility-first TypeScript codebase rather than a fully stri
 - Existing tests remain the behavioral safety net.
 - `noImplicitAny` is enabled globally.
 - `noUncheckedIndexedAccess` is enabled globally.
+- `strictNullChecks` is enabled for frontend and React tests.
 - Database row shapes are now explicit at the module boundary for the main route/helper modules touched during the migration.
 - `src/App.tsx` now mostly owns auth status, data state, and API handlers, while common app types, reference-value behavior, credential display logic, file helpers, display helpers, dialog focus behavior, auth/setup screens, the authenticated app shell, backup workflows, settings/admin panels, card/deal panels, add-deal/reference UI, table/search UI, shared status rendering, and default state have dedicated modules.
 
 ## Remaining Type Hardening
 
-- Group API handlers so authenticated calls use a non-null auth/session context instead of repeatedly reading nullable root auth state.
-- Fix the remaining `strictNullChecks` findings in backup CSV template selection, reference-value normalization, `main.tsx` root lookup, and test URL mocks.
-- Gradually enable stricter compiler flags after module splitting: `strictNullChecks`, `exactOptionalPropertyTypes`, then full `strict`.
+- Group API handlers and state reducers to keep `src/App.tsx` smaller and make authenticated request paths easier to audit.
+- Clean up server-side `strictNullChecks` findings in route/database row handling, then enable it for the server and e2e/performance projects.
+- Gradually enable stricter compiler flags after module splitting: `exactOptionalPropertyTypes`, then full `strict`.
 - Consider generated or hand-maintained OpenAPI-derived request/response types so server route responses and frontend API calls cannot drift.
 - Add more focused unit coverage around backup import/export typing and CSV credential-profile parsing before stricter null/index checks.
 - Keep any future scripts and test helpers in `npm run typecheck` so new implicit-any regressions fail early.
@@ -79,7 +81,7 @@ Completed on 2026-05-17:
 - `npx tsc -p tsconfig.server.json --noUncheckedIndexedAccess true --pretty false`
 - `npx tsc -p tsconfig.e2e.json --noUncheckedIndexedAccess true --pretty false`
 - `npx tsc -p tsconfig.client.json --strict true --pretty false` was probed but not enabled; remaining errors are mostly deliberate nullability and exact-optional cleanup.
-- `npx tsc -p tsconfig.client.json --strictNullChecks true --pretty false` was re-probed after the frontend module split. Remaining errors are concentrated in nullable root auth reads in `src/App.tsx`, one detail-card ID guard in `src/WorkSurface.tsx`, backup CSV template fallback narrowing, reference-value indexed arrays, `src/main.tsx` root lookup, and test URL mock cleanup.
+- `npx tsc -p tsconfig.client.json --strictNullChecks true --pretty false` passed after nullability cleanup in root auth reads, detail-card guards, backup CSV template fallback narrowing, reference-value indexed arrays, `src/main.tsx` root lookup, and test URL mocks. The flag is now enabled in `tsconfig.client.json`; server/e2e/performance enablement remains a separate cleanup batch because the e2e project imports performance scripts that touch server modules.
 - `npm run typecheck -- --pretty false`
 
 ## Verification Completed For Frontend Module Split

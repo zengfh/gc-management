@@ -297,8 +297,11 @@ export function WorkSurface({
   }
 
   async function undoUsageFromDetail(usageId: string | number, reason: string) {
-    const cardId = (detailState?.data?.card || detailState?.card)?.id;
-    const response = await onUndoUsage(cardId, { usageId, reason });
+    const currentCard = detailState?.data?.card || detailState?.card;
+    if (!currentCard) {
+      throw new Error('Card detail is not loaded.');
+    }
+    const response = await onUndoUsage(currentCard.id, { usageId, reason });
     setDetailState({ card: response.data.card, data: response.data, error: '', loading: false });
     return response;
   }
