@@ -51,6 +51,31 @@ import type {
   WorkSurfaceProps,
 } from './appTypes';
 import {
+  credentialProfileOptions,
+  credentialSummaryText,
+  customCredentialFieldKinds,
+  inferCredentialProfileForBrand,
+  inferNetworkFromBrand,
+} from './credentialHelpers';
+import { BarcodePreview } from './BarcodePreview';
+import {
+  criteriaValue,
+  dollarsToCents,
+  errorMessage,
+  formatDateTime,
+  formatDisplayValue,
+  formatMoney,
+  isBeforeToday,
+  isRecord,
+  isTerminalCard,
+  isWithinNextDays,
+  statusLabels,
+  statusText,
+  viewTitle,
+} from './display';
+import { downloadBlobFile, downloadCsvFile, downloadJsonFile, readFileText } from './fileHelpers';
+import { FieldError } from './formUi';
+import {
   buildReferenceReviewItems,
   buildReferenceTouchValues,
   defaultReferenceValues,
@@ -59,6 +84,7 @@ import {
   normalizeReferenceValuePayload,
   referenceValueTypes,
 } from './referenceValues';
+import { useDialogFocus } from './useDialogFocus';
 import type {
   AuditCriteria,
   AuditEvent,
@@ -195,115 +221,8 @@ const csvImportTemplates = [
   },
 ];
 
-const statusLabels: Record<CardStatus, string> = {
-  available: 'Available',
-  reserved: 'Reserved',
-  in_use: 'In Use',
-  sold: 'Sold',
-  used_up: 'Used Up',
-  void: 'Void',
-};
-
-const terminalCardStatuses = new Set(['sold', 'used_up', 'void']);
 const adminRoleSet = new Set(['owner', 'admin']);
 const operatorRoleSet = new Set(['owner', 'admin', 'operator']);
-
-const credentialProfileOptions = [
-  { value: 'claim_code', label: 'Single code / PIN' },
-  { value: 'merchant_number_pin', label: 'Card number + PIN' },
-  { value: 'merchant_number_access', label: 'Card number + access code' },
-  { value: 'barcode', label: 'Barcode / QR' },
-  { value: 'network_prepaid', label: 'Network prepaid card' },
-  { value: 'custom', label: 'Custom' },
-];
-
-const networkBrandPattern = /\b(visa|mastercard|master card|amex|american express|discover|vanilla|serve)\b/i;
-const claimCodeBrandPattern = /\b(amazon|apple|doordash|door dash|uber|ubereats|steam|google play|playstation|xbox)\b/i;
-const barcodeBrandPattern = /\b(starbucks|dunkin|chipotle|mcdonald|panera)\b/i;
-const accessCodeBrandPattern = /\b(target)\b/i;
-const customCredentialFieldKinds = [
-  { value: 'primary_code', label: 'Secret code' },
-  { value: 'card_number', label: 'Card number' },
-  { value: 'pin', label: 'PIN' },
-  { value: 'access_code', label: 'Access code' },
-  { value: 'barcode_value', label: 'Barcode' },
-  { value: 'billing_postal_code', label: 'Billing ZIP' },
-  { value: 'cardholder_name', label: 'Name' },
-  { value: 'billing_address', label: 'Address' },
-  { value: 'metadata', label: 'Note' },
-];
-
-function inferCredentialProfileForBrand(brand: string): string {
-  if (networkBrandPattern.test(brand)) {
-    return 'network_prepaid';
-  }
-  if (barcodeBrandPattern.test(brand)) {
-    return 'barcode';
-  }
-  if (claimCodeBrandPattern.test(brand)) {
-    return 'claim_code';
-  }
-  if (accessCodeBrandPattern.test(brand)) {
-    return 'merchant_number_access';
-  }
-  return 'merchant_number_pin';
-}
-
-function inferNetworkFromBrand(brand: string): string {
-  const normalized = String(brand || '').toLowerCase();
-  if (normalized.includes('master')) {
-    return 'mastercard';
-  }
-  if (normalized.includes('amex') || normalized.includes('american express')) {
-    return 'amex';
-  }
-  if (normalized.includes('discover')) {
-    return 'discover';
-  }
-  if (normalized.includes('visa') || normalized.includes('vanilla')) {
-    return 'visa';
-  }
-  return 'other';
-}
-
-function credentialSummaryText(card: Pick<Card, 'credentialSummary' | 'cardNumberLast4'> | null | undefined): string {
-  const summary = card?.credentialSummary;
-  if (summary?.primaryHint) {
-    return summary.primaryLabel ? `${summary.primaryLabel}: ${summary.primaryHint}` : summary.primaryHint;
-  }
-  if (summary?.primaryLast4) {
-    return summary.primaryLabel ? `${summary.primaryLabel}: **** ${summary.primaryLast4}` : `**** ${summary.primaryLast4}`;
-  }
-  if (card?.cardNumberLast4) {
-    return `Card number: **** ${card.cardNumberLast4}`;
-  }
-  return 'Hidden';
-}
-
-const barcodeFormatToBcid: Record<string, string> = {
-  code128: 'code128',
-  qr: 'qrcode',
-  ean13: 'ean13',
-  upca: 'upca',
-  pdf417: 'pdf417',
-  aztec: 'azteccode',
-  data_matrix: 'datamatrix',
-  other: 'code128',
-};
-
-function barcodeSvgDataUri(value: string, format: string | null | undefined, toSvg: (options: Record<string, unknown>) => string): string {
-  const bcid = barcodeFormatToBcid[format] || barcodeFormatToBcid.other;
-  const svg = toSvg({
-    bcid,
-    text: String(value || ''),
-    scale: bcid === 'qrcode' ? 4 : 3,
-    height: bcid === 'qrcode' ? undefined : 16,
-    paddingwidth: 10,
-    paddingheight: 10,
-    includetext: false,
-  });
-  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
-}
 
 function authRole(auth: AuthState | null | undefined): string {
   return auth?.user?.role || 'owner';
@@ -322,283 +241,6 @@ function authFeatures(auth: AuthState | null | undefined): FeatureFlags {
     ...defaultFeatureFlags,
     ...(auth?.features || {}),
   };
-}
-
-const dialogFocusableSelector = [
-  'button:not([disabled])',
-  'input:not([disabled])',
-  'select:not([disabled])',
-  'textarea:not([disabled])',
-  'a[href]',
-  '[tabindex]:not([tabindex="-1"])',
-].join(',');
-
-function useDialogFocus(onClose: VoidHandler) {
-  const dialogRef = useRef<HTMLElement | null>(null);
-
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) {
-      return undefined;
-    }
-
-    const previousFocus = document.activeElement;
-    const focusableElements = (): HTMLElement[] =>
-      [...dialog.querySelectorAll<HTMLElement>(dialogFocusableSelector)].filter(
-        (element) => !element.hasAttribute('aria-hidden'),
-      );
-    const initialFocus =
-      dialog.querySelector<HTMLElement>('[data-autofocus]')
-      || dialog.querySelector<HTMLElement>('input:not([disabled]), select:not([disabled]), textarea:not([disabled])')
-      || focusableElements()[0]
-      || dialog;
-
-    initialFocus.focus();
-
-    function handleKeyDown(event: globalThis.KeyboardEvent) {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        onClose();
-        return;
-      }
-
-      if (event.key !== 'Tab') {
-        return;
-      }
-
-      const elements = focusableElements();
-      if (!elements.length) {
-        event.preventDefault();
-        return;
-      }
-
-      const first = elements[0] as HTMLElement;
-      const last = elements[elements.length - 1] as HTMLElement;
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    }
-
-    dialog.addEventListener('keydown', handleKeyDown);
-    return () => {
-      dialog.removeEventListener('keydown', handleKeyDown);
-      if (previousFocus instanceof HTMLElement) {
-        previousFocus.focus();
-      }
-    };
-  }, [onClose]);
-
-  return dialogRef;
-}
-
-function formatMoney(cents = 0): string {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-  }).format(cents / 100);
-}
-
-function formatDateTime(value: string | null | undefined): string {
-  if (!value) {
-    return 'Not recorded';
-  }
-  return new Date(value).toLocaleString();
-}
-
-function parseDateOnly(value: string | null | undefined): Date | null {
-  if (!value) {
-    return null;
-  }
-  const parsed = new Date(`${value}T00:00:00`);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
-
-function isWithinNextDays(value: string | null | undefined, days: number): boolean {
-  const parsed = parseDateOnly(value);
-  if (!parsed) {
-    return false;
-  }
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const end = new Date(today);
-  end.setDate(end.getDate() + days);
-  return parsed >= today && parsed <= end;
-}
-
-function isBeforeToday(value: string | null | undefined): boolean {
-  const parsed = parseDateOnly(value);
-  if (!parsed) {
-    return false;
-  }
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  return parsed < today;
-}
-
-function formatDisplayValue(value: unknown): string {
-  if (!value) {
-    return 'Not recorded';
-  }
-  return String(value)
-    .replace(/_/g, ' ')
-    .replace(/\b\w/g, (character) => character.toUpperCase());
-}
-
-function statusText(status: CardStatus | string): string {
-  return status in statusLabels ? statusLabels[status as CardStatus] : status;
-}
-
-function viewTitle(view: ViewId): string {
-  if (view === 'dashboard') {
-    return 'Dashboard';
-  }
-  if (view === 'cards') {
-    return 'Cards';
-  }
-  if (view === 'audit') {
-    return 'Audit Log';
-  }
-  if (view === 'backup') {
-    return 'Backup';
-  }
-  if (view === 'settings') {
-    return 'Settings';
-  }
-  return 'Deals';
-}
-
-function isTerminalCard(card: Pick<Card, 'status'>): boolean {
-  return terminalCardStatuses.has(card.status);
-}
-
-function dollarsToCents(value: string): number | undefined {
-  if (!value) {
-    return undefined;
-  }
-
-  const normalized = String(value).replace(/[$,]/g, '').trim();
-  if (!normalized) {
-    return undefined;
-  }
-
-  return Math.round(Number(normalized) * 100);
-}
-
-function criteriaValue(value: unknown): string {
-  return value == null ? '' : String(value).trim();
-}
-
-function errorMessage(caught: unknown): string {
-  return caught instanceof Error ? caught.message : 'Unexpected error.';
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function downloadBlobFile(filename: string, blob: Blob): void {
-  if (typeof document === 'undefined' || !globalThis.URL?.createObjectURL) {
-    return;
-  }
-
-  const url = globalThis.URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  document.body.append(link);
-  link.click();
-  link.remove();
-  globalThis.URL.revokeObjectURL?.(url);
-}
-
-function downloadJsonFile(filename: string, payload: unknown): void {
-  downloadBlobFile(
-    filename,
-    new Blob([JSON.stringify(payload, null, 2)], {
-      type: 'application/json',
-    }),
-  );
-}
-
-function downloadCsvFile(filename: string, csv: string): void {
-  downloadBlobFile(
-    filename,
-    new Blob([csv], {
-      type: 'text/csv',
-    }),
-  );
-}
-
-function readFileText(file: File): Promise<string> {
-  if (file?.text) {
-    return file.text();
-  }
-
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ''));
-    reader.onerror = () => reject(new Error('CSV file could not be read.'));
-    reader.readAsText(file);
-  });
-}
-
-function FieldError({ message }: { message?: string | null }) {
-  if (!message) {
-    return null;
-  }
-
-  return (
-    <p className="field-error" role="alert">
-      {message}
-    </p>
-  );
-}
-
-function BarcodePreview({ value, format }: { value?: string | null; format?: string | null }) {
-  const barcodeKey = `${format || 'code128'}:${value || ''}`;
-  const [barcodeImage, setBarcodeImage] = useState<{ key: string; src: string | null }>({ key: '', src: null });
-
-  useEffect(() => {
-    let canceled = false;
-    if (!value) {
-      return undefined;
-    }
-
-    import('bwip-js')
-      .then((module) => {
-        if (!canceled) {
-          setBarcodeImage({
-            key: barcodeKey,
-            src: barcodeSvgDataUri(value, format, module.toSVG),
-          });
-        }
-      })
-      .catch(() => {
-        if (!canceled) {
-          setBarcodeImage({ key: barcodeKey, src: null });
-        }
-      });
-
-    return () => {
-      canceled = true;
-    };
-  }, [barcodeKey, format, value]);
-
-  const src = barcodeImage.key === barcodeKey ? barcodeImage.src : null;
-
-  if (!value || !src) {
-    return null;
-  }
-
-  return (
-    <div className="barcode-preview" aria-label="Scannable barcode">
-      <img src={src} alt="Scannable barcode" />
-    </div>
-  );
 }
 
 function SetupScreen({ onSetup }: { onSetup: AsyncApiHandler<{ email: string; displayName: string; unlockSecret: string }> }) {

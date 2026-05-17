@@ -24,6 +24,12 @@ Status: TypeScript migration and second hardening pass complete
 - Enabled `noImplicitAny` globally in `tsconfig.base.json`.
 - Split shared frontend app state/API handler types into `src/appTypes.ts`.
 - Split reference-value indexing, substring matching, and typo-suggestion helpers into `src/referenceValues.ts`.
+- Split reusable frontend display/date/money helpers into `src/display.ts`.
+- Split file download/import helpers into `src/fileHelpers.ts`.
+- Split dialog focus management into `src/useDialogFocus.ts`.
+- Split credential-profile inference and credential summary helpers into `src/credentialHelpers.ts`.
+- Split barcode preview rendering into `src/BarcodePreview.tsx`.
+- Split shared form error rendering into `src/formUi.tsx`.
 - Enabled `noUncheckedIndexedAccess` globally in `tsconfig.base.json`.
 
 ## Current Type Safety Shape
@@ -37,7 +43,7 @@ This is still a compatibility-first TypeScript codebase rather than a fully stri
 - `noImplicitAny` is enabled globally.
 - `noUncheckedIndexedAccess` is enabled globally.
 - Database row shapes are now explicit at the module boundary for the main route/helper modules touched during the migration.
-- `src/App.tsx` remains large, but common app types and reference-value behavior now have dedicated modules.
+- `src/App.tsx` remains large, but common app types, reference-value behavior, credential display logic, file helpers, display helpers, and dialog focus behavior now have dedicated modules.
 
 ## Remaining Type Hardening
 
