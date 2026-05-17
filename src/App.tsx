@@ -2,19 +2,14 @@ import { useEffect, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { apiFetch } from './api';
 import { SetupScreen, UnlockScreen } from './authScreens';
-import {
-  defaultDataPolicy,
-  defaultFeatureFlags,
-  defaultSupportPolicy,
-} from './defaults';
+import { defaultFeatureFlags } from './defaults';
 import { WorkSurface } from './WorkSurface';
+import { useAdminController } from './useAdminController';
 import { useBackupController } from './useBackupController';
 import { useInventoryController } from './useInventoryController';
 import { useReferenceValuesController } from './useReferenceValuesController';
 import type {
   ApiPayload,
-  CountSummary,
-  PortableExportPayload,
 } from './appTypes';
 import {
   criteriaValue,
@@ -25,11 +20,7 @@ import type {
   AuditEvent,
   ApiResponse,
   AuthState,
-  DataPolicy,
   FeatureFlags,
-  SupportPolicy,
-  UserInvite,
-  AuthUser,
 } from '../shared/domain';
 
 function authFeatures(auth: AuthState | null | undefined): FeatureFlags {
@@ -44,19 +35,6 @@ export default function App() {
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditError, setAuditError] = useState('');
-  const [users, setUsers] = useState<AuthUser[]>([]);
-  const [userInvites, setUserInvites] = useState<UserInvite[]>([]);
-  const [usersLoading, setUsersLoading] = useState(false);
-  const [usersLoaded, setUsersLoaded] = useState(false);
-  const [usersError, setUsersError] = useState('');
-  const [supportPolicy, setSupportPolicy] = useState(defaultSupportPolicy);
-  const [supportPolicyLoading, setSupportPolicyLoading] = useState(false);
-  const [supportPolicyLoaded, setSupportPolicyLoaded] = useState(false);
-  const [supportPolicyError, setSupportPolicyError] = useState('');
-  const [dataPolicy, setDataPolicy] = useState(defaultDataPolicy);
-  const [dataPolicyLoading, setDataPolicyLoading] = useState(false);
-  const [dataPolicyLoaded, setDataPolicyLoaded] = useState(false);
-  const [dataPolicyError, setDataPolicyError] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const features = authFeatures(auth);
@@ -78,6 +56,10 @@ export default function App() {
   const backup = useBackupController({
     csrfToken: () => authenticatedAuth().csrfToken,
     onImported: inventory.loadInventory,
+  });
+  const admin = useAdminController({
+    csrfToken: () => authenticatedAuth().csrfToken,
+    onDataDeleted: inventory.loadInventory,
   });
   const { loadInventory } = inventory;
 
@@ -111,136 +93,6 @@ export default function App() {
     } finally {
       setAuditLoading(false);
     }
-  }
-
-  async function handleLoadUsers() {
-    setUsersLoading(true);
-    setUsersError('');
-    try {
-      const [response, invitesResponse] = await Promise.all([
-        apiFetch<ApiResponse<AuthUser[]>>('/api/users'),
-        apiFetch<ApiResponse<UserInvite[]>>('/api/users/invites'),
-      ]);
-      setUsers(Array.isArray(response.data) ? response.data : []);
-      setUserInvites(Array.isArray(invitesResponse.data) ? invitesResponse.data : []);
-      setUsersLoaded(true);
-      return response;
-    } catch (caught) {
-      setUsersError(errorMessage(caught));
-      return null;
-    } finally {
-      setUsersLoading(false);
-    }
-  }
-
-  async function handleCreateInvite(payload: ApiPayload) {
-    const response = await apiFetch<ApiResponse<UserInvite>>('/api/users/invites', {
-      method: 'POST',
-      body: payload,
-      csrfToken: authenticatedAuth().csrfToken,
-    });
-    setUserInvites((current) => [response.data, ...current.filter((invite) => invite.id !== response.data.id)]);
-    setUsersLoaded(true);
-    return response.data;
-  }
-
-  async function handleRevokeInvite(inviteId: string) {
-    const response = await apiFetch<ApiResponse<UserInvite>>(`/api/users/invites/${inviteId}`, {
-      method: 'DELETE',
-      csrfToken: authenticatedAuth().csrfToken,
-    });
-    setUserInvites((current) => current.filter((invite) => invite.id !== response.data.id));
-    return response.data;
-  }
-
-  async function handleUpdateUser(userId: string, payload: ApiPayload) {
-    const response = await apiFetch<ApiResponse<AuthUser>>(`/api/users/${userId}`, {
-      method: 'PUT',
-      body: payload,
-      csrfToken: authenticatedAuth().csrfToken,
-    });
-    setUsers((current) => current.map((user) => (user.id === response.data.id ? response.data : user)));
-    return response.data;
-  }
-
-  async function handleLoadSupportPolicy() {
-    setSupportPolicyLoading(true);
-    setSupportPolicyError('');
-    try {
-      const response = await apiFetch<ApiResponse<SupportPolicy>>('/api/admin/support-policy');
-      setSupportPolicy(response.data || defaultSupportPolicy);
-      setSupportPolicyLoaded(true);
-      return response;
-    } catch (caught) {
-      setSupportPolicyError(errorMessage(caught));
-      return null;
-    } finally {
-      setSupportPolicyLoading(false);
-    }
-  }
-
-  async function handleUpdateSupportPolicy(payload: ApiPayload) {
-    const response = await apiFetch<ApiResponse<SupportPolicy>>('/api/admin/support-policy', {
-      method: 'PUT',
-      body: payload,
-      csrfToken: authenticatedAuth().csrfToken,
-    });
-    setSupportPolicy(response.data || defaultSupportPolicy);
-    setSupportPolicyLoaded(true);
-    return response;
-  }
-
-  async function handleLoadDataPolicy() {
-    setDataPolicyLoading(true);
-    setDataPolicyError('');
-    try {
-      const response = await apiFetch<ApiResponse<DataPolicy>>('/api/admin/data-policy');
-      setDataPolicy(response.data || defaultDataPolicy);
-      setDataPolicyLoaded(true);
-      return response;
-    } catch (caught) {
-      setDataPolicyError(errorMessage(caught));
-      return null;
-    } finally {
-      setDataPolicyLoading(false);
-    }
-  }
-
-  async function handleUpdateDataPolicy(payload: ApiPayload) {
-    const response = await apiFetch<ApiResponse<DataPolicy>>('/api/admin/data-policy', {
-      method: 'PUT',
-      body: payload,
-      csrfToken: authenticatedAuth().csrfToken,
-    });
-    setDataPolicy(response.data || defaultDataPolicy);
-    setDataPolicyLoaded(true);
-    return response;
-  }
-
-  async function handleExportAccountData(payload: ApiPayload) {
-    return apiFetch<ApiResponse<PortableExportPayload>>('/api/admin/data-export', {
-      method: 'POST',
-      body: payload,
-      csrfToken: authenticatedAuth().csrfToken,
-    });
-  }
-
-  async function handleRunRetention(payload: ApiPayload) {
-    return apiFetch<ApiResponse<{ counts?: CountSummary }>>('/api/admin/retention/run', {
-      method: 'POST',
-      body: payload,
-      csrfToken: authenticatedAuth().csrfToken,
-    });
-  }
-
-  async function handleDeleteAccountData(payload: ApiPayload) {
-    const response = await apiFetch<ApiResponse<{ counts?: CountSummary }>>('/api/admin/data-delete', {
-      method: 'POST',
-      body: payload,
-      csrfToken: authenticatedAuth().csrfToken,
-    });
-    await inventory.loadInventory();
-    return response;
   }
 
   async function handleChangeUnlockSecret(payload: ApiPayload) {
@@ -348,16 +200,7 @@ export default function App() {
     setAuditEvents([]);
     setAuditError('');
     backup.resetBackupState();
-    setUsers([]);
-    setUserInvites([]);
-    setUsersLoaded(false);
-    setUsersError('');
-    setSupportPolicy(defaultSupportPolicy);
-    setSupportPolicyLoaded(false);
-    setSupportPolicyError('');
-    setDataPolicy(defaultDataPolicy);
-    setDataPolicyLoaded(false);
-    setDataPolicyError('');
+    admin.resetAdminState();
     referenceValues.resetReferenceValues();
   }
 
@@ -416,19 +259,19 @@ export default function App() {
       backupSettingsLoading={backup.backupSettingsLoading}
       backupSettingsLoaded={backup.backupSettingsLoaded}
       backupSettingsError={backup.backupSettingsError}
-      users={users}
-      userInvites={userInvites}
-      usersLoading={usersLoading}
-      usersLoaded={usersLoaded}
-      usersError={usersError}
-      supportPolicy={supportPolicy}
-      supportPolicyLoading={supportPolicyLoading}
-      supportPolicyLoaded={supportPolicyLoaded}
-      supportPolicyError={supportPolicyError}
-      dataPolicy={dataPolicy}
-      dataPolicyLoading={dataPolicyLoading}
-      dataPolicyLoaded={dataPolicyLoaded}
-      dataPolicyError={dataPolicyError}
+      users={admin.users}
+      userInvites={admin.userInvites}
+      usersLoading={admin.usersLoading}
+      usersLoaded={admin.usersLoaded}
+      usersError={admin.usersError}
+      supportPolicy={admin.supportPolicy}
+      supportPolicyLoading={admin.supportPolicyLoading}
+      supportPolicyLoaded={admin.supportPolicyLoaded}
+      supportPolicyError={admin.supportPolicyError}
+      dataPolicy={admin.dataPolicy}
+      dataPolicyLoading={admin.dataPolicyLoading}
+      dataPolicyLoaded={admin.dataPolicyLoaded}
+      dataPolicyError={admin.dataPolicyError}
       features={features}
       referenceValues={referenceValues.referenceValues}
       loading={inventory.loading}
@@ -436,17 +279,17 @@ export default function App() {
       onLogout={handleLogout}
       onLoadAudit={handleLoadAudit}
       onLoadBackupSettings={backup.loadBackupSettings}
-      onLoadUsers={handleLoadUsers}
-      onLoadSupportPolicy={handleLoadSupportPolicy}
-      onLoadDataPolicy={handleLoadDataPolicy}
-      onCreateInvite={handleCreateInvite}
-      onRevokeInvite={handleRevokeInvite}
-      onUpdateUser={handleUpdateUser}
-      onUpdateSupportPolicy={handleUpdateSupportPolicy}
-      onUpdateDataPolicy={handleUpdateDataPolicy}
-      onExportAccountData={handleExportAccountData}
-      onRunRetention={handleRunRetention}
-      onDeleteAccountData={handleDeleteAccountData}
+      onLoadUsers={admin.loadUsers}
+      onLoadSupportPolicy={admin.loadSupportPolicy}
+      onLoadDataPolicy={admin.loadDataPolicy}
+      onCreateInvite={admin.createInvite}
+      onRevokeInvite={admin.revokeInvite}
+      onUpdateUser={admin.updateUser}
+      onUpdateSupportPolicy={admin.updateSupportPolicy}
+      onUpdateDataPolicy={admin.updateDataPolicy}
+      onExportAccountData={admin.exportAccountData}
+      onRunRetention={admin.runRetention}
+      onDeleteAccountData={admin.deleteAccountData}
       onUpdateBackupSettings={backup.updateBackupSettings}
       onExportPlaintext={backup.exportPlaintext}
       onExportEncrypted={backup.exportEncrypted}
