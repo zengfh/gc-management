@@ -45,6 +45,8 @@ Status: TypeScript migration and compiler hardening complete
 - Enabled `strictNullChecks` for the e2e and performance-script TypeScript project.
 - Enabled `exactOptionalPropertyTypes` globally in `tsconfig.base.json`.
 - Enabled full `strict` mode globally in `tsconfig.base.json`.
+- Split card search query/criteria handling into `src/cardSearch.ts` with focused unit coverage.
+- Split repeated card/deal list update behavior into `src/appStateReducers.ts` with focused unit coverage.
 
 ## Current Type Safety Shape
 
@@ -65,7 +67,7 @@ This is now a strict TypeScript codebase with compatibility-focused runtime beha
 ## Remaining Type Hardening
 
 - Group API handlers and state reducers to keep `src/App.tsx` smaller and make authenticated request paths easier to audit.
-- Continue reducing module size and API type duplication now that strict compiler checks are the baseline.
+- Continue reducing module size by extracting larger authenticated workflow hooks from `src/App.tsx`.
 - Consider generated or hand-maintained OpenAPI-derived request/response types so server route responses and frontend API calls cannot drift.
 - Add more focused unit coverage around backup import/export typing and CSV credential-profile parsing before stricter null/index checks.
 - Keep any future scripts and test helpers in `npm run typecheck` so new implicit-any regressions fail early.

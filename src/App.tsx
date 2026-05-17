@@ -10,6 +10,21 @@ import {
   defaultSupportPolicy,
 } from './defaults';
 import { WorkSurface } from './WorkSurface';
+import {
+  applyArchivedDealTransition,
+  applySoldCard,
+  applyUndoSale,
+  incrementPageTotal,
+  mergeCards,
+  removeCard,
+  replaceCard,
+  replaceDeal,
+  upsertDeal,
+} from './appStateReducers';
+import {
+  cardSearchQuery,
+  mergeCardSearchCriteria,
+} from './cardSearch';
 import type {
   ApiPayload,
   CardMutationResult,
@@ -115,61 +130,8 @@ export default function App() {
   }
 
   async function handleSearchCards(criteria: CardSearchCriteria = {}) {
-    const nextCriteria = {
-      ...cardCriteria,
-      ...criteria,
-    };
-
-    if (!Object.prototype.hasOwnProperty.call(criteria, 'offset')) {
-      nextCriteria.offset = 0;
-    }
-
-    const params = new URLSearchParams();
-    const limit = criteriaValue(nextCriteria.limit);
-    const offset = criteriaValue(nextCriteria.offset);
-    const status = criteriaValue(nextCriteria.status);
-    const brand = criteriaValue(nextCriteria.brand);
-    const source = criteriaValue(nextCriteria.source);
-    const dealId = criteriaValue(nextCriteria.dealId);
-    const expiresBefore = criteriaValue(nextCriteria.expiresBefore);
-    const text = criteriaValue(nextCriteria.text);
-    const sortBy = criteriaValue(nextCriteria.sortBy);
-    const sortDir = criteriaValue(nextCriteria.sortDir);
-    const cardNumber = criteriaValue(nextCriteria.cardNumber);
-    if (limit) {
-      params.set('limit', limit);
-    }
-    if (offset && offset !== '0') {
-      params.set('offset', offset);
-    }
-    if (status) {
-      params.set('status', status);
-    }
-    if (brand) {
-      params.set('brand', brand);
-    }
-    if (source) {
-      params.set('source', source);
-    }
-    if (dealId) {
-      params.set('dealId', dealId);
-    }
-    if (expiresBefore) {
-      params.set('expiresBefore', expiresBefore);
-    }
-    if (text) {
-      params.set('text', text);
-    }
-    if (sortBy) {
-      params.set('sortBy', sortBy);
-    }
-    if (sortDir) {
-      params.set('sortDir', sortDir);
-    }
-    if (cardNumber) {
-      params.set('credential', cardNumber);
-    }
-    const query = params.toString() ? `?${params.toString()}` : '';
+    const nextCriteria = mergeCardSearchCriteria(cardCriteria, criteria);
+    const query = cardSearchQuery(nextCriteria);
     setInventoryLoading(true);
     try {
       const response = await apiFetch<ApiResponse<Card[]>>(`/api/cards${query}`);
@@ -424,14 +386,8 @@ export default function App() {
       body: payload,
       csrfToken: authenticatedAuth().csrfToken,
     });
-    setCards((current) => [
-      ...response.data.cards,
-      ...current.filter((card) => !response.data.cards.some((created) => created.id === card.id)),
-    ]);
-    setCardsPage((current) => ({
-      ...current,
-      total: current.total + response.data.cards.length,
-    }));
+    setCards((current) => mergeCards(current, response.data.cards));
+    setCardsPage((current) => incrementPageTotal(current, response.data.cards.length));
     return response;
   }
 
@@ -609,11 +565,8 @@ export default function App() {
       body: payload,
       csrfToken: authenticatedAuth().csrfToken,
     });
-    setDeals((current) => [response.data.deal, ...current.filter((deal) => deal.id !== response.data.deal.id)]);
-    setCards((current) => [
-      ...response.data.cards,
-      ...current.filter((card) => !response.data.cards.some((created) => created.id === card.id)),
-    ]);
+    setDeals((current) => upsertDeal(current, response.data.deal));
+    setCards((current) => mergeCards(current, response.data.cards));
   }
 
   async function handleDealArchiveTransition(dealId: string, action: 'archive' | 'unarchive', includeArchived: boolean) {
@@ -623,17 +576,7 @@ export default function App() {
       csrfToken: authenticatedAuth().csrfToken,
     });
     const updatedDeal = response.data.deal;
-    setDeals((current) => {
-      if (action === 'archive' && !includeArchived) {
-        return current.filter((deal) => deal.id !== updatedDeal.id);
-      }
-
-      const exists = current.some((deal) => deal.id === updatedDeal.id);
-      if (!exists) {
-        return [updatedDeal, ...current];
-      }
-      return current.map((deal) => (deal.id === updatedDeal.id ? updatedDeal : deal));
-    });
+    setDeals((current) => applyArchivedDealTransition(current, updatedDeal, action, includeArchived));
   }
 
   async function handleEditDeal(dealId: string, payload: ApiPayload) {
@@ -643,7 +586,7 @@ export default function App() {
       csrfToken: authenticatedAuth().csrfToken,
     });
     const updatedDeal = response.data.deal;
-    setDeals((current) => current.map((deal) => (deal.id === updatedDeal.id ? updatedDeal : deal)));
+    setDeals((current) => replaceDeal(current, updatedDeal));
     return response;
   }
 
@@ -653,9 +596,7 @@ export default function App() {
       body: payload,
       csrfToken: authenticatedAuth().csrfToken,
     });
-    setCards((current) =>
-      current.map((card) => (card.id === response.data.card.id ? response.data.card : card)),
-    );
+    setCards((current) => replaceCard(current, response.data.card));
   }
 
   async function handleUndoUsage(cardId: string, payload: ApiPayload) {
@@ -664,9 +605,7 @@ export default function App() {
       body: payload,
       csrfToken: authenticatedAuth().csrfToken,
     });
-    setCards((current) =>
-      current.map((card) => (card.id === response.data.card.id ? response.data.card : card)),
-    );
+    setCards((current) => replaceCard(current, response.data.card));
     return response;
   }
 
@@ -676,9 +615,7 @@ export default function App() {
       body: payload,
       csrfToken: authenticatedAuth().csrfToken,
     });
-    setCards((current) =>
-      current.map((card) => (card.id === response.data.id ? response.data : card)),
-    );
+    setCards((current) => replaceCard(current, response.data));
     return response;
   }
 
@@ -687,7 +624,7 @@ export default function App() {
       method: 'DELETE',
       csrfToken: authenticatedAuth().csrfToken,
     });
-    setCards((current) => current.filter((card) => card.id !== cardId));
+    setCards((current) => removeCard(current, cardId));
   }
 
   async function handleSellCard(cardId: string, payload: CardSalePayload) {
@@ -696,13 +633,7 @@ export default function App() {
       body: payload,
       csrfToken: authenticatedAuth().csrfToken,
     });
-    const soldCard = {
-      ...response.data.card,
-      latestSalePriceCents: payload.salePriceCents,
-    };
-    setCards((current) =>
-      current.map((card) => (card.id === soldCard.id ? soldCard : card)),
-    );
+    setCards((current) => applySoldCard(current, response.data.card, payload.salePriceCents));
   }
 
   async function handleUndoSale(cardId: string, payload: ApiPayload) {
@@ -711,11 +642,7 @@ export default function App() {
       body: payload,
       csrfToken: authenticatedAuth().csrfToken,
     });
-    setCards((current) =>
-      current.map((card) =>
-        card.id === response.data.card.id ? { ...response.data.card, latestSalePriceCents: null } : card,
-      ),
-    );
+    setCards((current) => applyUndoSale(current, response.data.card));
   }
 
   async function handleVoidCard(cardId: string, payload: ApiPayload) {
@@ -724,9 +651,7 @@ export default function App() {
       body: payload,
       csrfToken: authenticatedAuth().csrfToken,
     });
-    setCards((current) =>
-      current.map((card) => (card.id === response.data.card.id ? response.data.card : card)),
-    );
+    setCards((current) => replaceCard(current, response.data.card));
   }
 
   async function handleCardTransition(cardId: string, action: 'reserve' | 'unreserve', payload: ApiPayload = {}) {
@@ -735,9 +660,7 @@ export default function App() {
       body: payload,
       csrfToken: authenticatedAuth().csrfToken,
     });
-    setCards((current) =>
-      current.map((card) => (card.id === response.data.id ? response.data : card)),
-    );
+    setCards((current) => replaceCard(current, response.data));
   }
 
   if (loading) {
