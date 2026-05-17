@@ -1,20 +1,19 @@
 import { useEffect, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
-import { apiDownload, apiFetch } from './api';
+import { apiFetch } from './api';
 import { SetupScreen, UnlockScreen } from './authScreens';
 import {
-  defaultBackupSettings,
   defaultDataPolicy,
   defaultFeatureFlags,
   defaultSupportPolicy,
 } from './defaults';
 import { WorkSurface } from './WorkSurface';
+import { useBackupController } from './useBackupController';
 import { useInventoryController } from './useInventoryController';
 import { useReferenceValuesController } from './useReferenceValuesController';
 import type {
   ApiPayload,
   CountSummary,
-  ImportSummary,
   PortableExportPayload,
 } from './appTypes';
 import {
@@ -26,7 +25,6 @@ import type {
   AuditEvent,
   ApiResponse,
   AuthState,
-  BackupSettings,
   DataPolicy,
   FeatureFlags,
   SupportPolicy,
@@ -46,10 +44,6 @@ export default function App() {
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditError, setAuditError] = useState('');
-  const [backupSettings, setBackupSettings] = useState(defaultBackupSettings);
-  const [backupSettingsLoading, setBackupSettingsLoading] = useState(false);
-  const [backupSettingsLoaded, setBackupSettingsLoaded] = useState(false);
-  const [backupSettingsError, setBackupSettingsError] = useState('');
   const [users, setUsers] = useState<AuthUser[]>([]);
   const [userInvites, setUserInvites] = useState<UserInvite[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
@@ -80,6 +74,10 @@ export default function App() {
   const referenceValues = useReferenceValuesController({
     features,
     csrfToken: () => authenticatedAuth().csrfToken,
+  });
+  const backup = useBackupController({
+    csrfToken: () => authenticatedAuth().csrfToken,
+    onImported: inventory.loadInventory,
   });
   const { loadInventory } = inventory;
 
@@ -113,33 +111,6 @@ export default function App() {
     } finally {
       setAuditLoading(false);
     }
-  }
-
-  async function handleLoadBackupSettings() {
-    setBackupSettingsLoading(true);
-    setBackupSettingsError('');
-    try {
-      const response = await apiFetch<ApiResponse<BackupSettings>>('/api/settings/backup');
-      setBackupSettings(response.data || defaultBackupSettings);
-      setBackupSettingsLoaded(true);
-      return response;
-    } catch (caught) {
-      setBackupSettingsError(errorMessage(caught));
-      return null;
-    } finally {
-      setBackupSettingsLoading(false);
-    }
-  }
-
-  async function handleUpdateBackupSettings(payload: ApiPayload) {
-    const response = await apiFetch<ApiResponse<BackupSettings>>('/api/settings/backup', {
-      method: 'PUT',
-      body: payload,
-      csrfToken: authenticatedAuth().csrfToken,
-    });
-    setBackupSettings(response.data || defaultBackupSettings);
-    setBackupSettingsLoaded(true);
-    return response;
   }
 
   async function handleLoadUsers() {
@@ -272,40 +243,6 @@ export default function App() {
     return response;
   }
 
-  async function handleExportPlaintext(payload: ApiPayload) {
-    return apiFetch<ApiResponse<PortableExportPayload>>('/api/backup/export', {
-      method: 'POST',
-      body: payload,
-      csrfToken: authenticatedAuth().csrfToken,
-    });
-  }
-
-  async function handleExportEncrypted(payload: ApiPayload) {
-    return apiFetch<ApiResponse<PortableExportPayload>>('/api/backup/export-encrypted', {
-      method: 'POST',
-      body: payload,
-      csrfToken: authenticatedAuth().csrfToken,
-    });
-  }
-
-  async function handleExportRawDatabase(payload: ApiPayload) {
-    return apiDownload('/api/backup/db-file', {
-      method: 'POST',
-      body: payload,
-      csrfToken: authenticatedAuth().csrfToken,
-    });
-  }
-
-  async function handleImportBackup(payload: ApiPayload) {
-    const response = await apiFetch<ApiResponse<{ summary: ImportSummary }>>('/api/backup/import', {
-      method: 'POST',
-      body: payload,
-      csrfToken: authenticatedAuth().csrfToken,
-    });
-    await inventory.loadInventory();
-    return response;
-  }
-
   async function handleChangeUnlockSecret(payload: ApiPayload) {
     return apiFetch<ApiResponse<unknown>>('/api/auth/change-unlock-secret', {
       method: 'POST',
@@ -410,9 +347,7 @@ export default function App() {
     inventory.resetInventory();
     setAuditEvents([]);
     setAuditError('');
-    setBackupSettings(defaultBackupSettings);
-    setBackupSettingsLoaded(false);
-    setBackupSettingsError('');
+    backup.resetBackupState();
     setUsers([]);
     setUserInvites([]);
     setUsersLoaded(false);
@@ -477,10 +412,10 @@ export default function App() {
       auditEvents={auditEvents}
       auditLoading={auditLoading}
       auditError={auditError}
-      backupSettings={backupSettings}
-      backupSettingsLoading={backupSettingsLoading}
-      backupSettingsLoaded={backupSettingsLoaded}
-      backupSettingsError={backupSettingsError}
+      backupSettings={backup.backupSettings}
+      backupSettingsLoading={backup.backupSettingsLoading}
+      backupSettingsLoaded={backup.backupSettingsLoaded}
+      backupSettingsError={backup.backupSettingsError}
       users={users}
       userInvites={userInvites}
       usersLoading={usersLoading}
@@ -500,7 +435,7 @@ export default function App() {
       onRefresh={inventory.loadInventory}
       onLogout={handleLogout}
       onLoadAudit={handleLoadAudit}
-      onLoadBackupSettings={handleLoadBackupSettings}
+      onLoadBackupSettings={backup.loadBackupSettings}
       onLoadUsers={handleLoadUsers}
       onLoadSupportPolicy={handleLoadSupportPolicy}
       onLoadDataPolicy={handleLoadDataPolicy}
@@ -512,13 +447,13 @@ export default function App() {
       onExportAccountData={handleExportAccountData}
       onRunRetention={handleRunRetention}
       onDeleteAccountData={handleDeleteAccountData}
-      onUpdateBackupSettings={handleUpdateBackupSettings}
-      onExportPlaintext={handleExportPlaintext}
-      onExportEncrypted={handleExportEncrypted}
-      onExportRawDatabase={handleExportRawDatabase}
+      onUpdateBackupSettings={backup.updateBackupSettings}
+      onExportPlaintext={backup.exportPlaintext}
+      onExportEncrypted={backup.exportEncrypted}
+      onExportRawDatabase={backup.exportRawDatabase}
       onPreviewCsv={inventory.previewCsv}
       onConfirmCsv={inventory.confirmCsv}
-      onImportBackup={handleImportBackup}
+      onImportBackup={backup.importBackup}
       onChangeUnlockSecret={handleChangeUnlockSecret}
       onGenerateRecoveryCodes={handleGenerateRecoveryCodes}
       onLoadReferenceValues={referenceValues.loadReferenceValues}
