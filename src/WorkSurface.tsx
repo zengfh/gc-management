@@ -25,6 +25,7 @@ import {
   PlaintextJsonImportForm,
   RawDatabaseExportForm,
 } from './backupComponents';
+import { ThemeSwitcher } from './ThemeSwitcher';
 import {
   CardDetailPanel,
   DealDetailPanel,
@@ -364,6 +365,7 @@ export function WorkSurface({
             </span>
           </div>
           <div className="topbar-actions">
+            <ThemeSwitcher />
             <button type="button" className="secondary-action" onClick={onRefresh}>
               <RefreshCw aria-hidden="true" size={17} />
               Refresh
