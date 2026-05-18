@@ -13,9 +13,11 @@ import {
   Settings,
   ShieldCheck,
   Tag,
+  Upload,
   type LucideIcon,
 } from 'lucide-react';
 import { AddDealPanel } from './AddDealPanel';
+import { BulkImportPanel } from './BulkImportPanel';
 import {
   BackupExportForm,
   BackupSettingsForm,
@@ -160,6 +162,7 @@ export function WorkSurface({
 }: WorkSurfaceProps) {
   const [activeView, setActiveView] = useState<ViewId>('dashboard');
   const [showAddDeal, setShowAddDeal] = useState(false);
+  const [showBulkImport, setShowBulkImport] = useState(false);
   const [editDeal, setEditDeal] = useState<Deal | null>(null);
   const [usageCard, setUsageCard] = useState<Card | null>(null);
   const [editCard, setEditCard] = useState<Card | null>(null);
@@ -366,18 +369,24 @@ export function WorkSurface({
           </div>
           <div className="topbar-actions">
             <ThemeSwitcher />
-            <button type="button" className="secondary-action" onClick={onRefresh}>
+            <button type="button" className="secondary-action" onClick={onRefresh} title="Reload cards and deals from the server.">
               <RefreshCw aria-hidden="true" size={17} />
               Refresh
             </button>
             {userCanManageInventory ? (
-              <button type="button" className="secondary-action" onClick={() => setActiveView('backup')}>
+              <button type="button" className="secondary-action" onClick={() => setActiveView('backup')} title="Open strict CSV import and backup import/export tools.">
                 <FilePlus2 aria-hidden="true" size={17} />
                 Import
               </button>
             ) : null}
             {userCanManageInventory ? (
-              <button type="button" className="primary-action compact" onClick={() => setShowAddDeal(true)}>
+              <button type="button" className="secondary-action" onClick={() => setShowBulkImport(true)} title="Paste loose gift-card lines or upload a simple CSV/TSV file for rule-based parsing.">
+                <Upload aria-hidden="true" size={17} />
+                Bulk Import
+              </button>
+            ) : null}
+            {userCanManageInventory ? (
+              <button type="button" className="primary-action compact" onClick={() => setShowAddDeal(true)} title="Create one deal and one card with guided credential fields.">
                 <Plus aria-hidden="true" size={17} />
                 Add Deal
               </button>
@@ -637,6 +646,19 @@ export function WorkSurface({
           onLoadReferenceValues={onLoadReferenceValues}
           onUpsertReferenceValues={onUpsertReferenceValues}
           referenceValueHintsEnabled={enabledFeatures.referenceValueHints}
+          features={enabledFeatures}
+        />
+      ) : null}
+      {showBulkImport ? (
+        <BulkImportPanel
+          onClose={() => setShowBulkImport(false)}
+          onCreateDeal={async (payload) => {
+            await onCreateDeal(payload);
+            setActiveView('dashboard');
+          }}
+          referenceValues={referenceValues}
+          onLoadReferenceValues={onLoadReferenceValues}
+          onUpsertReferenceValues={onUpsertReferenceValues}
           features={enabledFeatures}
         />
       ) : null}

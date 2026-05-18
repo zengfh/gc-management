@@ -1022,6 +1022,61 @@ tbody tr:hover td {
   font-weight: 700;
 }
 
+.label-with-help {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.help-hint {
+  position: relative;
+  width: 18px;
+  height: 18px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  color: var(--color-muted-strong);
+  background: var(--color-surface-muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+  line-height: 1;
+  cursor: help;
+}
+
+.help-hint::before {
+  content: "?";
+}
+
+.help-hint:hover,
+.help-hint:focus-visible {
+  border-color: var(--color-blue);
+  color: var(--color-primary-strong);
+  background: var(--color-blue-soft);
+  outline: none;
+}
+
+.help-hint:hover::after {
+  content: attr(data-help);
+  position: absolute;
+  z-index: 20;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  width: min(260px, 70vw);
+  transform: translateX(-50%);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  color: var(--color-text);
+  background: var(--color-surface-raised);
+  box-shadow: var(--shadow-raised);
+  font-size: 0.78rem;
+  font-weight: 650;
+  line-height: 1.35;
+  text-transform: none;
+  white-space: normal;
+}
+
 .combobox-field {
   position: relative;
   display: grid;
@@ -1087,6 +1142,64 @@ tbody tr:hover td {
   border-radius: var(--radius-md);
   background: var(--color-surface);
   box-shadow: var(--shadow-panel);
+}
+
+.bulk-import-panel {
+  width: min(680px, 100%);
+}
+
+.bulk-import-textarea {
+  min-height: 220px;
+}
+
+.bulk-review-modal {
+  width: min(1180px, calc(100vw - 32px));
+}
+
+.bulk-review-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 14px 16px 0;
+}
+
+.bulk-review-summary span {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 999px;
+  padding: 0 10px;
+  color: var(--color-muted-strong);
+  background: var(--color-surface-muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.bulk-review-wrap {
+  margin: 14px 16px;
+}
+
+.bulk-review-table {
+  min-width: 1040px;
+}
+
+.bulk-review-table input,
+.bulk-review-table select {
+  min-width: 130px;
+}
+
+.bulk-review-table td {
+  vertical-align: top;
+}
+
+.bulk-warning {
+  display: block;
+  max-width: 240px;
+  margin-top: 6px;
+  color: var(--color-muted-strong);
+  white-space: normal;
+  line-height: 1.35;
 }
 
 .reference-review-body {

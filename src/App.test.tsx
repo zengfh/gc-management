@@ -1953,6 +1953,120 @@ describe('App', () => {
     );
   });
 
+  it('analyzes and confirms loose bulk gift-card import rows', async () => {
+    fetchMock()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            setupComplete: true,
+            sessionValid: true,
+            dekLoaded: true,
+            csrfToken: 'csrf_ready',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            deal_name: [],
+            source: [],
+            card_brand: [
+              { id: 1, type: 'card_brand', value: 'DoorDash', usageCount: 2 },
+              { id: 2, type: 'card_brand', value: 'Best Buy', usageCount: 2 },
+            ],
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            data: {
+              deal: { id: 40, name: 'DoorDash', source: null, inputTotalCostCents: null, rowVersion: 1 },
+              cards: [
+                {
+                  id: 41,
+                  dealId: 40,
+                  brand: 'DoorDash',
+                  credentialProfile: 'claim_code',
+                  status: 'available',
+                  faceValueCents: 5000,
+                  remainingBalanceCents: 5000,
+                  purchaseCostCents: 0,
+                },
+              ],
+            },
+          },
+          201,
+        ),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            data: {
+              deal: { id: 42, name: 'Best Buy', source: null, inputTotalCostCents: null, rowVersion: 1 },
+              cards: [
+                {
+                  id: 43,
+                  dealId: 42,
+                  brand: 'Best Buy',
+                  credentialProfile: 'merchant_number_pin',
+                  status: 'available',
+                  faceValueCents: 5000,
+                  remainingBalanceCents: 5000,
+                  purchaseCostCents: 0,
+                },
+              ],
+            },
+          },
+          201,
+        ),
+      );
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByRole('heading', { name: /dashboard/i });
+    await user.click(screen.getByRole('button', { name: /^bulk import$/i }));
+    await user.type(screen.getByLabelText(/^gift-card lines$/i), 'Doordash 50 DD-CODE\nBestbuy $50 BB-CARD BB-PIN');
+    await user.click(screen.getByRole('button', { name: /^analyze cards$/i }));
+
+    const review = await screen.findByRole('dialog', { name: /^review parsed cards$/i });
+    expect(within(review).getByLabelText(/^line 1 brand$/i)).toHaveValue('DoorDash');
+    expect(within(review).getByLabelText(/^line 2 PIN or access code$/i)).toHaveValue('BB-PIN');
+    await user.click(within(review).getByRole('button', { name: /^import 2 cards$/i }));
+
+    await waitFor(() => {
+      const dealBodies = fetchMock().mock.calls
+        .filter(([url, init]) => url === '/api/deals' && (init as RequestInit | undefined)?.method === 'POST')
+        .map(([, init]) => JSON.parse(String((init as RequestInit).body)));
+      expect(dealBodies).toEqual([
+        expect.objectContaining({
+          cards: [
+            expect.objectContaining({
+              brand: 'DoorDash',
+              credentialProfile: 'claim_code',
+              redemptionCode: 'DD-CODE',
+              faceValueCents: 5000,
+            }),
+          ],
+        }),
+        expect.objectContaining({
+          cards: [
+            expect.objectContaining({
+              brand: 'Best Buy',
+              credentialProfile: 'merchant_number_pin',
+              cardNumber: 'BB-CARD',
+              pin: 'BB-PIN',
+              faceValueCents: 5000,
+            }),
+          ],
+        }),
+      ]);
+    });
+  });
+
   it('creates a custom credential deal from Add Deal', async () => {
     fetchMock()
       .mockResolvedValueOnce(

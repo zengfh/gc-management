@@ -458,6 +458,18 @@ Requirements:
 
 ### 7.11 CSV Import
 
+Loose bulk import:
+
+- A Bulk Import action accepts many gift-card lines in one plain textarea.
+- The parser is rule-based for now and must support common examples such as `Doordash 50 abcd`, `Bestbuy $50 abcd ef`, tab-separated spreadsheet rows, code/PIN-only rows, and brand/code rows with missing value.
+- The parser can also read simple CSV/TSV files with headers such as `brand,value,code,pin,profile,source,notes` or rows without headers.
+- Analysis opens one review dialog for the whole pasted/uploaded batch, not one popup per line.
+- The review dialog shows one editable row per parsed card with line number, brand, face value, credential type, primary code/card number, secondary PIN/access code, and warnings.
+- Missing brand, value, and required credential fields are editable in the review dialog before confirm.
+- Confirm imports only when all rows are complete, then creates cards through the normal encrypted create-deal flow.
+- New brands discovered during review are added to the local hint index on import.
+- Future parsing may call an AI extraction API, but the MVP parser must remain deterministic and testable.
+
 Flow:
 
 1. Upload file.

@@ -18,7 +18,7 @@ import {
   inferNetworkFromBrand,
 } from './credentialHelpers';
 import { dollarsToCents, errorMessage } from './display';
-import { FieldError } from './formUi';
+import { FieldError, HelpHint } from './formUi';
 import {
   buildReferenceReviewItems,
   buildReferenceTouchValues,
@@ -35,6 +35,7 @@ function ReferenceCombobox({
   options,
   required = false,
   placeholder = '',
+  helpText = '',
 }: {
   label: string;
   value: string;
@@ -42,6 +43,7 @@ function ReferenceCombobox({
   options: ReferenceValue[];
   required?: boolean;
   placeholder?: string;
+  helpText?: string;
 }) {
   const generatedId = useId();
   const inputId = `reference-combobox-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${generatedId}`;
@@ -90,7 +92,10 @@ function ReferenceCombobox({
       }}
     >
       <label htmlFor={inputId}>
-        <span>{label}</span>
+        <span className="label-with-help">
+          {label}
+          {helpText ? <HelpHint text={helpText} /> : null}
+        </span>
       </label>
       <input
         id={inputId}
@@ -514,7 +519,10 @@ export function AddDealPanel({
       return (
         <div className="credential-mode-block">
           <label>
-            <span>Code / PIN / Claim code</span>
+            <span className="label-with-help">
+              Code / PIN / Claim code
+              <HelpHint text="Use the single secret needed to redeem this card, such as a DoorDash code or Amazon claim code." />
+            </span>
             <input
               className="mono"
               autoComplete="off"
@@ -533,7 +541,10 @@ export function AddDealPanel({
       return (
         <div className="credential-mode-block">
           <label>
-            <span>Barcode value</span>
+            <span className="label-with-help">
+              Barcode value
+              <HelpHint text="Enter the exact value encoded by the barcode or QR code." />
+            </span>
             <input
               className="mono"
               autoComplete="off"
@@ -542,7 +553,10 @@ export function AddDealPanel({
             />
           </label>
           <label>
-            <span>Barcode format</span>
+            <span className="label-with-help">
+              Barcode format
+              <HelpHint text="Choose the barcode symbology when you know it. Code 128 is a safe default for many merchant barcodes." />
+            </span>
             <select value={form.barcodeFormat} onChange={(event) => updateField('barcodeFormat', event.target.value)}>
               <option value="code128">Code 128</option>
               <option value="qr">QR</option>
@@ -563,7 +577,10 @@ export function AddDealPanel({
       return (
         <>
           <label>
-            <span>Card number</span>
+            <span className="label-with-help">
+              Card number
+              <HelpHint text="For prepaid cards, enter the card number printed on the card or issued digitally." />
+            </span>
             <input
               className="mono"
               inputMode="numeric"
@@ -574,7 +591,10 @@ export function AddDealPanel({
           </label>
           <div className="inline-fields">
             <label>
-              <span>Exp. month</span>
+              <span className="label-with-help">
+                Exp. month
+                <HelpHint text="Two-digit expiration month, for example 08." />
+              </span>
               <input
                 inputMode="numeric"
                 autoComplete="cc-exp-month"
@@ -583,7 +603,10 @@ export function AddDealPanel({
               />
             </label>
             <label>
-              <span>Exp. year</span>
+              <span className="label-with-help">
+                Exp. year
+                <HelpHint text="Two- or four-digit expiration year, matching the card." />
+              </span>
               <input
                 inputMode="numeric"
                 autoComplete="cc-exp-year"
@@ -607,7 +630,10 @@ export function AddDealPanel({
               </label>
               {form.saveNetworkSecurityCode ? (
                 <label>
-                  <span>Security code</span>
+                  <span className="label-with-help">
+                    Security code
+                    <HelpHint text="Only save this for a private local vault when you accept the risk. Hosted/product use should not store CVV/CID." />
+                  </span>
                   <input
                     className="mono"
                     inputMode="numeric"
@@ -624,7 +650,10 @@ export function AddDealPanel({
             </p>
           )}
           <label>
-            <span>Billing ZIP</span>
+            <span className="label-with-help">
+              Billing ZIP
+              <HelpHint text="ZIP or postal code required by some prepaid card balance and payment flows." />
+            </span>
             <input
               autoComplete="postal-code"
               value={form.billingZip}
@@ -632,7 +661,10 @@ export function AddDealPanel({
             />
           </label>
           <label>
-            <span>Cardholder name</span>
+            <span className="label-with-help">
+              Cardholder name
+              <HelpHint text="Name to use for prepaid card billing forms when the issuer requires it." />
+            </span>
             <input
               autoComplete="cc-name"
               value={form.cardholderName}
@@ -640,7 +672,10 @@ export function AddDealPanel({
             />
           </label>
           <label>
-            <span>Billing address</span>
+            <span className="label-with-help">
+              Billing address
+              <HelpHint text="Billing address for prepaid cards that require address registration." />
+            </span>
             <textarea
               value={form.billingAddress}
               onChange={(event) => updateField('billingAddress', event.target.value)}
@@ -656,14 +691,20 @@ export function AddDealPanel({
           {form.customFields.map((field, index) => (
             <div className="custom-credential-row" key={field.id}>
               <label>
-                <span>Label</span>
+                <span className="label-with-help">
+                  Label
+                  <HelpHint text="Name this custom credential field, such as Member ID, Security phrase, or Barcode." />
+                </span>
                 <input
                   value={field.label}
                   onChange={(event) => updateCustomField(field.id, { label: event.target.value })}
                 />
               </label>
               <label>
-                <span>Type</span>
+                <span className="label-with-help">
+                  Type
+                  <HelpHint text="Select how this custom field should be treated for masking, copying, and search." />
+                </span>
                 <select
                   value={field.fieldKind}
                   onChange={(event) => updateCustomField(field.id, { fieldKind: event.target.value as CredentialFieldKind })}
@@ -676,7 +717,10 @@ export function AddDealPanel({
                 </select>
               </label>
               <label>
-                <span>Value</span>
+                <span className="label-with-help">
+                  Value
+                  <HelpHint text="Enter the sensitive or display value for this custom field." />
+                </span>
                 <input
                   className="mono"
                   autoComplete="off"
@@ -706,7 +750,10 @@ export function AddDealPanel({
       return (
         <div className="credential-mode-block">
           <label>
-            <span>Card number</span>
+            <span className="label-with-help">
+              Card number
+              <HelpHint text="Merchant gift-card number. For Target-style cards, the second field is the Access Number." />
+            </span>
             <input
               className="mono"
               autoComplete="off"
@@ -715,7 +762,10 @@ export function AddDealPanel({
             />
           </label>
           <label>
-            <span>Access code</span>
+            <span className="label-with-help">
+              Access code
+              <HelpHint text="Access Number or secondary code printed with the merchant card." />
+            </span>
             <input
               className="mono"
               autoComplete="off"
@@ -733,7 +783,10 @@ export function AddDealPanel({
     return (
       <div className="credential-mode-block">
         <label>
-          <span>Card number</span>
+          <span className="label-with-help">
+            Card number
+            <HelpHint text="Merchant gift-card number or primary code for cards that also require a PIN." />
+          </span>
           <input
             className="mono"
             autoComplete="off"
@@ -742,7 +795,10 @@ export function AddDealPanel({
           />
         </label>
         <label>
-          <span>PIN</span>
+          <span className="label-with-help">
+            PIN
+            <HelpHint text="Secondary PIN required by cards like Best Buy or Home Depot." />
+          </span>
           <input
             className="mono"
             autoComplete="off"
@@ -775,16 +831,21 @@ export function AddDealPanel({
             value={form.name}
             options={referenceValues[referenceValueTypes.dealName]}
             placeholder="Optional"
+            helpText="Optional label for this purchase group. Existing entries are suggested while typing and substring matches work."
             onChange={(value) => updateField('name', value)}
           />
           <ReferenceCombobox
             label="Source"
             value={form.source}
             options={referenceValues[referenceValueTypes.source]}
+            helpText="Where the card came from, such as a marketplace, store, promotion, or manual entry."
             onChange={(value) => updateField('source', value)}
           />
           <label>
-            <span>Total cost</span>
+            <span className="label-with-help">
+              Total cost
+              <HelpHint text="Optional purchase cost for this deal. Use dollars, for example 45 or 45.00." />
+            </span>
             <input
               inputMode="decimal"
               placeholder="45.00"
@@ -798,10 +859,14 @@ export function AddDealPanel({
             value={form.cardBrand}
             options={referenceValues[referenceValueTypes.cardBrand]}
             required
+            helpText="Merchant or network brand. Existing indexed brands are suggested while typing."
             onChange={(value) => updateField('cardBrand', value)}
           />
           <label>
-            <span>Face value</span>
+            <span className="label-with-help">
+              Face value
+              <HelpHint text="Required card value in dollars. Dollar sign is optional, for example 50 or 50.00." />
+            </span>
             <input
               inputMode="decimal"
               placeholder="50.00"
@@ -811,7 +876,10 @@ export function AddDealPanel({
             />
           </label>
           <label>
-            <span>Credential type</span>
+            <span className="label-with-help">
+              Credential type
+              <HelpHint text="Choose the fields needed to redeem the card: single code, number plus PIN/access code, barcode, prepaid, or custom." />
+            </span>
             <select
               value={form.credentialProfile}
               onChange={(event) => updateCredentialProfile(event.target.value as AddDealFormState['credentialProfile'])}

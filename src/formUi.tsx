@@ -9,3 +9,9 @@ export function FieldError({ message }: { message?: string | null }) {
     </p>
   );
 }
+
+export function HelpHint({ text }: { text: string }) {
+  return (
+    <span className="help-hint" aria-hidden="true" data-help={text} />
+  );
+}

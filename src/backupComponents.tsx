@@ -13,7 +13,7 @@ import type {
 import { defaultBackupSettings } from './defaults';
 import { errorMessage, formatDateTime, formatMoney, isRecord } from './display';
 import { downloadBlobFile, downloadCsvFile, downloadJsonFile, readFileText } from './fileHelpers';
-import { FieldError } from './formUi';
+import { FieldError, HelpHint } from './formUi';
 
 type CsvImportTemplate = {
   id: string;
@@ -443,7 +443,10 @@ export function CsvImportPreviewForm({
     <form className="backup-export-form csv-preview-form" onSubmit={submitPreview}>
       <div className="import-template-row">
         <label>
-          <span>CSV template</span>
+          <span className="label-with-help">
+            CSV template
+            <HelpHint text="Download a template that matches the credential format you want to import." />
+          </span>
           <select
             value={selectedTemplateId}
             onChange={(event) => setSelectedTemplateId(event.target.value)}
@@ -461,7 +464,10 @@ export function CsvImportPreviewForm({
         </button>
       </div>
       <label>
-        <span>CSV file</span>
+        <span className="label-with-help">
+          CSV file
+          <HelpHint text="Use a GC Manager template CSV for strict preview and confirm import. For loose pasted lines, use Bulk Import." />
+        </span>
         <input type="file" accept=".csv,text/csv" onChange={updateFile} />
       </label>
       <div className="backup-actions">
