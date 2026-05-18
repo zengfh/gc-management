@@ -1,7 +1,28 @@
 # UI Modernization Research and Release Notes
 
-Status: implemented
-Date: 2026-05-12
+Status: SOTA glass refresh implemented
+Date: 2026-05-18
+
+## 2026-05-18 SOTA Glass Refresh
+
+Implemented the follow-up visual revamp for the current React app without changing the product workflow structure.
+
+- Reworked the canvas around deep dark and warm light mesh-gradient backgrounds.
+- Converted the sidebar, workspace, metric cards, and content sections to detached floating glass panels with blur, borders, radius, and layered shadows.
+- Fixed the oversized checkbox regression by scoping generic input rules away from checkbox/radio controls.
+- Replaced boolean checkboxes with accessible CSS toggle switches while preserving native checkbox semantics for keyboard and test support.
+- Updated primary and destructive actions with gradient fills, matching glow shadows, and subtle hover lift.
+- Modernized tables with separated card-like rows, softer hover states, and more legible status badges.
+- Split theme context and hook modules so the styling refresh continues to pass the React Fast Refresh lint rule.
+
+Verification:
+
+- `npm run lint`
+- `npm run typecheck -- --pretty false`
+- `npm test`
+- `npm run build`
+- `npm run test:e2e:release5`
+- Browser smoke check against the local Vite app confirmed the dark unlock surface and gradient primary action render correctly.
 
 ## Research Inputs
 
