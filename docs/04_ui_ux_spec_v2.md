@@ -462,9 +462,9 @@ Loose bulk import:
 
 - A Bulk Import action accepts many gift-card lines in one plain textarea.
 - The parser is rule-based for now and must support common examples such as `Doordash 50 abcd`, `Bestbuy $50 abcd ef`, tab-separated spreadsheet rows, code/PIN-only rows, and brand/code rows with missing value.
-- The parser can also read simple CSV/TSV files with headers such as `brand,value,code,pin,profile,source,notes` or rows without headers.
+- The parser can also read simple CSV/TSV files with headers such as `brand,value,code,pin,profile,barcode_format,exp_month,exp_year,zip,source,notes` or rows without headers.
 - Analysis opens one review dialog for the whole pasted/uploaded batch, not one popup per line.
-- The review dialog shows one editable row per parsed card with line number, brand, face value, credential type, primary code/card number, secondary PIN/access code, and warnings.
+- The review dialog shows one editable row per parsed card with line number, brand, face value, credential type, primary code/card number, secondary PIN/access code, source, notes, and warnings.
 - Missing brand, value, and required credential fields are editable in the review dialog before confirm.
 - Confirm imports only when all rows are complete, then creates the reviewed cards through one normal encrypted create-deal request so the batch is transactionally accepted or rejected.
 - New brands discovered during review are added to the local hint index on import.

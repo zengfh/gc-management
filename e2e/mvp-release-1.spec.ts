@@ -142,6 +142,33 @@ test.describe.serial('MVP Release 1 critical flows', () => {
     await expect(page.getByText(/2 cards tracked/i)).toBeVisible();
   });
 
+  test('bulk import analyzes pasted rows in one review and imports atomically', async ({ page }) => {
+    await setupOrUnlockVault(page);
+
+    await page.getByRole('button', { name: /^bulk import$/i }).click();
+    await page.getByLabel(/^gift-card lines$/i).fill([
+      'Doordash 50 DD-E2E-CODE',
+      'Bestbuy $50 BB-E2E-CARD BB-E2E-PIN',
+    ].join('\n'));
+    await page.getByRole('button', { name: /^analyze cards$/i }).click();
+
+    const review = page.getByRole('dialog', { name: /^review parsed cards$/i });
+    await expect(review).toBeVisible();
+    await expect(review.getByLabel(/^line 1 brand$/i)).toHaveValue('DoorDash');
+    await expect(review.getByLabel(/^line 2 PIN or access code$/i)).toHaveValue('BB-E2E-PIN');
+    await review.getByLabel(/^line 1 source$/i).fill('Promo');
+    await review.getByLabel(/^line 2 notes$/i).fill('Email delivery');
+    await review.getByRole('button', { name: /^import 2 cards$/i }).click();
+
+    await expect(page.getByText(/imported 2 cards/i)).toBeVisible();
+    await page.getByRole('button', { name: /^close bulk import$/i }).click();
+    await page.getByRole('button', { name: /^cards$/i }).click();
+    await expect(page.getByRole('row', { name: /available.*doordash/i })).toBeVisible();
+    await expect(page.getByRole('row', { name: /available.*best buy/i })).toBeVisible();
+    await expect(page.getByText('DD-E2E-CODE')).toHaveCount(0);
+    await expect(page.getByText('BB-E2E-PIN')).toHaveCount(0);
+  });
+
   test('plaintext export requires confirmation controls', async ({ page }) => {
     await unlockExistingVault(page);
 

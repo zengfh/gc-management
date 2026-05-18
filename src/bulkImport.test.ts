@@ -126,4 +126,59 @@ describe('bulk gift-card import parser', () => {
       ],
     });
   });
+
+  it('parses barcode CSV rows with source and notes', () => {
+    const payload = bulkImportRowToDealPayload(firstRow(
+      'brand,value,profile,barcode,barcode_format,source,notes\nStarbucks,15,barcode,123456789012,qr,Promo,Mobile wallet',
+    ));
+
+    expect(payload).toMatchObject({
+      cards: [
+        {
+          brand: 'Starbucks',
+          credentialProfile: 'barcode',
+          barcodeValue: '123456789012',
+          barcodeFormat: 'qr',
+          source: 'Promo',
+          notes: 'Mobile wallet',
+          credentials: {
+            fields: [
+              expect.objectContaining({
+                fieldKind: 'barcode_value',
+                barcodeFormat: 'qr',
+              }),
+            ],
+          },
+        },
+      ],
+    });
+  });
+
+  it('parses network prepaid CSV rows with expiration and billing ZIP', () => {
+    const payload = bulkImportRowToDealPayload(firstRow(
+      'brand,value,profile,card_number,exp_month,exp_year,zip\nVisa,100,network_prepaid,4111111111111111,08,2028,94105',
+    ));
+
+    expect(payload).toMatchObject({
+      cards: [
+        {
+          brand: 'Visa',
+          cardType: 'prepaid',
+          credentialProfile: 'network_prepaid',
+          network: 'visa',
+          cardNumber: '4111111111111111',
+          billingZip: '94105',
+          credentials: {
+            fields: [
+              expect.objectContaining({ fieldKind: 'card_number', value: '4111111111111111' }),
+              expect.objectContaining({ fieldKind: 'expiration_month', value: '08' }),
+              expect.objectContaining({ fieldKind: 'expiration_year', value: '2028' }),
+              expect.objectContaining({ fieldKind: 'billing_postal_code', value: '94105' }),
+            ],
+          },
+          faceValueCents: 10000,
+        },
+      ],
+    });
+  });
 });

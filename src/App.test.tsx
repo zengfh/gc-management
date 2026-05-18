@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
@@ -1971,7 +1971,7 @@ describe('App', () => {
         jsonResponse({
           data: {
             deal_name: [],
-            source: [],
+            source: [{ id: 3, type: 'source', value: 'Promo', usageCount: 1 }],
             card_brand: [
               { id: 1, type: 'card_brand', value: 'DoorDash', usageCount: 2 },
               { id: 2, type: 'card_brand', value: 'Best Buy', usageCount: 2 },
@@ -2023,6 +2023,8 @@ describe('App', () => {
     const review = await screen.findByRole('dialog', { name: /^review parsed cards$/i });
     expect(within(review).getByLabelText(/^line 1 brand$/i)).toHaveValue('DoorDash');
     expect(within(review).getByLabelText(/^line 2 PIN or access code$/i)).toHaveValue('BB-PIN');
+    fireEvent.change(within(review).getByLabelText(/^line 1 source$/i), { target: { value: 'Promo' } });
+    fireEvent.change(within(review).getByLabelText(/^line 2 notes$/i), { target: { value: 'Email delivery' } });
     await user.click(within(review).getByRole('button', { name: /^import 2 cards$/i }));
 
     await waitFor(() => {
@@ -2037,6 +2039,7 @@ describe('App', () => {
               brand: 'DoorDash',
               credentialProfile: 'claim_code',
               redemptionCode: 'DD-CODE',
+              source: 'Promo',
               faceValueCents: 5000,
             }),
             expect.objectContaining({
@@ -2044,6 +2047,7 @@ describe('App', () => {
               credentialProfile: 'merchant_number_pin',
               cardNumber: 'BB-CARD',
               pin: 'BB-PIN',
+              notes: 'Email delivery',
               faceValueCents: 5000,
             }),
           ],

@@ -33,6 +33,10 @@ function indexedBrandValues(referenceValues: ReferenceValueState): string[] {
   return (referenceValues?.[referenceValueTypes.cardBrand] || []).map((row) => row.value).filter(Boolean);
 }
 
+function indexedSourceValues(referenceValues: ReferenceValueState): string[] {
+  return (referenceValues?.[referenceValueTypes.source] || []).map((row) => row.value).filter(Boolean);
+}
+
 function BulkImportReviewModal({
   rows,
   referenceValues,
@@ -52,6 +56,7 @@ function BulkImportReviewModal({
 }) {
   const dialogRef = useDialogFocus(onClose);
   const brandOptions = indexedBrandValues(referenceValues);
+  const sourceOptions = indexedSourceValues(referenceValues);
   const invalidRows = rows.filter((row) => bulkImportMissingFields(row).length > 0);
   const newBrands = rows
     .map((row) => row.brand.trim())
@@ -100,6 +105,8 @@ function BulkImportReviewModal({
                 <th>Credential type</th>
                 <th>Code / number</th>
                 <th>PIN / access</th>
+                <th>Source</th>
+                <th>Notes</th>
                 <th>Warnings</th>
               </tr>
             </thead>
@@ -157,6 +164,21 @@ function BulkImportReviewModal({
                       />
                     </td>
                     <td>
+                      <input
+                        list="bulk-source-options"
+                        value={row.source}
+                        aria-label={`Line ${row.lineNumber} source`}
+                        onChange={(event) => updateRow(row.id, { source: event.target.value })}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        value={row.notes}
+                        aria-label={`Line ${row.lineNumber} notes`}
+                        onChange={(event) => updateRow(row.id, { notes: event.target.value })}
+                      />
+                    </td>
+                    <td>
                       {missing.length > 0 ? (
                         <span className="status-badge status-reserved">Needs {missing.join(', ')}</span>
                       ) : (
@@ -174,6 +196,11 @@ function BulkImportReviewModal({
           <datalist id="bulk-brand-options">
             {brandOptions.map((brand) => (
               <option key={brand} value={brand} />
+            ))}
+          </datalist>
+          <datalist id="bulk-source-options">
+            {sourceOptions.map((source) => (
+              <option key={source} value={source} />
             ))}
           </datalist>
         </div>

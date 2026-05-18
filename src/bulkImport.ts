@@ -15,6 +15,10 @@ export interface BulkImportDraft {
   credentialProfile: BulkImportProfile;
   primaryCode: string;
   secondaryCode: string;
+  expirationMonth: string;
+  expirationYear: string;
+  billingZip: string;
+  barcodeFormat: string;
   source: string;
   notes: string;
   warnings: string[];
@@ -59,6 +63,9 @@ const headerAliases: Record<string, keyof BulkImportDraft | 'profile' | 'code' |
   claim_code: 'code',
   redemptioncode: 'code',
   redemption_code: 'code',
+  barcode: 'code',
+  barcodevalue: 'code',
+  barcode_value: 'code',
   cardnumber: 'code',
   card_number: 'code',
   password: 'pin',
@@ -66,6 +73,23 @@ const headerAliases: Record<string, keyof BulkImportDraft | 'profile' | 'code' |
   pin: 'pin',
   accesscode: 'pin',
   access_code: 'pin',
+  expmonth: 'expirationMonth',
+  exp_month: 'expirationMonth',
+  expirationmonth: 'expirationMonth',
+  expiration_month: 'expirationMonth',
+  expyear: 'expirationYear',
+  exp_year: 'expirationYear',
+  expirationyear: 'expirationYear',
+  expiration_year: 'expirationYear',
+  billingzip: 'billingZip',
+  billing_zip: 'billingZip',
+  billingpostalcode: 'billingZip',
+  billing_postal_code: 'billingZip',
+  postalcode: 'billingZip',
+  postal_code: 'billingZip',
+  zip: 'billingZip',
+  barcodeformat: 'barcodeFormat',
+  barcode_format: 'barcodeFormat',
   credentialtype: 'profile',
   credential_type: 'profile',
   credentialprofile: 'profile',
@@ -263,7 +287,16 @@ function draftFromHeader(fields: string[], headers: string[], lineNumber: number
       draft.credentialProfile = canonicalProfile(value) || draft.credentialProfile;
       return;
     }
-    if (target === 'brand' || target === 'faceValue' || target === 'source' || target === 'notes') {
+    if (
+      target === 'brand'
+      || target === 'faceValue'
+      || target === 'expirationMonth'
+      || target === 'expirationYear'
+      || target === 'billingZip'
+      || target === 'barcodeFormat'
+      || target === 'source'
+      || target === 'notes'
+    ) {
       draft[target] = value;
     }
   });
@@ -285,6 +318,10 @@ function emptyDraft(lineNumber: number, rawLine: string): BulkImportDraft {
     credentialProfile: 'claim_code',
     primaryCode: '',
     secondaryCode: '',
+    expirationMonth: '',
+    expirationYear: '',
+    billingZip: '',
+    barcodeFormat: 'code128',
     source: '',
     notes: '',
     warnings: [],
@@ -443,7 +480,7 @@ function bulkImportRowToCardPayload(row: BulkImportDraft): ApiPayload {
       label: 'Barcode',
       fieldKind: 'barcode_value',
       value: row.primaryCode.trim(),
-      barcodeFormat: 'code128',
+      barcodeFormat: row.barcodeFormat || 'code128',
     });
   } else {
     credentialFields.push({
@@ -460,6 +497,32 @@ function bulkImportRowToCardPayload(row: BulkImportDraft): ApiPayload {
         value: row.secondaryCode.trim(),
       });
     }
+    if (profile === 'network_prepaid') {
+      if (row.expirationMonth.trim()) {
+        credentialFields.push({
+          fieldKey: 'expiration_month',
+          label: 'Exp. month',
+          fieldKind: 'expiration_month',
+          value: row.expirationMonth.trim(),
+        });
+      }
+      if (row.expirationYear.trim()) {
+        credentialFields.push({
+          fieldKey: 'expiration_year',
+          label: 'Exp. year',
+          fieldKind: 'expiration_year',
+          value: row.expirationYear.trim(),
+        });
+      }
+      if (row.billingZip.trim()) {
+        credentialFields.push({
+          fieldKey: 'billing_postal_code',
+          label: 'Billing ZIP',
+          fieldKind: 'billing_postal_code',
+          value: row.billingZip.trim(),
+        });
+      }
+    }
   }
 
   const network = profile === 'network_prepaid' ? inferNetworkFromBrand(row.brand) : null;
@@ -473,10 +536,11 @@ function bulkImportRowToCardPayload(row: BulkImportDraft): ApiPayload {
     },
     ...(network ? { network } : {}),
     ...(profile === 'claim_code' ? { redemptionCode: row.primaryCode.trim() } : {}),
-    ...(profile === 'barcode' ? { barcodeValue: row.primaryCode.trim(), barcodeFormat: 'code128' } : {}),
+    ...(profile === 'barcode' ? { barcodeValue: row.primaryCode.trim(), barcodeFormat: row.barcodeFormat || 'code128' } : {}),
     ...(profile !== 'claim_code' && profile !== 'barcode' ? { cardNumber: row.primaryCode.trim() } : {}),
     ...(row.secondaryCode.trim() && row.credentialProfile === 'merchant_number_pin' ? { pin: row.secondaryCode.trim() } : {}),
     ...(row.secondaryCode.trim() && row.credentialProfile === 'merchant_number_access' ? { accessCode: row.secondaryCode.trim() } : {}),
+    ...(row.billingZip.trim() && profile === 'network_prepaid' ? { billingZip: row.billingZip.trim() } : {}),
     ...(row.source.trim() ? { source: row.source.trim() } : {}),
     ...(row.notes.trim() ? { notes: row.notes.trim() } : {}),
     faceValueCents,

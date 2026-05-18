@@ -237,8 +237,8 @@ Example:
 | IMP-012 | Integration | Encrypted JSON import wrong backup passphrase | Rejected; no cards/import jobs/audit side effects |
 | IMP-013 | Integration | CSV import for each credential profile | Preview masks values; confirm encrypts fields and rebuilds blind indexes |
 | IMP-014 | Integration | Encrypted backup/restore with credential profiles | Code-only, number-plus-PIN, barcode, network prepaid, and custom fields round-trip |
-| IMP-015 | Unit | Loose bulk import parser examples | Parses `Doordash 50 abcd`, `Bestbuy $50 abcd ef`, tab-separated spreadsheet rows, code/PIN-only rows, and brand/code rows with missing value |
-| IMP-016 | UI | Bulk import review dialog | One popup shows all parsed rows; missing brand/value/credential fields are editable; confirm is disabled until complete; confirm sends one atomic multi-card create request |
+| IMP-015 | Unit | Loose bulk import parser examples | Parses `Doordash 50 abcd`, `Bestbuy $50 abcd ef`, tab-separated spreadsheet rows, code/PIN-only rows, brand/code rows with missing value, barcode rows, and network prepaid rows |
+| IMP-016 | UI | Bulk import review dialog | One popup shows all parsed rows; missing brand/value/credential fields and row source/notes are editable; confirm is disabled until complete; confirm sends one atomic multi-card create request |
 | IMP-017 | UI | Bulk import CSV/TSV file input | Simple header and no-header files populate the same review dialog as pasted text |
 | EXP-001 | E2E | Plaintext export happy path | Fresh secret + type EXPORT; file returned; no-store; audit |
 | EXP-002 | Integration | Plaintext export wrong secret | Rejected; no file |
@@ -278,6 +278,7 @@ Example:
 | E2E-004 | E2E | Use -> undo usage | Balance/status correct |
 | E2E-005 | E2E | Void card | Write-off appears; card void |
 | E2E-006 | E2E | CSV import preview -> confirm | Rows created; invalid rows blocked |
+| E2E-006A | E2E | Loose bulk import paste -> review -> confirm | One review dialog opens; source/notes edits persist; rows import without rendering full credentials |
 | E2E-007 | E2E | Plaintext export warning | Requires secret and confirmation phrase |
 | E2E-008 | E2E | Encrypted export/import smoke | Export encrypted backup; import into fresh vault using backup passphrase |
 | E2E-009 | E2E | Logout while credential revealed | Secret disappears and protected page inaccessible |
