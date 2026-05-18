@@ -5,7 +5,7 @@ import type { ApiPayload, AsyncApiHandler, VoidHandler } from './appTypes';
 import {
   analyzeBulkImportText,
   bulkImportMissingFields,
-  bulkImportRowToDealPayload,
+  bulkImportRowsToDealPayload,
   refreshBulkImportWarnings,
   type BulkImportDraft,
   type BulkImportProfile,
@@ -300,9 +300,7 @@ export function BulkImportPanel({
       if (newBrands.length > 0) {
         await onUpsertReferenceValues(newBrands);
       }
-      for (const row of rows) {
-        await onCreateDeal(bulkImportRowToDealPayload(row));
-      }
+      await onCreateDeal(bulkImportRowsToDealPayload(rows));
       setReviewOpen(false);
       setSuccess(`Imported ${rows.length} ${rows.length === 1 ? 'card' : 'cards'}.`);
       setRows([]);

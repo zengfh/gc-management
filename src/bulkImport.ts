@@ -152,7 +152,7 @@ function canonicalProfile(value: string): BulkImportProfile | null {
   if (['claimcode', 'singlecode', 'codeonly', 'redemptioncode'].includes(normalized)) {
     return 'claim_code';
   }
-  if (['numberpin', 'cardnumberpin', 'merchantnumberpin', 'pin'].includes(normalized)) {
+  if (['numberpin', 'cardnumberpin', 'merchantnumberpin'].includes(normalized)) {
     return 'merchant_number_pin';
   }
   if (['access', 'accesscode', 'numberaccess', 'merchantnumberaccess'].includes(normalized)) {
@@ -409,6 +409,19 @@ export function refreshBulkImportWarnings(row: BulkImportDraft): BulkImportDraft
 }
 
 export function bulkImportRowToDealPayload(row: BulkImportDraft): ApiPayload {
+  return {
+    cards: [bulkImportRowToCardPayload(row)],
+  };
+}
+
+export function bulkImportRowsToDealPayload(rows: BulkImportDraft[]): ApiPayload {
+  return {
+    name: rows.length === 1 ? rows[0]?.brand.trim() || 'Bulk import' : 'Bulk import',
+    cards: rows.map(bulkImportRowToCardPayload),
+  };
+}
+
+function bulkImportRowToCardPayload(row: BulkImportDraft): ApiPayload {
   const profile = row.credentialProfile === 'merchant_number_access'
     ? 'merchant_number_pin'
     : row.credentialProfile;
@@ -451,25 +464,21 @@ export function bulkImportRowToDealPayload(row: BulkImportDraft): ApiPayload {
 
   const network = profile === 'network_prepaid' ? inferNetworkFromBrand(row.brand) : null;
   return {
+    brand: row.brand.trim(),
+    cardType: profile === 'network_prepaid' ? 'prepaid' : 'merchant',
+    credentialProfile: profile,
+    credentials: {
+      profile,
+      fields: credentialFields,
+    },
+    ...(network ? { network } : {}),
+    ...(profile === 'claim_code' ? { redemptionCode: row.primaryCode.trim() } : {}),
+    ...(profile === 'barcode' ? { barcodeValue: row.primaryCode.trim(), barcodeFormat: 'code128' } : {}),
+    ...(profile !== 'claim_code' && profile !== 'barcode' ? { cardNumber: row.primaryCode.trim() } : {}),
+    ...(row.secondaryCode.trim() && row.credentialProfile === 'merchant_number_pin' ? { pin: row.secondaryCode.trim() } : {}),
+    ...(row.secondaryCode.trim() && row.credentialProfile === 'merchant_number_access' ? { accessCode: row.secondaryCode.trim() } : {}),
     ...(row.source.trim() ? { source: row.source.trim() } : {}),
     ...(row.notes.trim() ? { notes: row.notes.trim() } : {}),
-    cards: [
-      {
-        brand: row.brand.trim(),
-        cardType: profile === 'network_prepaid' ? 'prepaid' : 'merchant',
-        credentialProfile: profile,
-        credentials: {
-          profile,
-          fields: credentialFields,
-        },
-        ...(network ? { network } : {}),
-        ...(profile === 'claim_code' ? { redemptionCode: row.primaryCode.trim() } : {}),
-        ...(profile === 'barcode' ? { barcodeValue: row.primaryCode.trim(), barcodeFormat: 'code128' } : {}),
-        ...(profile !== 'claim_code' && profile !== 'barcode' ? { cardNumber: row.primaryCode.trim() } : {}),
-        ...(row.secondaryCode.trim() && row.credentialProfile === 'merchant_number_pin' ? { pin: row.secondaryCode.trim() } : {}),
-        ...(row.secondaryCode.trim() && row.credentialProfile === 'merchant_number_access' ? { accessCode: row.secondaryCode.trim() } : {}),
-        faceValueCents,
-      },
-    ],
+    faceValueCents,
   };
 }

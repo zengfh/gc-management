@@ -1983,7 +1983,7 @@ describe('App', () => {
         jsonResponse(
           {
             data: {
-              deal: { id: 40, name: 'DoorDash', source: null, inputTotalCostCents: null, rowVersion: 1 },
+              deal: { id: 40, name: 'Bulk import', source: null, inputTotalCostCents: null, rowVersion: 1 },
               cards: [
                 {
                   id: 41,
@@ -1995,21 +1995,9 @@ describe('App', () => {
                   remainingBalanceCents: 5000,
                   purchaseCostCents: 0,
                 },
-              ],
-            },
-          },
-          201,
-        ),
-      )
-      .mockResolvedValueOnce(
-        jsonResponse(
-          {
-            data: {
-              deal: { id: 42, name: 'Best Buy', source: null, inputTotalCostCents: null, rowVersion: 1 },
-              cards: [
                 {
                   id: 43,
-                  dealId: 42,
+                  dealId: 40,
                   brand: 'Best Buy',
                   credentialProfile: 'merchant_number_pin',
                   status: 'available',
@@ -2043,6 +2031,7 @@ describe('App', () => {
         .map(([, init]) => JSON.parse(String((init as RequestInit).body)));
       expect(dealBodies).toEqual([
         expect.objectContaining({
+          name: 'Bulk import',
           cards: [
             expect.objectContaining({
               brand: 'DoorDash',
@@ -2050,10 +2039,6 @@ describe('App', () => {
               redemptionCode: 'DD-CODE',
               faceValueCents: 5000,
             }),
-          ],
-        }),
-        expect.objectContaining({
-          cards: [
             expect.objectContaining({
               brand: 'Best Buy',
               credentialProfile: 'merchant_number_pin',

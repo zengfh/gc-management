@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { analyzeBulkImportText, bulkImportMissingFields, bulkImportRowToDealPayload } from './bulkImport';
+import {
+  analyzeBulkImportText,
+  bulkImportMissingFields,
+  bulkImportRowsToDealPayload,
+  bulkImportRowToDealPayload,
+} from './bulkImport';
 import { defaultReferenceValues } from './referenceValues';
 
 function firstRow(text: string) {
@@ -95,6 +100,30 @@ describe('bulk gift-card import parser', () => {
       faceValue: '25',
       credentialProfile: 'claim_code',
       primaryCode: 'DD-25',
+    });
+  });
+
+  it('builds one atomic multi-card deal payload for a batch', () => {
+    const rows = analyzeBulkImportText('Doordash 50 abcd\nBestbuy $50 card pin', defaultReferenceValues).rows;
+    const payload = bulkImportRowsToDealPayload(rows);
+
+    expect(payload).toMatchObject({
+      name: 'Bulk import',
+      cards: [
+        {
+          brand: 'DoorDash',
+          credentialProfile: 'claim_code',
+          redemptionCode: 'abcd',
+          faceValueCents: 5000,
+        },
+        {
+          brand: 'Best Buy',
+          credentialProfile: 'merchant_number_pin',
+          cardNumber: 'card',
+          pin: 'pin',
+          faceValueCents: 5000,
+        },
+      ],
     });
   });
 });

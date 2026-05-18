@@ -238,7 +238,7 @@ Example:
 | IMP-013 | Integration | CSV import for each credential profile | Preview masks values; confirm encrypts fields and rebuilds blind indexes |
 | IMP-014 | Integration | Encrypted backup/restore with credential profiles | Code-only, number-plus-PIN, barcode, network prepaid, and custom fields round-trip |
 | IMP-015 | Unit | Loose bulk import parser examples | Parses `Doordash 50 abcd`, `Bestbuy $50 abcd ef`, tab-separated spreadsheet rows, code/PIN-only rows, and brand/code rows with missing value |
-| IMP-016 | UI | Bulk import review dialog | One popup shows all parsed rows; missing brand/value/credential fields are editable; confirm is disabled until complete |
+| IMP-016 | UI | Bulk import review dialog | One popup shows all parsed rows; missing brand/value/credential fields are editable; confirm is disabled until complete; confirm sends one atomic multi-card create request |
 | IMP-017 | UI | Bulk import CSV/TSV file input | Simple header and no-header files populate the same review dialog as pasted text |
 | EXP-001 | E2E | Plaintext export happy path | Fresh secret + type EXPORT; file returned; no-store; audit |
 | EXP-002 | Integration | Plaintext export wrong secret | Rejected; no file |

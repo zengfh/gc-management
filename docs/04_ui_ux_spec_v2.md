@@ -466,7 +466,7 @@ Loose bulk import:
 - Analysis opens one review dialog for the whole pasted/uploaded batch, not one popup per line.
 - The review dialog shows one editable row per parsed card with line number, brand, face value, credential type, primary code/card number, secondary PIN/access code, and warnings.
 - Missing brand, value, and required credential fields are editable in the review dialog before confirm.
-- Confirm imports only when all rows are complete, then creates cards through the normal encrypted create-deal flow.
+- Confirm imports only when all rows are complete, then creates the reviewed cards through one normal encrypted create-deal request so the batch is transactionally accepted or rejected.
 - New brands discovered during review are added to the local hint index on import.
 - Future parsing may call an AI extraction API, but the MVP parser must remain deterministic and testable.
 
