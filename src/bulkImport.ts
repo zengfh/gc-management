@@ -331,18 +331,27 @@ function emptyDraft(lineNumber: number, rawLine: string): BulkImportDraft {
 function draftFromFields(fields: string[], delimited: boolean, lineNumber: number, rawLine: string, referenceValues?: ReferenceValueState): BulkImportDraft {
   const draft = emptyDraft(lineNumber, rawLine);
   let remaining = [...fields];
+  let brandWasMatched = false;
 
   if (delimited && remaining.length >= 3) {
     const brand = matchBrandFromField(remaining[0] || '', referenceValues);
     if (brand || !isMoneyToken(remaining[0] || '', false)) {
       draft.brand = brand || (remaining[0] || '').trim();
+      brandWasMatched = Boolean(brand);
       remaining = remaining.slice(1);
     }
   } else {
     const brandMatch = matchBrandFromText(rawLine, referenceValues);
     if (brandMatch.brand) {
       draft.brand = brandMatch.brand;
+      brandWasMatched = true;
       remaining = splitLine(brandMatch.rest).fields;
+    } else {
+      const looseValueIndex = remaining.findIndex((field) => isMoneyToken(field, true));
+      if (looseValueIndex > 0 && looseValueIndex < remaining.length - 1) {
+        draft.brand = remaining.slice(0, looseValueIndex).join(' ');
+        remaining = remaining.slice(looseValueIndex);
+      }
     }
   }
 
@@ -360,7 +369,7 @@ function draftFromFields(fields: string[], delimited: boolean, lineNumber: numbe
   }
 
   if (!draft.credentialProfile || draft.credentialProfile === 'claim_code') {
-    draft.credentialProfile = draft.brand
+    draft.credentialProfile = draft.brand && brandWasMatched
       ? inferCredentialProfileForBrand(draft.brand) as BulkImportProfile
       : (remaining.length >= 2 ? 'merchant_number_pin' : 'claim_code');
   }

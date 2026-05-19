@@ -76,6 +76,19 @@ describe('bulk gift-card import parser', () => {
     expect(bulkImportMissingFields(row)).toEqual(['face value']);
   });
 
+  it('treats unknown loose brand value code rows as brand value code', () => {
+    const row = firstRow('sdfdasf 33 323');
+
+    expect(row).toMatchObject({
+      brand: 'sdfdasf',
+      faceValue: '33',
+      credentialProfile: 'claim_code',
+      primaryCode: '323',
+      secondaryCode: '',
+    });
+    expect(bulkImportMissingFields(row)).toEqual([]);
+  });
+
   it('parses header CSV and builds an insert payload', () => {
     const payload = bulkImportRowToDealPayload(firstRow('brand,value,code,pin\nBest Buy,50,abcd,ef'));
 
