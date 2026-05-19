@@ -30,6 +30,29 @@ const sampleText = [
   'Doordash abcd',
 ].join('\n');
 
+function formatElapsedTime(milliseconds: number): string {
+  if (milliseconds < 1000) {
+    return `${Math.max(1, Math.round(milliseconds))}ms`;
+  }
+  return `${(milliseconds / 1000).toFixed(1)}s`;
+}
+
+function aiImportErrorMessage(caught: unknown, elapsedMs: number): string {
+  const error = caught as Error & { code?: string; status?: number };
+  const baseMessage = errorMessage(caught);
+  const elapsed = formatElapsedTime(elapsedMs);
+  if (error.code === 'AI_IMPORT_QUOTA_EXHAUSTED' || error.status === 429) {
+    return `AI import failed after ${elapsed}: all configured AI providers are out of quota or rate-limited. You can retry later or use Fast parse (rules). ${baseMessage}`;
+  }
+  if (error.code === 'AI_IMPORT_NOT_CONFIGURED') {
+    return `AI import is not configured on this server. Set a GC_AI_* provider key, then retry. ${baseMessage}`;
+  }
+  if (error.code === 'AI_IMPORT_FAILED' || error.status === 503) {
+    return `AI import failed after ${elapsed}: the configured providers did not return a usable parse. You can retry or use Fast parse (rules). ${baseMessage}`;
+  }
+  return `AI import failed after ${elapsed}. ${baseMessage}`;
+}
+
 function indexedBrandValues(referenceValues: ReferenceValueState): string[] {
   return (referenceValues?.[referenceValueTypes.cardBrand] || []).map((row) => row.value).filter(Boolean);
 }
@@ -342,7 +365,7 @@ export function BulkImportPanel({
       return;
     }
     setRows(analysis.rows);
-    setAnalysisSource('Fast rule-based parser (no AI)');
+    setAnalysisSource('Fast parser: no AI');
     setReviewOpen(true);
   }
 
@@ -356,22 +379,24 @@ export function BulkImportPanel({
       return;
     }
     setAiAnalyzing(true);
+    const startedAt = Date.now();
     setAiStatus('Contacting AI service. This is a live provider request; the review will show the provider and model that parsed the cards.');
     try {
       const response = await onAnalyzeAiImport({ text });
       const analysis = response.data;
       const source = `${analysis.provider || 'AI'}${analysis.model ? `/${analysis.model}` : ''}`;
+      const elapsed = formatElapsedTime(Date.now() - startedAt);
       if (analysis.rows.length === 0) {
         setRows([]);
         setError('AI did not find any gift cards to review.');
         return;
       }
       setRows(analysis.rows);
-      setAnalysisSource(source);
-      setSuccess(`AI parsed ${analysis.rows.length} cards with ${source}. Review before import.`);
+      setAnalysisSource(`AI: ${source} · ${elapsed}`);
+      setSuccess(`AI parsed ${analysis.rows.length} cards with ${source} in ${elapsed}. Review before import.`);
       setReviewOpen(true);
     } catch (caught) {
-      setError(errorMessage(caught));
+      setError(aiImportErrorMessage(caught, Date.now() - startedAt));
     } finally {
       setAiStatus('');
       setAiAnalyzing(false);

@@ -2033,6 +2033,7 @@ describe('App', () => {
     await user.click(screen.getByRole('button', { name: /^fast parse \(rules\)$/i }));
 
     const review = await screen.findByRole('dialog', { name: /^review parsed cards$/i });
+    expect(within(review).getByText(/fast parser: no ai/i)).toBeInTheDocument();
     expect(within(review).getByLabelText(/^line 1 brand$/i)).toHaveValue('DoorDash');
     expect(within(review).getByLabelText(/^line 2 PIN$/i)).toHaveValue('BB-PIN');
     fireEvent.change(within(review).getByLabelText(/^line 1 source$/i), { target: { value: 'Promo' } });
@@ -2185,7 +2186,7 @@ describe('App', () => {
     resolveAiAnalysis(jsonResponse(aiAnalysisPayload));
 
     const review = await screen.findByRole('dialog', { name: /^review parsed cards$/i });
-    expect(within(review).getAllByText(/google\/gemini-2\.5-flash/i).length).toBeGreaterThan(0);
+    expect(within(review).getByText(/AI: google\/gemini-2\.5-flash · \d+(?:ms|[.0-9]+s)/i)).toBeInTheDocument();
     await user.click(within(review).getByRole('button', { name: /^discard line 1$/i }));
     expect(within(review).queryByDisplayValue('Code/PIN')).not.toBeInTheDocument();
     expect(within(review).getByLabelText(/^line 2 brand$/i)).toHaveValue('Lowes');
@@ -2226,6 +2227,56 @@ describe('App', () => {
         ],
       });
     });
+  });
+
+  it('explains AI import provider failures without opening review', async () => {
+    fetchMock()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            setupComplete: true,
+            sessionValid: true,
+            dekLoaded: true,
+            csrfToken: 'csrf_ready',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            deal_name: [],
+            source: [],
+            card_brand: [],
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            error: {
+              code: 'AI_IMPORT_QUOTA_EXHAUSTED',
+              message: 'No configured free AI provider has quota available right now.',
+              requestId: 'req_ai_quota',
+            },
+          },
+          429,
+        ),
+      );
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByRole('heading', { name: /dashboard/i });
+    await user.click(screen.getByRole('button', { name: /^bulk import$/i }));
+    await user.type(screen.getByLabelText(/^gift-card lines$/i), 'Uber 50 NAAD XYHD QR65 U8LY');
+    await user.click(screen.getByRole('button', { name: /^analyze with ai$/i }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/out of quota or rate-limited/i);
+    expect(alert).toHaveTextContent(/fast parse \(rules\)/i);
+    expect(screen.queryByRole('dialog', { name: /^review parsed cards$/i })).not.toBeInTheDocument();
   });
 
   it('creates a custom credential deal from Add Deal', async () => {
