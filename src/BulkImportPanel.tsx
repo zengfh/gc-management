@@ -104,7 +104,7 @@ function BulkImportReviewModal({
                 <th>Value</th>
                 <th>Credential type</th>
                 <th>Code / number</th>
-                <th>PIN / access</th>
+                <th>PIN</th>
                 <th>Source</th>
                 <th>Notes</th>
                 <th>Warnings</th>
@@ -159,7 +159,7 @@ function BulkImportReviewModal({
                         className="mono"
                         autoComplete="off"
                         value={row.secondaryCode}
-                        aria-label={`Line ${row.lineNumber} PIN or access code`}
+                        aria-label={`Line ${row.lineNumber} PIN`}
                         onChange={(event) => updateRow(row.id, { secondaryCode: event.target.value })}
                       />
                     </td>

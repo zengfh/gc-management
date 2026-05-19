@@ -717,6 +717,20 @@ textarea {
   font-weight: 650;
 }
 
+.section-heading-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.section-heading .section-heading-actions .secondary-action {
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  background: var(--color-surface);
+}
+
 .table-wrap {
   overflow-x: auto;
 }
@@ -823,6 +837,13 @@ tbody tr:hover td {
     Menlo,
     Consolas,
     monospace;
+}
+
+.credential-cell {
+  max-width: 360px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.45;
 }
 
 .table-action {

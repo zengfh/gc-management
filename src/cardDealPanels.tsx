@@ -29,6 +29,44 @@ function canUndoUsage(usage: Usage): boolean {
   return !usage.isReversed && !usage.reversedAt && !usage.isWriteOff;
 }
 
+function normalizeCredentialDisplayField(field: CredentialField): CredentialField {
+  if (field.fieldKind !== 'access_code') {
+    return field;
+  }
+  return {
+    ...field,
+    fieldKind: 'pin',
+    label: 'PIN',
+  };
+}
+
+function mergeRevealedCredentialFields(credentials: RevealedCredentials): CredentialField[] {
+  const fields = (credentials.credentials?.fields || []).map(normalizeCredentialDisplayField);
+  const hasKind = (kind: CredentialFieldKind) => fields.some((field) => field.fieldKind === kind && field.value);
+  const appendIfMissing = (
+    fieldKind: CredentialFieldKind,
+    fieldKey: string,
+    label: string,
+    value: string | null | undefined,
+  ) => {
+    if (!value || hasKind(fieldKind)) {
+      return;
+    }
+    fields.push({
+      fieldKey,
+      label,
+      fieldKind,
+      value,
+      copyable: true,
+    });
+  };
+
+  appendIfMissing('card_number', 'cardNumber', 'Card number', credentials.cardNumber);
+  appendIfMissing('pin', 'pin', 'PIN', credentials.pin);
+  appendIfMissing('billing_postal_code', 'billingZip', 'Billing ZIP', credentials.billingZip);
+  return fields.filter((field) => field.value);
+}
+
 function HistoryList<T extends { id: string | number }>({
   title,
   items,
@@ -193,33 +231,9 @@ export function CardDetailPanel({
     await copyValue(field?.value ?? currentCredentials?.cardNumber, field?.label || 'Credential');
   }
 
-  const revealedCredentialFields: CredentialField[] = credentials?.credentials?.fields?.length
-    ? credentials.credentials.fields
-    : credentials
-      ? [
-          {
-            fieldKey: 'cardNumber',
-            label: 'Card number',
-            fieldKind: 'card_number' as CredentialFieldKind,
-            value: credentials.cardNumber ?? null,
-            copyable: true,
-          },
-          {
-            fieldKey: 'pin',
-            label: 'PIN',
-            fieldKind: 'pin' as CredentialFieldKind,
-            value: credentials.pin ?? null,
-            copyable: true,
-          },
-          {
-            fieldKey: 'billingZip',
-            label: 'Billing ZIP',
-            fieldKind: 'billing_postal_code' as CredentialFieldKind,
-            value: credentials.billingZip ?? null,
-            copyable: true,
-          },
-        ].filter((field) => field.value)
-      : [];
+  const revealedCredentialFields: CredentialField[] = credentials
+    ? mergeRevealedCredentialFields(credentials)
+    : [];
 
   return (
     <div className="modal-backdrop" role="presentation">

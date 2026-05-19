@@ -147,7 +147,7 @@ Labels:
 
 ### 6.3 Credential Field
 
-Release 5 note: credential fields are profile-driven. The UI must support code-only, card-number-plus-PIN, card-number-plus-access-code, barcode/QR, network prepaid, and custom credential entry instead of always rendering "Card number".
+Release 5 note: credential fields are profile-driven. The UI must support code-only, card-number-plus-PIN, barcode/QR, network prepaid, and custom credential entry instead of always rendering "Card number".
 
 Default state:
 
@@ -367,8 +367,8 @@ Batch grid columns:
 - Face value
 - Purchase cost override
 - Credential profile
-- Profile-specific credential fields, e.g. single code/PIN/claim code, card number plus PIN, card number plus access code, barcode value/format, valid-through date, cardholder name, billing ZIP/address.
-- Merchant card entry should not show PIN, access code, and billing ZIP as one combined default form. Best Buy/Home Depot-style cards need card number plus PIN; Target-style cards need card number plus access code or PIN; DoorDash-style cards need one primary code only.
+- Profile-specific credential fields, e.g. single code/PIN/claim code, card number plus PIN, barcode value/format, valid-through date, cardholder name, billing ZIP/address.
+- Merchant card entry should not show PIN and billing ZIP as one combined default form. Best Buy, Target, and Home Depot-style cards use card number plus PIN; if an issuer calls the second value an access number, the product still records and displays it as PIN. DoorDash-style cards need one primary code only.
 - Expiration
 - Format
 - Notes
@@ -464,7 +464,7 @@ Loose bulk import:
 - The parser is rule-based for now and must support common examples such as `Doordash 50 abcd`, `Bestbuy $50 abcd ef`, tab-separated spreadsheet rows, code/PIN-only rows, and brand/code rows with missing value.
 - The parser can also read simple CSV/TSV files with headers such as `brand,value,code,pin,profile,barcode_format,exp_month,exp_year,zip,source,notes` or rows without headers.
 - Analysis opens one review dialog for the whole pasted/uploaded batch, not one popup per line.
-- The review dialog shows one editable row per parsed card with line number, brand, face value, credential type, primary code/card number, secondary PIN/access code, source, notes, and warnings.
+- The review dialog shows one editable row per parsed card with line number, brand, face value, credential type, primary code/card number, secondary PIN, source, notes, and warnings.
 - Missing brand, value, and required credential fields are editable in the review dialog before confirm.
 - Confirm imports only when all rows are complete, then creates the reviewed cards through one normal encrypted create-deal request so the batch is transactionally accepted or rejected.
 - New brands discovered during review are added to the local hint index on import.

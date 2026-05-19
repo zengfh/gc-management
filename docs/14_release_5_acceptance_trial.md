@@ -19,7 +19,7 @@ The fixture is based on public issuer/help documentation about required credenti
 |---|---|---|
 | Uber-style app gift card | Uber says to enter a gift code as it appears, without spaces. | `claim_code` |
 | Best Buy-style merchant card | Best Buy online checkout requires both card number and 4-digit PIN. | `merchant_number_pin` |
-| Target-style merchant card | Target balance lookup uses a 15-digit card number plus Access Number or PIN. | `merchant_number_pin` with the access-code UI variant |
+| Target-style merchant card | Target balance lookup uses a 15-digit card number plus a secondary PIN value. | `merchant_number_pin` |
 | Starbucks-style displayed/scannable card | Starbucks eGifts have a unique Starbucks Card number and can be printed or registered for app use. | `barcode` |
 | Vanilla Visa-style prepaid card | Vanilla Visa activation/balance/online-use docs require card number, valid-through date, security code, and name/address; default app policy omits security-code storage. | `network_prepaid` |
 | Odd/local issuer | Real local issuers may use arbitrary member IDs, security phrases, or order IDs. | `custom` |

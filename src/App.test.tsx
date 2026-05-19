@@ -1699,6 +1699,18 @@ describe('App', () => {
             cardNumberLast4: '1111',
             pin: '1234',
             billingZip: '94105',
+            credentials: {
+              profile: 'merchant_number_pin',
+              fields: [
+                {
+                  fieldKey: 'pin',
+                  label: 'PIN',
+                  fieldKind: 'pin',
+                  value: '1234',
+                  copyable: true,
+                },
+              ],
+            },
           },
         }),
       )
@@ -2022,7 +2034,7 @@ describe('App', () => {
 
     const review = await screen.findByRole('dialog', { name: /^review parsed cards$/i });
     expect(within(review).getByLabelText(/^line 1 brand$/i)).toHaveValue('DoorDash');
-    expect(within(review).getByLabelText(/^line 2 PIN or access code$/i)).toHaveValue('BB-PIN');
+    expect(within(review).getByLabelText(/^line 2 PIN$/i)).toHaveValue('BB-PIN');
     fireEvent.change(within(review).getByLabelText(/^line 1 source$/i), { target: { value: 'Promo' } });
     fireEvent.change(within(review).getByLabelText(/^line 2 notes$/i), { target: { value: 'Email delivery' } });
     await user.click(within(review).getByRole('button', { name: /^import 2 cards$/i }));
@@ -2261,7 +2273,7 @@ describe('App', () => {
     });
   });
 
-  it('uses card number plus access code for Target-style Add Deal entry', async () => {
+  it('uses card number plus PIN for Target-style Add Deal entry', async () => {
     fetchMock()
       .mockResolvedValueOnce(
         jsonResponse({
@@ -2323,10 +2335,9 @@ describe('App', () => {
     await user.type(screen.getByLabelText(/^source$/i), 'Direct');
     await user.type(screen.getByLabelText(/^card brand$/i), 'Target');
     await user.type(screen.getByLabelText(/^face value$/i), '50.00');
-    expect(screen.getByLabelText(/^credential type$/i)).toHaveValue('merchant_number_access');
-    expect(screen.queryByLabelText(/^PIN$/i)).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/^credential type$/i)).toHaveValue('merchant_number_pin');
     await user.type(screen.getByLabelText(/^card number$/i), '990000000000502');
-    await user.type(screen.getByLabelText(/^access code$/i), '05512345');
+    await user.type(screen.getByLabelText(/^PIN$/i), '05512345');
     await user.click(screen.getByRole('button', { name: /^create deal$/i }));
 
     await waitFor(() => {
@@ -2351,14 +2362,15 @@ describe('App', () => {
                       value: '990000000000502',
                     },
                     {
-                      fieldKey: 'access_code',
-                      label: 'Access code',
-                      fieldKind: 'access_code',
+                      fieldKey: 'pin',
+                      label: 'PIN',
+                      fieldKind: 'pin',
                       value: '05512345',
                     },
                   ],
                 },
                 cardNumber: '990000000000502',
+                pin: '05512345',
                 faceValueCents: 5000,
               },
             ],
@@ -3356,6 +3368,113 @@ describe('App', () => {
         method: 'GET',
       }),
     );
+  });
+
+  it('toggles card credential visibility from the cards view', async () => {
+    fetchMock()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            setupComplete: true,
+            sessionValid: true,
+            dekLoaded: true,
+            csrfToken: 'csrf_ready',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            {
+              id: 1,
+              brand: 'DoorDash',
+              status: 'available',
+              faceValueCents: 3400,
+              remainingBalanceCents: 3400,
+              purchaseCostCents: 3000,
+              credentialSummary: {
+                primaryLabel: 'Redemption code',
+                primaryHint: 'Saved',
+              },
+            },
+            {
+              id: 2,
+              brand: 'Best Buy',
+              status: 'available',
+              faceValueCents: 5000,
+              remainingBalanceCents: 5000,
+              purchaseCostCents: 4500,
+              credentialSummary: {
+                primaryLabel: 'Card number',
+                primaryHint: '**** 3232',
+              },
+            },
+          ],
+          page: { total: 2, limit: 50, offset: 0, hasMore: false },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            credentials: {
+              profile: 'claim_code',
+              fields: [
+                {
+                  fieldKey: 'primary_code',
+                  label: 'Redemption code',
+                  fieldKind: 'primary_code',
+                  value: 'DD-CUSTOMER-CODE',
+                  copyable: true,
+                },
+              ],
+            },
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            credentials: {
+              profile: 'merchant_number_pin',
+              fields: [
+                {
+                  fieldKey: 'card_number',
+                  label: 'Card number',
+                  fieldKind: 'card_number',
+                  value: 'BB-CARD-NUMBER',
+                  copyable: true,
+                },
+                {
+                  fieldKey: 'pin',
+                  label: 'PIN',
+                  fieldKind: 'pin',
+                  value: 'BB-PIN',
+                  copyable: true,
+                },
+              ],
+            },
+          },
+        }),
+      );
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByRole('heading', { name: /dashboard/i });
+    await user.click(screen.getByRole('button', { name: /^cards$/i }));
+
+    expect(screen.queryByText(/DD-CUSTOMER-CODE/i)).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /^show card codes$/i }));
+
+    expect(await screen.findByText(/Redemption code: DD-CUSTOMER-CODE/i)).toBeInTheDocument();
+    expect(screen.getByText(/Card number: BB-CARD-NUMBER \| PIN: BB-PIN/i)).toBeInTheDocument();
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/cards/1/reveal', expect.objectContaining({ method: 'POST' }));
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/cards/2/reveal', expect.objectContaining({ method: 'POST' }));
+
+    await user.click(screen.getByRole('button', { name: /^hide card codes$/i }));
+    expect(screen.queryByText(/DD-CUSTOMER-CODE/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/BB-CARD-NUMBER/i)).not.toBeInTheDocument();
   });
 
   it('filters cards by status and brand from the cards view', async () => {

@@ -85,7 +85,6 @@ export type CardType = 'merchant' | 'prepaid' | 'custom';
 export type CredentialProfile =
   | 'claim_code'
   | 'merchant_number_pin'
-  | 'merchant_number_access'
   | 'barcode'
   | 'network_prepaid'
   | 'custom';

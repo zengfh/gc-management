@@ -4,7 +4,7 @@ import { inferCredentialProfileForBrand, inferNetworkFromBrand } from './credent
 import { dollarsToCents } from './display';
 import { normalizeReferenceText, referenceValueTypes } from './referenceValues';
 
-export type BulkImportProfile = CredentialProfile | 'merchant_number_access';
+export type BulkImportProfile = CredentialProfile;
 
 export interface BulkImportDraft {
   id: string;
@@ -180,7 +180,7 @@ function canonicalProfile(value: string): BulkImportProfile | null {
     return 'merchant_number_pin';
   }
   if (['access', 'accesscode', 'numberaccess', 'merchantnumberaccess'].includes(normalized)) {
-    return 'merchant_number_access';
+    return 'merchant_number_pin';
   }
   if (['barcode', 'qr', 'qrcode'].includes(normalized)) {
     return 'barcode';
@@ -394,8 +394,8 @@ export function bulkImportMissingFields(row: BulkImportDraft): string[] {
   if (!row.primaryCode.trim()) {
     missing.push('code/card number');
   }
-  if (['merchant_number_pin', 'merchant_number_access'].includes(row.credentialProfile) && !row.secondaryCode.trim()) {
-    missing.push(row.credentialProfile === 'merchant_number_access' ? 'access code' : 'PIN');
+  if (row.credentialProfile === 'merchant_number_pin' && !row.secondaryCode.trim()) {
+    missing.push('PIN');
   }
   return missing;
 }
@@ -468,9 +468,7 @@ export function bulkImportRowsToDealPayload(rows: BulkImportDraft[]): ApiPayload
 }
 
 function bulkImportRowToCardPayload(row: BulkImportDraft): ApiPayload {
-  const profile = row.credentialProfile === 'merchant_number_access'
-    ? 'merchant_number_pin'
-    : row.credentialProfile;
+  const profile = row.credentialProfile;
   const faceValueCents = dollarsToCents(row.faceValue);
   if (!faceValueCents) {
     throw new Error(`Line ${row.lineNumber} needs a face value.`);
@@ -500,9 +498,9 @@ function bulkImportRowToCardPayload(row: BulkImportDraft): ApiPayload {
     });
     if (row.secondaryCode.trim()) {
       credentialFields.push({
-        fieldKey: row.credentialProfile === 'merchant_number_access' ? 'access_code' : 'pin',
-        label: row.credentialProfile === 'merchant_number_access' ? 'Access code' : 'PIN',
-        fieldKind: row.credentialProfile === 'merchant_number_access' ? 'access_code' : 'pin',
+        fieldKey: 'pin',
+        label: 'PIN',
+        fieldKind: 'pin',
         value: row.secondaryCode.trim(),
       });
     }
@@ -547,8 +545,7 @@ function bulkImportRowToCardPayload(row: BulkImportDraft): ApiPayload {
     ...(profile === 'claim_code' ? { redemptionCode: row.primaryCode.trim() } : {}),
     ...(profile === 'barcode' ? { barcodeValue: row.primaryCode.trim(), barcodeFormat: row.barcodeFormat || 'code128' } : {}),
     ...(profile !== 'claim_code' && profile !== 'barcode' ? { cardNumber: row.primaryCode.trim() } : {}),
-    ...(row.secondaryCode.trim() && row.credentialProfile === 'merchant_number_pin' ? { pin: row.secondaryCode.trim() } : {}),
-    ...(row.secondaryCode.trim() && row.credentialProfile === 'merchant_number_access' ? { accessCode: row.secondaryCode.trim() } : {}),
+    ...(row.secondaryCode.trim() && profile === 'merchant_number_pin' ? { pin: row.secondaryCode.trim() } : {}),
     ...(row.billingZip.trim() && profile === 'network_prepaid' ? { billingZip: row.billingZip.trim() } : {}),
     ...(row.source.trim() ? { source: row.source.trim() } : {}),
     ...(row.notes.trim() ? { notes: row.notes.trim() } : {}),

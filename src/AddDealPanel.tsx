@@ -418,21 +418,13 @@ export function AddDealPanel({
       return fields;
     }
 
-    if (form.credentialProfile === 'merchant_number_access') {
-      push('card_number', 'Card number', 'card_number', form.cardNumber);
-      push('access_code', 'Access code', 'access_code', form.accessCode);
-      return fields;
-    }
-
     push('card_number', 'Card number', 'card_number', form.cardNumber);
     push('pin', 'PIN', 'pin', form.pin);
     return fields;
   }
 
   function dealPayload(totalCostCents: number | undefined, faceValueCents: number) {
-    const profile = form.credentialProfile === 'merchant_number_access'
-      ? 'merchant_number_pin'
-      : form.credentialProfile;
+    const profile = form.credentialProfile;
     const fields = credentialFields();
     const network = profile === 'network_prepaid'
       ? inferNetworkFromBrand(form.cardBrand)
@@ -746,40 +738,6 @@ export function AddDealPanel({
       );
     }
 
-    if (form.credentialProfile === 'merchant_number_access') {
-      return (
-        <div className="credential-mode-block">
-          <label>
-            <span className="label-with-help">
-              Card number
-              <HelpHint text="Merchant gift-card number. For Target-style cards, the second field is the Access Number." />
-            </span>
-            <input
-              className="mono"
-              autoComplete="off"
-              value={form.cardNumber}
-              onChange={(event) => updateField('cardNumber', event.target.value)}
-            />
-          </label>
-          <label>
-            <span className="label-with-help">
-              Access code
-              <HelpHint text="Access Number or secondary code printed with the merchant card." />
-            </span>
-            <input
-              className="mono"
-              autoComplete="off"
-              value={form.accessCode}
-              onChange={(event) => updateField('accessCode', event.target.value)}
-            />
-          </label>
-          <p className="muted-text">
-            Use this for Target-style cards that ask for a card number plus Access Number or PIN.
-          </p>
-        </div>
-      );
-    }
-
     return (
       <div className="credential-mode-block">
         <label>
@@ -797,7 +755,7 @@ export function AddDealPanel({
         <label>
           <span className="label-with-help">
             PIN
-            <HelpHint text="Secondary PIN required by cards like Best Buy or Home Depot." />
+            <HelpHint text="Secondary PIN required by cards like Best Buy, Target, or Home Depot. If the issuer calls it an access number, enter it here." />
           </span>
           <input
             className="mono"
@@ -807,7 +765,7 @@ export function AddDealPanel({
           />
         </label>
         <p className="muted-text">
-          Use this for Best Buy, Home Depot, and similar cards that ask for a gift-card number plus PIN.
+          Use this for Best Buy, Target, Home Depot, and similar cards that ask for a gift-card number plus PIN.
         </p>
       </div>
     );
@@ -878,7 +836,7 @@ export function AddDealPanel({
           <label>
             <span className="label-with-help">
               Credential type
-              <HelpHint text="Choose the fields needed to redeem the card: single code, number plus PIN/access code, barcode, prepaid, or custom." />
+              <HelpHint text="Choose the fields needed to redeem the card: single code, number plus PIN, barcode, prepaid, or custom." />
             </span>
             <select
               value={form.credentialProfile}

@@ -3,7 +3,6 @@ import type { Card } from '../shared/domain';
 export const credentialProfileOptions = [
   { value: 'claim_code', label: 'Single code / PIN' },
   { value: 'merchant_number_pin', label: 'Card number + PIN' },
-  { value: 'merchant_number_access', label: 'Card number + access code' },
   { value: 'barcode', label: 'Barcode / QR' },
   { value: 'network_prepaid', label: 'Network prepaid card' },
   { value: 'custom', label: 'Custom' },
@@ -13,7 +12,6 @@ export const customCredentialFieldKinds = [
   { value: 'primary_code', label: 'Secret code' },
   { value: 'card_number', label: 'Card number' },
   { value: 'pin', label: 'PIN' },
-  { value: 'access_code', label: 'Access code' },
   { value: 'barcode_value', label: 'Barcode' },
   { value: 'billing_postal_code', label: 'Billing ZIP' },
   { value: 'cardholder_name', label: 'Name' },
@@ -24,7 +22,6 @@ export const customCredentialFieldKinds = [
 const networkBrandPattern = /\b(visa|mastercard|master card|amex|american express|discover|vanilla|serve)\b/i;
 const claimCodeBrandPattern = /\b(amazon|apple|doordash|door dash|uber|ubereats|steam|google play|playstation|xbox)\b/i;
 const barcodeBrandPattern = /\b(starbucks|dunkin|chipotle|mcdonald|panera)\b/i;
-const accessCodeBrandPattern = /\b(target)\b/i;
 
 export function inferCredentialProfileForBrand(brand: string): string {
   if (networkBrandPattern.test(brand)) {
@@ -35,9 +32,6 @@ export function inferCredentialProfileForBrand(brand: string): string {
   }
   if (claimCodeBrandPattern.test(brand)) {
     return 'claim_code';
-  }
-  if (accessCodeBrandPattern.test(brand)) {
-    return 'merchant_number_access';
   }
   return 'merchant_number_pin';
 }

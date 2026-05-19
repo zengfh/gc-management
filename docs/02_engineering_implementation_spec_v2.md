@@ -535,7 +535,7 @@ Required:
 - Wrap DEK with KEK.
 - Store encrypted DEK and salt.
 - Keep DEK in memory only after login.
-- Encrypt all credential-profile field values, including claim codes, card numbers, merchant PIN/access codes, barcode values, permitted prepaid fields, and billing ZIP/address.
+- Encrypt all credential-profile field values, including claim codes, card numbers, merchant PINs, barcode values, permitted prepaid fields, and billing ZIP/address.
 - Use authenticated encryption such as AES-256-GCM.
 - Derive blind-index HMAC key from DEK using HKDF with domain separation.
 - Normalize profile fields before encrypt/hash/search/redact according to field kind, not only card number.

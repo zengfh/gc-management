@@ -94,7 +94,7 @@ export interface AddDealFormState {
   totalCost: string;
   cardBrand: string;
   faceValue: string;
-  credentialProfile: CredentialProfile | 'merchant_number_access';
+  credentialProfile: CredentialProfile;
   profileTouched: boolean;
   cardNumber: string;
   redemptionCode: string;

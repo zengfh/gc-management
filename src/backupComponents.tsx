@@ -320,7 +320,7 @@ function CsvPreviewTable({ rows }: { rows: CsvPreviewRow[] }) {
             <th className="numeric">Face</th>
             <th className="numeric">Cost</th>
             <th>Credential</th>
-            <th>PIN/access</th>
+            <th>PIN</th>
             <th>ZIP</th>
             <th>Errors</th>
           </tr>

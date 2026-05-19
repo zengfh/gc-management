@@ -15,7 +15,7 @@ The current implementation models a card credential as:
 That is not enough for mainstream gift cards. Real cards fall into several credential shapes:
 
 - account-redeemed claim-code cards
-- merchant stored-value cards with number plus PIN/access code
+- merchant stored-value cards with number plus PIN
 - barcode or QR cards used at point of sale
 - network prepaid cards that behave like Visa/Mastercard/Amex/Discover payment cards
 - long-tail cards with issuer-specific fields
@@ -29,7 +29,7 @@ Release 5 should replace the "card number only" mental model with explicit crede
 | Shape | Examples | Required or common fields | Product implication |
 |---|---|---|---|
 | Claim code only | Apple, Amazon, Uber/Uber Eats, DoorDash-style redeem flows | one redeemable code, sometimes called PIN/gift code/claim code | UI should label the primary field by brand, not always "Card number" |
-| Number plus PIN/access code | Best Buy, Target, Walmart, many retailer cards | gift-card number plus either PIN or access number | Store both as encrypted, copyable fields; UI should choose PIN or access-code variant, not show both by default |
+| Number plus PIN | Best Buy, Target, Walmart, many retailer cards | gift-card number plus a secondary PIN, including values some issuers call access numbers | Store both as encrypted, copyable fields; UI should use one PIN field for the secondary value |
 | Barcode or QR first | store cards, loyalty/gift wallets, some physical cards | barcode value and barcode format | Store barcode value and render scannable code on reveal; use custom fields for unusual extra secrets |
 | Network prepaid/open-loop | Visa, Mastercard, Amex, Discover prepaid/gift cards | PAN/card number, expiration, security code, sometimes billing ZIP/address/cardholder name | Needs separate security policy because CVV/CID is payment-card sensitive authentication data |
 | Custom issuer | long-tail merchants and marketplace-sourced cards | arbitrary labeled fields | Use flexible encrypted fields instead of schema changes per brand |
@@ -58,7 +58,7 @@ Release 5 should support five credential profiles:
 | Profile | Purpose | Default fields |
 |---|---|---|
 | `claim_code` | One-code cards such as Apple/Uber/Amazon/DoorDash-style cards | one primary code, even if the issuer calls it a PIN |
-| `merchant_number_pin` | Retailer cards with printed number plus PIN or access code | card number plus one secondary secret |
+| `merchant_number_pin` | Retailer cards with printed number plus PIN | card number plus one secondary secret |
 | `barcode` | Cards redeemed mainly by scanner | barcode value, barcode format |
 | `network_prepaid` | Visa/Mastercard/Amex/Discover gift cards | PAN, expiration month/year, cardholder name, billing postal code/address; security code only per policy |
 | `custom` | Long-tail issuer-specific credentials | user-defined encrypted fields |
@@ -74,7 +74,7 @@ Initial template examples:
 | Uber/Uber Eats | `claim_code` | PIN/gift code |
 | DoorDash | `claim_code` | Gift card PIN/code as the single primary secret |
 | Best Buy | `merchant_number_pin` | Gift card number, PIN |
-| Target | `merchant_number_pin` | Card number, Access Number/PIN. UI should show the access-code variant. |
+| Target | `merchant_number_pin` | Card number plus secondary PIN value. If Target calls it an Access Number, enter it in the PIN field. |
 | Walmart | `merchant_number_pin` | Card number, PIN |
 | Visa | `network_prepaid` | Card number, valid through, CVV, ZIP/address |
 | Mastercard | `network_prepaid` | Card number, valid through, CVC, ZIP/address |
@@ -85,7 +85,7 @@ Initial template examples:
 
 ### Merchant PIN vs Payment-Card Security Code
 
-Merchant gift-card PIN/access numbers are stored encrypted. They are spendable secrets, but they are not PCI card verification values.
+Merchant gift-card PIN values are stored encrypted. They are spendable secrets, but they are not PCI card verification values.
 
 Network prepaid CVV/CVC/CID/CSC values are payment-card sensitive authentication data. Official hosted or commercial product mode must not persist them.
 
@@ -101,7 +101,7 @@ Release 5 should implement:
 
 | Class | Examples | Storage |
 |---|---|---|
-| `spendable_secret` | claim code, card number, PIN/access code, barcode value | encrypted; exact-search blind index where useful |
+| `spendable_secret` | claim code, card number, PIN, barcode value | encrypted; exact-search blind index where useful |
 | `payment_sad` | CVV/CVC/CID/CSC | not stored in product mode; optional local-only encrypted field if enabled |
 | `payment_chd` | PAN/card number, cardholder name, expiration | PAN encrypted + blind index; name/expiration encrypted for this app |
 | `billing_pii` | ZIP, address, phone | encrypted |
@@ -171,7 +171,6 @@ Recommended `fieldKind` values:
 - `primary_code`
 - `card_number`
 - `pin`
-- `access_code`
 - `barcode_value`
 - `expiration_month`
 - `expiration_year`
@@ -192,7 +191,6 @@ Recommended `fieldKind` values:
   - `primary_code`
   - `card_number`
   - `pin` only if a brand uses PIN as the sole redeemable code
-  - `access_code` only if needed for duplicate checks
   - `barcode_value`
 - Do not blind-index CVV/CVC/CID/CSC, billing address, or cardholder name.
 - Preserve exact-card-number search by querying both legacy `cards.cardNumberHash` during migration and new `card_credential_fields.blindIndex`.
@@ -309,7 +307,7 @@ Replace the single "Card number" field with a Credential section:
 2. Credential profile picker:
    - Code only
    - Card number + PIN
-   - Card number + access code
+   - Card number + PIN
    - Network prepaid
    - Barcode / QR
    - Custom
@@ -320,7 +318,7 @@ Behavior:
 
 - Selecting a known brand applies a template automatically.
 - User can override the template.
-- Field labels match the brand template. Example: Target uses the access-code variant; Apple/DoorDash-style cards use a single primary code field.
+- Field labels match the product model. Example: Target uses card number plus PIN; Apple/DoorDash-style cards use a single primary code field.
 - Hidden irrelevant fields should not appear. A code-only card should not show ZIP/address.
 - Network prepaid cards show a warning near the security-code field:
   - "Security codes are not saved in hosted/product mode. Keep the physical card or original source available."
@@ -370,7 +368,6 @@ Accept columns:
 - `claimCode`
 - `cardNumber`
 - `pin`
-- `accessNumber`
 - `barcodeValue`
 - `barcodeFormat`
 - `expirationMonth`
@@ -408,7 +405,7 @@ Common:
 By profile:
 
 - `claim_code`: require one primary code.
-- `merchant_number_pin`: require card number or code; PIN or access code optional but recommended. UI should not show PIN, access code, and billing ZIP as one combined merchant-card form.
+- `merchant_number_pin`: require card number or code; PIN optional but recommended. UI should not show merchant PIN and billing ZIP as one combined merchant-card form.
 - `barcode`: require barcode value and format.
 - `network_prepaid`: require card number and expiration month/year; billing fields optional; security code follows policy.
 - `custom`: require at least one custom field.

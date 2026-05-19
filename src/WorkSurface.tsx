@@ -3,6 +3,8 @@ import {
   CircleDollarSign,
   CreditCard,
   DatabaseBackup,
+  Eye,
+  EyeOff,
   FilePlus2,
   LayoutDashboard,
   LogOut,
@@ -61,7 +63,7 @@ import {
   DealsTable,
   Metric,
 } from './tableComponents';
-import type { AuthState, Card, Deal } from '../shared/domain';
+import type { AuthState, Card, CardSearchCriteria, Deal, RevealedCredentials } from '../shared/domain';
 
 const navItems: Array<{ id: ViewId; label: string; icon: LucideIcon }> = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -174,6 +176,10 @@ export function WorkSurface({
   const [detailState, setDetailState] = useState<CardDetailState | null>(null);
   const [dealDetailState, setDealDetailState] = useState<DealDetailState | null>(null);
   const [showArchivedDeals, setShowArchivedDeals] = useState(false);
+  const [cardCredentialsVisible, setCardCredentialsVisible] = useState(false);
+  const [revealedCardCredentials, setRevealedCardCredentials] = useState<Record<string, RevealedCredentials>>({});
+  const [revealingCardCredentials, setRevealingCardCredentials] = useState(false);
+  const [cardCredentialError, setCardCredentialError] = useState('');
   const [dealError, setDealError] = useState('');
   const userCanAdmin = canAdmin(auth);
   const userCanManageInventory = canManageInventory(auth);
@@ -311,10 +317,53 @@ export function WorkSurface({
   }
 
   async function pageCards(offset: number) {
+    setCardCredentialsVisible(false);
+    setCardCredentialError('');
     await onSearchCards({
       limit: cardsPage?.limit || defaultPage.limit,
       offset,
     });
+  }
+
+  async function searchCardsAndHideCredentials(criteria: CardSearchCriteria = {}) {
+    setCardCredentialsVisible(false);
+    setCardCredentialError('');
+    await onSearchCards(criteria);
+  }
+
+  async function toggleCardCredentialVisibility() {
+    setCardCredentialError('');
+    if (cardCredentialsVisible) {
+      setCardCredentialsVisible(false);
+      return;
+    }
+
+    if (cards.length === 0) {
+      setCardCredentialsVisible(true);
+      return;
+    }
+
+    setRevealingCardCredentials(true);
+    try {
+      const missingCards = cards.filter((card) => !revealedCardCredentials[String(card.id)]);
+      const responses = await Promise.all(
+        missingCards.map(async (card) => {
+          const response = await onRevealCardCredentials(card.id);
+          return [String(card.id), response.data] as const;
+        }),
+      );
+      if (responses.length > 0) {
+        setRevealedCardCredentials((current) => ({
+          ...current,
+          ...Object.fromEntries(responses),
+        }));
+      }
+      setCardCredentialsVisible(true);
+    } catch (caught) {
+      setCardCredentialError(errorMessage(caught));
+    } finally {
+      setRevealingCardCredentials(false);
+    }
   }
 
   return (
@@ -447,12 +496,29 @@ export function WorkSurface({
           <section className="content-section">
             <div className="section-heading">
               <h2>Card Inventory</h2>
-              <span>{cards.length} records</span>
+              <div className="section-heading-actions">
+                <span>{cards.length} records</span>
+                {userCanManageInventory ? (
+                  <button
+                    type="button"
+                    className="secondary-action"
+                    onClick={toggleCardCredentialVisibility}
+                    disabled={revealingCardCredentials}
+                    title="Show or hide full card credentials for the currently loaded table page."
+                  >
+                    {cardCredentialsVisible ? <EyeOff aria-hidden="true" size={17} /> : <Eye aria-hidden="true" size={17} />}
+                    {cardCredentialsVisible ? 'Hide card codes' : revealingCardCredentials ? 'Revealing...' : 'Show card codes'}
+                  </button>
+                ) : null}
+              </div>
             </div>
-            <CardSearchForm deals={deals} onSearchCards={onSearchCards} />
+            {cardCredentialError ? <FieldError message={cardCredentialError} /> : null}
+            <CardSearchForm deals={deals} onSearchCards={searchCardsAndHideCredentials} />
             <CardsTable
               cards={cards}
               canManage={userCanManageInventory}
+              credentialsVisible={cardCredentialsVisible}
+              revealedCredentialsByCardId={revealedCardCredentials}
               onUseCard={setUsageCard}
               onViewCard={openCardDetail}
               onEditCard={setEditCard}

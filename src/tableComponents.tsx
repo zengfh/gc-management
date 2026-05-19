@@ -1,6 +1,6 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { CreditCard, ScrollText, Search, Tag, type LucideIcon } from 'lucide-react';
-import type { AuditCriteria, AuditEvent, Card, CardSearchCriteria, Deal, Page } from '../shared/domain';
+import type { AuditCriteria, AuditEvent, Card, CardSearchCriteria, Deal, Page, RevealedCredentials } from '../shared/domain';
 import { credentialSummaryText } from './credentialHelpers';
 import { errorMessage, formatDateTime, formatMoney, statusLabels } from './display';
 import { FieldError } from './formUi';
@@ -20,9 +20,61 @@ export function Metric({ label, value, icon: Icon }: { label: string; value: Rea
   );
 }
 
+function revealedCredentialText(credentials?: RevealedCredentials): string {
+  const fields = credentials?.credentials?.fields
+    ?.filter((field) => field.value)
+    .map((field) => ({
+      ...field,
+      label: field.fieldKind === 'access_code' ? 'PIN' : field.label,
+      fieldKind: field.fieldKind === 'access_code' ? 'pin' : field.fieldKind,
+    })) || [];
+  if (credentials?.cardNumber && !fields.some((field) => field.fieldKind === 'card_number')) {
+    fields.push({
+      fieldKey: 'cardNumber',
+      fieldKind: 'card_number',
+      label: 'Card number',
+      value: credentials.cardNumber,
+      copyable: true,
+    });
+  }
+  if (credentials?.pin && !fields.some((field) => field.fieldKind === 'pin')) {
+    fields.push({
+      fieldKey: 'pin',
+      fieldKind: 'pin',
+      label: 'PIN',
+      value: credentials.pin,
+      copyable: true,
+    });
+  }
+  if (credentials?.billingZip && !fields.some((field) => field.fieldKind === 'billing_postal_code')) {
+    fields.push({
+      fieldKey: 'billingZip',
+      fieldKind: 'billing_postal_code',
+      label: 'Billing ZIP',
+      value: credentials.billingZip,
+      copyable: true,
+    });
+  }
+  if (fields.length > 0) {
+    return fields
+      .map((field) => `${field.label}: ${field.value}`)
+      .join(' | ');
+  }
+
+  const legacyFields = [
+    ['Card number', credentials?.cardNumber],
+    ['PIN', credentials?.pin],
+    ['Billing ZIP', credentials?.billingZip],
+  ].filter((field): field is [string, string] => Boolean(field[1]));
+
+  return legacyFields.map(([label, value]) => `${label}: ${value}`).join(' | ');
+}
+
 export function CardsTable({
   cards,
   canManage,
+  credentialsVisible = false,
+  revealedCredentialsByCardId = {},
   onUseCard,
   onViewCard,
   onEditCard,
@@ -35,6 +87,8 @@ export function CardsTable({
 }: {
   cards: Card[];
   canManage: boolean;
+  credentialsVisible?: boolean;
+  revealedCredentialsByCardId?: Record<string, RevealedCredentials>;
   onUseCard: (card: Card) => void;
   onViewCard: (card: Card) => void;
   onEditCard: (card: Card) => void;
@@ -98,7 +152,11 @@ export function CardsTable({
                   'Not reserved'
                 )}
               </td>
-              <td className="mono">{credentialSummaryText(card)}</td>
+              <td className="mono credential-cell">
+                {credentialsVisible
+                  ? revealedCredentialText(revealedCredentialsByCardId[String(card.id)]) || credentialSummaryText(card)
+                  : credentialSummaryText(card)}
+              </td>
               <td>{card.source || 'Not recorded'}</td>
               <td>{card.expirationDate || 'Not recorded'}</td>
               <td className="numeric">{formatMoney(card.faceValueCents)}</td>

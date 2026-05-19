@@ -146,7 +146,7 @@ A redacted, append-only record of important actions.
 | CARD-04 | User can edit allowed fields | P0 | Disallowed edits are rejected based on status; changes are audited |
 | CARD-05 | System prevents duplicate active cards when indexed primary credential and brand match | P0 | Normalized code/number/barcode variants match; conflict is surfaced clearly |
 | CARD-06 | Terminal cards are protected | P0 | Sold, used-up, and void cards allow notes-only edits unless an explicit admin correction feature is later added |
-| CARD-07 | Card credentials are masked by default | P0 | Full codes, card numbers, merchant PIN/access codes, barcode values, permitted network prepaid fields, and billing ZIP/address are never displayed by default |
+| CARD-07 | Card credentials are masked by default | P0 | Full codes, card numbers, merchant PINs, barcode values, permitted network prepaid fields, and billing ZIP/address are never displayed by default |
 
 ### 8.4 Card Lifecycle
 

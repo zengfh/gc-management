@@ -70,7 +70,7 @@ const labelByFieldKey: Record<string, string> = {
   gift_code: 'Gift code',
   card_number: 'Card number',
   pin: 'PIN',
-  access_code: 'Access code',
+  access_code: 'PIN',
   barcode_value: 'Barcode',
   expiration_month: 'Exp. month',
   expiration_year: 'Exp. year',
@@ -90,7 +90,7 @@ const kindByFieldKey: Record<string, CredentialFieldKind> = {
   card_number: 'card_number',
   account_number: 'card_number',
   pin: 'pin',
-  access_code: 'access_code',
+  access_code: 'pin',
   barcode: 'barcode_value',
   barcode_value: 'barcode_value',
   expiration_month: 'expiration_month',
@@ -368,6 +368,9 @@ function displayHintFor(kind: CredentialFieldKind, value: unknown): string {
 }
 
 function inferKind(fieldKey: string, explicitKind: unknown): CredentialFieldKind {
+  if (explicitKind === 'access_code') {
+    return 'pin';
+  }
   if (typeof explicitKind === 'string' && credentialFieldKinds.includes(explicitKind as CredentialFieldKind)) {
     return explicitKind as CredentialFieldKind;
   }
@@ -435,8 +438,7 @@ function legacyFieldsFromInput(input: CredentialInput, profile: CredentialProfil
 
   push('card_number', 'card_number', input.cardNumber, 'Card number', 10);
   push('primary_code', 'primary_code', primaryCode, 'Redemption code', 15);
-  push('pin', 'pin', input.pin, 'PIN', 20);
-  push('access_code', 'access_code', input.accessCode, 'Access code', 30);
+  push('pin', 'pin', input.pin ?? input.accessCode, 'PIN', 20);
   push('barcode_value', 'barcode_value', input.barcodeValue, 'Barcode', 40, {
     barcodeFormat: input.barcodeFormat,
   });
@@ -473,7 +475,9 @@ function prepareCredentialField(
   }
 
   const profileOrder = profileSortOrder[profile] || {};
-  const label = String(rawField.label || labelByFieldKey[fieldKey] || humanizeFieldKey(fieldKey)).trim();
+  const label = fieldKind === 'pin' && fieldKey === 'access_code'
+    ? 'PIN'
+    : String(rawField.label || labelByFieldKey[fieldKey] || humanizeFieldKey(fieldKey)).trim();
   const displayLastFour = displayLast4(fieldKind, value);
   return {
     fieldKey,
@@ -629,18 +633,65 @@ export function loadCredentialFields(db: Database.Database, accountId: number, c
     .all(accountId, cardId) as CredentialFieldRow[];
 }
 
-export function revealCredentialPayload(db: Database.Database, card: { id: number; credentialProfile?: string | null }, auth: AuthContext) {
+export function revealCredentialPayload(
+  db: Database.Database,
+  card: {
+    id: number;
+    credentialProfile?: string | null;
+    cardNumber?: string | null;
+    pin?: string | null;
+    billingZip?: string | null;
+  },
+  auth: AuthContext,
+) {
   const rows = loadCredentialFields(db, auth.accountId, card.id);
   const fields = rows.map((row) => ({
     fieldKey: row.fieldKey,
-    label: row.label,
-    fieldKind: row.fieldKind,
+    label: row.fieldKind === 'access_code' ? 'PIN' : row.label,
+    fieldKind: row.fieldKind === 'access_code' ? 'pin' : row.fieldKind,
     sensitivityClass: row.sensitivityClass,
     value: row.encryptedValue ? decryptString(row.encryptedValue, auth.dek) : null,
     displayHint: row.displayHint,
     barcodeFormat: row.barcodeFormat,
     copyable: row.copyable === 1,
   }));
+  const hasKind = (kind: CredentialFieldKind) => fields.some((field) => field.fieldKind === kind && field.value);
+  if (card.cardNumber && !hasKind('card_number')) {
+    fields.push({
+      fieldKey: 'card_number',
+      label: 'Card number',
+      fieldKind: 'card_number',
+      sensitivityClass: 'spendable_secret',
+      value: decryptString(card.cardNumber, auth.dek),
+      displayHint: 'Saved',
+      barcodeFormat: null,
+      copyable: true,
+    });
+  }
+  if (card.pin && !hasKind('pin')) {
+    fields.push({
+      fieldKey: 'pin',
+      label: 'PIN',
+      fieldKind: 'pin',
+      sensitivityClass: 'spendable_secret',
+      value: decryptString(card.pin, auth.dek),
+      displayHint: 'Saved',
+      barcodeFormat: null,
+      copyable: true,
+    });
+  }
+  if (card.billingZip && !hasKind('billing_postal_code')) {
+    fields.push({
+      fieldKey: 'billingZip',
+      label: 'Billing ZIP',
+      fieldKind: 'billing_postal_code',
+      sensitivityClass: 'billing_pii',
+      value: decryptString(card.billingZip, auth.dek),
+      displayHint: 'Saved',
+      barcodeFormat: null,
+      copyable: true,
+    });
+  }
 
   return {
     profile: card.credentialProfile || defaultProfile,
