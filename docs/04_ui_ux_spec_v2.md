@@ -468,7 +468,8 @@ Loose bulk import:
 - Missing brand, value, and required credential fields are editable in the review dialog before confirm.
 - Confirm imports only when all rows are complete, then creates the reviewed cards through one normal encrypted create-deal request so the batch is transactionally accepted or rejected.
 - New brands discovered during review are added to the local hint index on import.
-- Future parsing may call an AI extraction API, but the MVP parser must remain deterministic and testable.
+- AI analysis is available as a separate action for messy pasted text. It sends the pasted text to the configured server-side AI provider, returns editable review rows, and never writes to the database until the user confirms.
+- Server-side AI model selection checks configured providers at most once per day and prefers free models. If all configured free providers are out of quota, the UI must show a clear error and leave the pasted text intact.
 
 Flow:
 

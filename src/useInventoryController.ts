@@ -23,6 +23,7 @@ import {
   cardSearchQuery,
   mergeCardSearchCriteria,
 } from './cardSearch';
+import type { BulkImportAnalysis } from './bulkImport';
 import { defaultPage } from './defaults';
 import type {
   ApiResponse,
@@ -126,6 +127,14 @@ export function useInventoryController({ csrfToken }: InventoryControllerOptions
     setCards((current) => mergeCards(current, response.data.cards));
     setCardsPage((current) => incrementPageTotal(current, response.data.cards.length));
     return response;
+  }
+
+  async function analyzeAiImport(payload: { text: string }) {
+    return apiFetch<ApiResponse<BulkImportAnalysis & { provider?: string; model?: string }>>('/api/ai-import/analyze', {
+      method: 'POST',
+      body: payload,
+      csrfToken: csrfToken(),
+    });
   }
 
   async function createDeal(payload: ApiPayload) {
@@ -246,6 +255,7 @@ export function useInventoryController({ csrfToken }: InventoryControllerOptions
     revealCardCredentials,
     previewCsv,
     confirmCsv,
+    analyzeAiImport,
     createDeal,
     dealArchiveTransition,
     editDeal,

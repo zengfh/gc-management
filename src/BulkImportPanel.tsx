@@ -7,6 +7,7 @@ import {
   bulkImportMissingFields,
   bulkImportRowsToDealPayload,
   refreshBulkImportWarnings,
+  type BulkImportAnalysis,
   type BulkImportDraft,
   type BulkImportProfile,
 } from './bulkImport';
@@ -232,6 +233,7 @@ function BulkImportReviewModal({
 export function BulkImportPanel({
   onClose,
   onCreateDeal,
+  onAnalyzeAiImport,
   referenceValues,
   onLoadReferenceValues = async () => referenceValues,
   onUpsertReferenceValues,
@@ -239,6 +241,7 @@ export function BulkImportPanel({
 }: {
   onClose: VoidHandler;
   onCreateDeal: AsyncApiHandler<ApiPayload, unknown>;
+  onAnalyzeAiImport: AsyncApiHandler<{ text: string }, { data: BulkImportAnalysis & { provider?: string; model?: string } }>;
   referenceValues: ReferenceValueState;
   onLoadReferenceValues?: () => Promise<ReferenceValueState>;
   onUpsertReferenceValues: (values?: ReferenceValue[]) => Promise<ReferenceValue[]>;
@@ -251,6 +254,7 @@ export function BulkImportPanel({
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [aiAnalyzing, setAiAnalyzing] = useState(false);
   const dialogRef = useDialogFocus(onClose);
   const loadReferenceValuesRef = useRef(onLoadReferenceValues);
   const canImport = features.csvImport;
@@ -306,6 +310,33 @@ export function BulkImportPanel({
     setReviewOpen(true);
   }
 
+  async function analyzeWithAi() {
+    setError('');
+    setSuccess('');
+    if (!text.trim()) {
+      setRows([]);
+      setError('Paste gift-card text before running AI analysis.');
+      return;
+    }
+    setAiAnalyzing(true);
+    try {
+      const response = await onAnalyzeAiImport({ text });
+      const analysis = response.data;
+      if (analysis.rows.length === 0) {
+        setRows([]);
+        setError('AI did not find any gift cards to review.');
+        return;
+      }
+      setRows(analysis.rows);
+      setSuccess(`AI parsed ${analysis.rows.length} cards with ${analysis.provider || 'AI'}${analysis.model ? `/${analysis.model}` : ''}. Review before import.`);
+      setReviewOpen(true);
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setAiAnalyzing(false);
+    }
+  }
+
   async function confirmImport() {
     setError('');
     setSuccess('');
@@ -359,7 +390,7 @@ export function BulkImportPanel({
           <label>
             <span className="label-with-help">
               Gift-card lines
-              <HelpHint text="One card per line. Examples: Doordash 50 abcd, Bestbuy $50 abcd ef, or tab-separated brand value code. Missing brand/value can be filled in the review popup." />
+              <HelpHint text="One card per line for rule-based analysis, or paste messy text and use AI analysis. AI analysis sends the pasted card text to the configured AI provider and still requires review before import." />
             </span>
             <textarea
               className="bulk-import-textarea mono"
@@ -390,6 +421,10 @@ export function BulkImportPanel({
             <button type="button" className="primary-action" onClick={analyze} disabled={!canImport || !text.trim()}>
               <Upload aria-hidden="true" size={17} />
               Analyze cards
+            </button>
+            <button type="button" className="secondary-action" onClick={analyzeWithAi} disabled={!canImport || !text.trim() || aiAnalyzing}>
+              <FilePlus2 aria-hidden="true" size={17} />
+              {aiAnalyzing ? 'Asking AI...' : 'Analyze with AI'}
             </button>
           </div>
         </div>

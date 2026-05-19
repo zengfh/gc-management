@@ -138,6 +138,7 @@ export function WorkSurface({
   onExportRawDatabase,
   onPreviewCsv,
   onConfirmCsv,
+  onAnalyzeAiImport,
   onImportBackup,
   onChangeUnlockSecret,
   onGenerateRecoveryCodes,
@@ -722,6 +723,7 @@ export function WorkSurface({
             await onCreateDeal(payload);
             setActiveView('dashboard');
           }}
+          onAnalyzeAiImport={onAnalyzeAiImport}
           referenceValues={referenceValues}
           onLoadReferenceValues={onLoadReferenceValues}
           onUpsertReferenceValues={onUpsertReferenceValues}

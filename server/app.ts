@@ -17,6 +17,7 @@ import { createRequestLogger, logRequestError } from './observability/requestLog
 import { createRequestMetrics, createRequestMetricsMiddleware } from './observability/requestMetrics.js';
 import { createAuditRouter } from './routes/audit.js';
 import { createAuthRouter } from './routes/auth.js';
+import { createAiImportRouter } from './routes/aiImport.js';
 import { createBackupRouter } from './routes/backup.js';
 import { createCardsRouter } from './routes/cards.js';
 import { createAdminRouter } from './routes/admin.js';
@@ -221,6 +222,7 @@ export function createApp({ db, logger = console, serveStatic, staticDir = defau
 
   if (db) {
     app.use('/api/admin', createAdminRouter({ db }));
+    app.use('/api/ai-import', createAiImportRouter({ db }));
     app.use('/api/auth', createAuthRouter({ db, loginAttempts: createSqliteLoginAttemptStore({ db }) }));
     app.use('/api/audit', createAuditRouter({ db }));
     app.use('/api/backup', createBackupRouter({ db }));

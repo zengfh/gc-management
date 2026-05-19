@@ -21,6 +21,7 @@ import type {
   SupportPolicy,
   UserInvite,
 } from '../shared/domain';
+import type { BulkImportAnalysis } from './bulkImport';
 
 export type ViewId = 'dashboard' | 'cards' | 'deals' | 'backup' | 'audit' | 'settings';
 
@@ -183,6 +184,7 @@ export interface WorkSurfaceProps {
   onExportRawDatabase: AsyncApiHandler<ApiPayload, { blob: Blob; filename: string | null }>;
   onPreviewCsv: AsyncApiHandler<{ csv: string }, ApiResponse<CsvPreviewPayload>>;
   onConfirmCsv: AsyncApiHandler<{ csv: string }, ApiResponse<CsvImportResult>>;
+  onAnalyzeAiImport: AsyncApiHandler<{ text: string }, ApiResponse<BulkImportAnalysis & { provider?: string; model?: string }>>;
   onImportBackup: AsyncApiHandler<ApiPayload, ApiResponse<{ summary: ImportSummary }>>;
   onChangeUnlockSecret: AsyncApiHandler<ApiPayload, ApiResponse<unknown>>;
   onGenerateRecoveryCodes: AsyncApiHandler<{ currentUnlockSecret: string }, { codes: string[]; activeCount: number }>;

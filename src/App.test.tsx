@@ -2068,6 +2068,140 @@ describe('App', () => {
     });
   });
 
+  it('uses AI analysis for messy bulk gift-card import text', async () => {
+    fetchMock()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            setupComplete: true,
+            sessionValid: true,
+            dekLoaded: true,
+            csrfToken: 'csrf_ready',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            deal_name: [],
+            source: [],
+            card_brand: [
+              { id: 1, type: 'card_brand', value: 'Lowes', usageCount: 1 },
+              { id: 2, type: 'card_brand', value: 'Uber', usageCount: 1 },
+            ],
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            provider: 'google',
+            model: 'gemini-2.5-flash',
+            rows: [
+              {
+                id: 'ai-1',
+                lineNumber: 1,
+                rawLine: 'Lowes 250 6006491727039277301 7640 05/02/2026',
+                brand: 'Lowes',
+                faceValue: '250',
+                credentialProfile: 'merchant_number_pin',
+                primaryCode: '6006491727039277301',
+                secondaryCode: '7640',
+                expirationMonth: '',
+                expirationYear: '',
+                billingZip: '',
+                barcodeFormat: 'code128',
+                source: '',
+                notes: 'Memo: 05/02/2026',
+                warnings: ['AI parsed with google/gemini-2.5-flash; verify before import.'],
+              },
+              {
+                id: 'ai-2',
+                lineNumber: 2,
+                rawLine: 'Uber 50 NAAD XYHD QR65 U8LY',
+                brand: 'Uber',
+                faceValue: '50',
+                credentialProfile: 'claim_code',
+                primaryCode: 'NAADXYHDQR65U8LY',
+                secondaryCode: '',
+                expirationMonth: '',
+                expirationYear: '',
+                billingZip: '',
+                barcodeFormat: 'code128',
+                source: '',
+                notes: '',
+                warnings: ['AI parsed with google/gemini-2.5-flash; verify before import.'],
+              },
+            ],
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            data: {
+              deal: { id: 44, name: 'Bulk import', source: null, inputTotalCostCents: null, rowVersion: 1 },
+              cards: [],
+            },
+          },
+          201,
+        ),
+      );
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByRole('heading', { name: /dashboard/i });
+    await user.click(screen.getByRole('button', { name: /^bulk import$/i }));
+    await user.type(
+      screen.getByLabelText(/^gift-card lines$/i),
+      'Lowes\t250\t\t6006491727039277301\t7640\t05/02/2026\nUber\t50\t\tNAAD XYHD QR65 U8LY',
+    );
+    await user.click(screen.getByRole('button', { name: /^analyze with ai$/i }));
+
+    const review = await screen.findByRole('dialog', { name: /^review parsed cards$/i });
+    expect(within(review).getByLabelText(/^line 1 brand$/i)).toHaveValue('Lowes');
+    expect(within(review).getByLabelText(/^line 1 PIN$/i)).toHaveValue('7640');
+    expect(within(review).getByLabelText(/^line 1 notes$/i)).toHaveValue('Memo: 05/02/2026');
+    expect(within(review).getByLabelText(/^line 2 code or card number$/i)).toHaveValue('NAADXYHDQR65U8LY');
+    await user.click(within(review).getByRole('button', { name: /^import 2 cards$/i }));
+
+    await waitFor(() => {
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        '/api/ai-import/analyze',
+        expect.objectContaining({
+          method: 'POST',
+          body: expect.stringContaining('6006491727039277301'),
+        }),
+      );
+      const dealCall = fetchMock().mock.calls.find(([url, init]) =>
+        url === '/api/deals' && (init as RequestInit | undefined)?.method === 'POST');
+      expect(dealCall).toBeTruthy();
+      const body = JSON.parse(String((dealCall?.[1] as RequestInit).body));
+      expect(body).toMatchObject({
+        name: 'Bulk import',
+        cards: [
+          expect.objectContaining({
+            brand: 'Lowes',
+            credentialProfile: 'merchant_number_pin',
+            cardNumber: '6006491727039277301',
+            pin: '7640',
+            notes: 'Memo: 05/02/2026',
+            faceValueCents: 25000,
+          }),
+          expect.objectContaining({
+            brand: 'Uber',
+            credentialProfile: 'claim_code',
+            redemptionCode: 'NAADXYHDQR65U8LY',
+            faceValueCents: 5000,
+          }),
+        ],
+      });
+    });
+  });
+
   it('creates a custom credential deal from Add Deal', async () => {
     fetchMock()
       .mockResolvedValueOnce(

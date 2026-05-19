@@ -257,6 +257,7 @@ export default function App() {
       onExportRawDatabase={backup.exportRawDatabase}
       onPreviewCsv={inventory.previewCsv}
       onConfirmCsv={inventory.confirmCsv}
+      onAnalyzeAiImport={inventory.analyzeAiImport}
       onImportBackup={backup.importBackup}
       onChangeUnlockSecret={handleChangeUnlockSecret}
       onGenerateRecoveryCodes={handleGenerateRecoveryCodes}
