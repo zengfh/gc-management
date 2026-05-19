@@ -7,20 +7,26 @@ describe('AI import routes', () => {
   const appOrigin = 'http://localhost:5173';
   let db;
   let agent;
-  let originalGoogleKey;
+  let originalAiEnv;
 
   beforeEach(() => {
     db = openDatabase({ filename: ':memory:' });
     agent = request.agent(createApp({ db }));
-    originalGoogleKey = process.env.GC_AI_GOOGLE_API_KEY;
+    originalAiEnv = {
+      GC_AI_GOOGLE_API_KEY: process.env.GC_AI_GOOGLE_API_KEY,
+      GC_AI_OPENROUTER_API_KEY: process.env.GC_AI_OPENROUTER_API_KEY,
+      GC_AI_GROQ_API_KEY: process.env.GC_AI_GROQ_API_KEY,
+    };
   });
 
   afterEach(() => {
     db.close();
-    if (originalGoogleKey == null) {
-      delete process.env.GC_AI_GOOGLE_API_KEY;
-    } else {
-      process.env.GC_AI_GOOGLE_API_KEY = originalGoogleKey;
+    for (const [key, value] of Object.entries(originalAiEnv)) {
+      if (value == null) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
     }
     vi.restoreAllMocks();
   });
@@ -127,12 +133,32 @@ describe('AI import routes', () => {
     });
     const auditRows = db.prepare("SELECT * FROM audit_log WHERE action = 'ai_import.analyze'").all();
     expect(auditRows).toHaveLength(1);
+    const metadata = JSON.parse(auditRows[0].metadata);
+    expect(metadata).toMatchObject({
+      outcome: 'success',
+      provider: 'google',
+      model: 'gemini-2.5-flash',
+      rowCount: 3,
+      textLength: expect.any(Number),
+      elapsedMs: expect.any(Number),
+    });
     expect(JSON.stringify(auditRows)).not.toContain('6006491727039277301');
     expect(JSON.stringify(auditRows)).not.toContain('NAAD');
+
+    const auditResponse = await agent.get('/api/audit').query({
+      entityType: 'import',
+      action: 'ai_import.analyze',
+    });
+    expect(auditResponse.status).toBe(200);
+    expect(auditResponse.body.data[0].metadataSummary).toMatch(/success via google\/gemini-2\.5-flash.*3 rows/);
+    expect(JSON.stringify(auditResponse.body)).not.toContain('6006491727039277301');
+    expect(JSON.stringify(auditResponse.body)).not.toContain('NAAD');
   });
 
   it('returns a clear error when no AI provider key is configured', async () => {
     delete process.env.GC_AI_GOOGLE_API_KEY;
+    delete process.env.GC_AI_OPENROUTER_API_KEY;
+    delete process.env.GC_AI_GROQ_API_KEY;
     const csrfToken = await setupOwner();
 
     const response = await postWithCsrf('/api/ai-import/analyze', csrfToken).send({
@@ -141,5 +167,16 @@ describe('AI import routes', () => {
 
     expect(response.status).toBe(503);
     expect(response.body.error.code).toBe('AI_IMPORT_NOT_CONFIGURED');
+    const auditRows = db.prepare("SELECT * FROM audit_log WHERE action = 'ai_import.analyze'").all();
+    expect(auditRows).toHaveLength(1);
+    const metadata = JSON.parse(auditRows[0].metadata);
+    expect(metadata).toMatchObject({
+      outcome: 'failure',
+      errorCode: 'AI_IMPORT_NOT_CONFIGURED',
+      errorStatus: 503,
+      textLength: expect.any(Number),
+      elapsedMs: expect.any(Number),
+    });
+    expect(JSON.stringify(auditRows)).not.toContain('ABCD');
   });
 });

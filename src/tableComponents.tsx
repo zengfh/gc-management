@@ -378,6 +378,7 @@ export function AuditTable({ events }: { events: AuditEvent[] }) {
             <th>Entity</th>
             <th>Entity ID</th>
             <th>Action</th>
+            <th>Details</th>
             <th>Request</th>
           </tr>
         </thead>
@@ -388,6 +389,7 @@ export function AuditTable({ events }: { events: AuditEvent[] }) {
               <td>{event.entityType}</td>
               <td>{event.entityId || 'Not recorded'}</td>
               <td>{event.action}</td>
+              <td>{event.metadataSummary || 'Not recorded'}</td>
               <td className="mono">{event.requestId || 'Not recorded'}</td>
             </tr>
           ))}

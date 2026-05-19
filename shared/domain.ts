@@ -156,6 +156,7 @@ export interface AuditEvent {
   entityId?: string | null;
   action: string;
   requestId?: string | null;
+  metadataSummary?: string | null;
 }
 
 export interface Card {

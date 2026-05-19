@@ -13,6 +13,7 @@ interface AuditRow {
   entityType: string;
   entityId: number | null;
   action: string;
+  metadata: string | null;
   timestamp: string;
 }
 
@@ -58,6 +59,65 @@ function parseDateTimeFilter(value: unknown, field: string): string | null {
   return normalized;
 }
 
+function parseMetadata(value: string | null): Record<string, unknown> | null {
+  if (!value) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null;
+  } catch {
+    return null;
+  }
+}
+
+function formatElapsed(value: unknown): string | null {
+  const elapsedMs = Number(value);
+  if (!Number.isFinite(elapsedMs) || elapsedMs <= 0) {
+    return null;
+  }
+  if (elapsedMs < 1000) {
+    return `${Math.round(elapsedMs)}ms`;
+  }
+  return `${(elapsedMs / 1000).toFixed(1)}s`;
+}
+
+function aiImportMetadataSummary(metadata: Record<string, unknown> | null): string | null {
+  if (!metadata) {
+    return null;
+  }
+  const outcome = String(metadata.outcome || '');
+  const elapsed = formatElapsed(metadata.elapsedMs);
+  const textLength = Number(metadata.textLength);
+  const textPart = Number.isFinite(textLength) ? `${textLength} chars` : null;
+  if (outcome === 'success') {
+    const provider = String(metadata.provider || 'AI');
+    const model = String(metadata.model || '').trim();
+    const rowCount = Number(metadata.rowCount);
+    return [
+      `success via ${model ? `${provider}/${model}` : provider}`,
+      Number.isFinite(rowCount) ? `${rowCount} rows` : null,
+      elapsed,
+      textPart,
+    ].filter(Boolean).join(' · ');
+  }
+  if (outcome === 'failure') {
+    return [
+      `failure: ${String(metadata.errorCode || 'UNKNOWN_ERROR')}`,
+      elapsed,
+      textPart,
+    ].filter(Boolean).join(' · ');
+  }
+  return null;
+}
+
+function auditMetadataSummary(row: AuditRow): string | null {
+  if (row.entityType === 'import' && row.action === 'ai_import.analyze') {
+    return aiImportMetadataSummary(parseMetadata(row.metadata));
+  }
+  return null;
+}
+
 function toAuditResponse(row: AuditRow) {
   return {
     id: row.id,
@@ -67,6 +127,7 @@ function toAuditResponse(row: AuditRow) {
     entityType: row.entityType,
     entityId: row.entityId,
     action: row.action,
+    metadataSummary: auditMetadataSummary(row),
     timestamp: row.timestamp,
   };
 }
@@ -131,7 +192,7 @@ export function createAuditRouter({ db }: { db: Database.Database }) {
       const total = (db.prepare(`SELECT COUNT(*) AS count FROM audit_log WHERE ${whereClause}`).get(...params) as CountRow).count;
       const rows = db
         .prepare(
-          `SELECT id, accountId, userId, requestId, entityType, entityId, action, timestamp
+          `SELECT id, accountId, userId, requestId, entityType, entityId, action, metadata, timestamp
            FROM audit_log
            WHERE ${whereClause}
            ORDER BY timestamp DESC, id DESC
