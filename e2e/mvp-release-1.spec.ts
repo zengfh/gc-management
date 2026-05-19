@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import { expect, test, type Page } from '@playwright/test';
+import { uberSpreadsheetContinuation } from '../src/testFixtures/bulkImportSamples.js';
 
 const unlockSecret = 'a strong unlock phrase';
 const backupPassphrase = 'portable backup passphrase';
@@ -167,6 +168,27 @@ test.describe.serial('MVP Release 1 critical flows', () => {
     await expect(page.getByRole('row', { name: /available.*best buy/i })).toBeVisible();
     await expect(page.getByText('DD-E2E-CODE')).toHaveCount(0);
     await expect(page.getByText('BB-E2E-PIN')).toHaveCount(0);
+  });
+
+  test('bulk import review stays readable for real spreadsheet paste on mobile', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await setupOrUnlockVault(page);
+
+    await page.getByRole('button', { name: /^bulk import$/i }).click();
+    await page.getByLabel(/^gift-card lines$/i).fill(uberSpreadsheetContinuation);
+    await page.getByRole('button', { name: /^fast parse \(rules\)$/i }).click();
+
+    const review = page.getByRole('dialog', { name: /^review parsed cards$/i });
+    await expect(review).toBeVisible();
+    await expect(review.getByText(/8 parsed/i)).toBeVisible();
+    await expect(review.getByText(/0 need edits/i)).toBeVisible();
+    await expect(review.getByLabel(/^line 8 code or card number$/i)).toHaveValue('NAAD XUP5 8VDB ZV93');
+    await expect(review.locator('td[data-label="Status"]').first()).toBeVisible();
+
+    const reviewWrap = review.locator('.bulk-review-wrap');
+    await expect.poll(async () =>
+      reviewWrap.evaluate((element) => element.scrollWidth <= element.clientWidth + 1),
+    ).toBe(true);
   });
 
   test('plaintext export requires confirmation controls', async ({ page }) => {

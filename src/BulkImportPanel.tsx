@@ -185,7 +185,7 @@ function BulkImportReviewModal({
                 return (
                   <Fragment key={row.id}>
                     <tr>
-                      <td>
+                      <td data-label="Action">
                         <button
                           type="button"
                           className="icon-button compact"
@@ -195,15 +195,15 @@ function BulkImportReviewModal({
                           <X aria-hidden="true" size={15} />
                         </button>
                       </td>
-                      <td>{row.lineNumber}</td>
-                      <td>
+                      <td data-label="Line">{row.lineNumber}</td>
+                      <td data-label="Status">
                         {missing.length > 0 ? (
                           <span className="status-badge status-reserved">Needs edit</span>
                         ) : (
                           <span className="status-badge status-available">Ready</span>
                         )}
                       </td>
-                      <td>
+                      <td data-label="Brand">
                         <input
                           list="bulk-brand-options"
                           value={row.brand}
@@ -211,7 +211,7 @@ function BulkImportReviewModal({
                           onChange={(event) => updateRow(row.id, { brand: event.target.value })}
                         />
                       </td>
-                      <td>
+                      <td data-label="Value">
                         <input
                           inputMode="decimal"
                           value={row.faceValue}
@@ -219,7 +219,7 @@ function BulkImportReviewModal({
                           onChange={(event) => updateRow(row.id, { faceValue: event.target.value })}
                         />
                       </td>
-                      <td>
+                      <td data-label="Credential type">
                         <select
                           value={row.credentialProfile}
                           aria-label={`Line ${row.lineNumber} credential type`}
@@ -232,7 +232,7 @@ function BulkImportReviewModal({
                           ))}
                         </select>
                       </td>
-                      <td>
+                      <td data-label="Code / number">
                         <input
                           className="mono"
                           autoComplete="off"
@@ -241,7 +241,7 @@ function BulkImportReviewModal({
                           onChange={(event) => updateRow(row.id, { primaryCode: event.target.value })}
                         />
                       </td>
-                      <td>
+                      <td data-label="PIN">
                         <input
                           className="mono"
                           autoComplete="off"
@@ -250,7 +250,7 @@ function BulkImportReviewModal({
                           onChange={(event) => updateRow(row.id, { secondaryCode: event.target.value })}
                         />
                       </td>
-                      <td>
+                      <td data-label="Source">
                         <input
                           list="bulk-source-options"
                           value={row.source}
@@ -258,7 +258,7 @@ function BulkImportReviewModal({
                           onChange={(event) => updateRow(row.id, { source: event.target.value })}
                         />
                       </td>
-                      <td>
+                      <td data-label="Notes">
                         <input
                           value={row.notes}
                           aria-label={`Line ${row.lineNumber} notes`}
@@ -269,7 +269,7 @@ function BulkImportReviewModal({
                     {(missing.length > 0 || row.warnings.length > 0) ? (
                       <tr className="bulk-row-diagnostics">
                         <td />
-                        <td colSpan={9}>
+                        <td colSpan={9} data-label="Warnings">
                           {missing.length > 0 ? (
                             <span>Needs {missing.join(', ')}</span>
                           ) : null}

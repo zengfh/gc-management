@@ -1349,6 +1349,118 @@ tbody tr:hover td {
   line-height: 1.35;
 }
 
+@media (max-width: 760px) {
+  .review-backdrop {
+    align-items: stretch;
+    padding: 8px;
+  }
+
+  .bulk-review-modal {
+    width: 100%;
+    max-height: calc(100svh - 16px);
+  }
+
+  .bulk-review-summary,
+  .bulk-ai-diagnostics,
+  .bulk-review-wrap {
+    margin-right: 10px;
+    margin-left: 10px;
+  }
+
+  .bulk-review-summary {
+    padding-right: 10px;
+    padding-left: 10px;
+  }
+
+  .bulk-ai-diagnostics dl {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .bulk-review-wrap {
+    max-height: min(62svh, 620px);
+    overflow-x: hidden;
+  }
+
+  .bulk-review-table,
+  .bulk-review-table thead,
+  .bulk-review-table tbody,
+  .bulk-review-table tr,
+  .bulk-review-table th,
+  .bulk-review-table td {
+    display: block;
+  }
+
+  .bulk-review-table {
+    min-width: 0;
+  }
+
+  .bulk-review-table colgroup,
+  .bulk-review-table thead {
+    display: none;
+  }
+
+  .bulk-review-table tbody {
+    display: grid;
+    gap: 10px;
+  }
+
+  .bulk-review-table tbody > tr:not(.bulk-row-diagnostics) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+    border: 1px solid var(--color-border-subtle);
+    border-radius: var(--radius-md);
+    padding: 10px;
+    background: var(--color-surface-muted);
+  }
+
+  .bulk-review-table td {
+    display: grid;
+    grid-template-columns: 112px minmax(0, 1fr);
+    align-items: center;
+    gap: 10px;
+    border: 0;
+    padding: 0;
+  }
+
+  .bulk-review-table td::before {
+    content: attr(data-label);
+    color: var(--color-muted);
+    font-size: 0.72rem;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  .bulk-review-table td[data-label="Action"] {
+    grid-template-columns: minmax(0, 1fr) max-content;
+  }
+
+  .bulk-review-table td[data-label="Action"]::before {
+    content: "Row";
+  }
+
+  .bulk-row-diagnostics {
+    margin-top: -10px;
+  }
+
+  .bulk-row-diagnostics td:first-child {
+    display: none;
+  }
+
+  .bulk-row-diagnostics td:last-child {
+    display: block;
+    border: 1px solid var(--color-border-subtle);
+    border-top: 0;
+    border-radius: 0 0 var(--radius-md) var(--radius-md);
+    padding: 10px;
+  }
+
+  .bulk-row-diagnostics td:last-child::before {
+    display: block;
+    margin-bottom: 6px;
+  }
+}
+
 .reference-review-body {
   display: grid;
   gap: 12px;
