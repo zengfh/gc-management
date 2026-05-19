@@ -1545,6 +1545,16 @@ tbody tr:hover td {
   font-weight: 700;
 }
 
+.info-copy {
+  border: 1px solid rgba(59, 130, 246, 0.28);
+  border-radius: var(--radius-md);
+  background: rgba(59, 130, 246, 0.1);
+  color: var(--color-text);
+  padding: 10px 12px;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
 .import-preview-result {
   display: grid;
   gap: 12px;

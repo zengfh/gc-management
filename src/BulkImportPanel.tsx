@@ -283,6 +283,7 @@ export function BulkImportPanel({
   const [reviewOpen, setReviewOpen] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [aiStatus, setAiStatus] = useState('');
   const [analysisSource, setAnalysisSource] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [aiAnalyzing, setAiAnalyzing] = useState(false);
@@ -314,6 +315,7 @@ export function BulkImportPanel({
     const file = event.target.files?.[0];
     setError('');
     setSuccess('');
+    setAiStatus('');
     setRows([]);
     setReviewOpen(false);
     setAnalysisSource('');
@@ -332,6 +334,7 @@ export function BulkImportPanel({
   function analyze() {
     setError('');
     setSuccess('');
+    setAiStatus('');
     const analysis = analyzeBulkImportText(text, referenceValues);
     if (analysis.rows.length === 0) {
       setRows([]);
@@ -346,27 +349,31 @@ export function BulkImportPanel({
   async function analyzeWithAi() {
     setError('');
     setSuccess('');
+    setAiStatus('');
     if (!text.trim()) {
       setRows([]);
       setError('Paste gift-card text before running AI analysis.');
       return;
     }
     setAiAnalyzing(true);
+    setAiStatus('Contacting AI service. This is a live provider request; the review will show the provider and model that parsed the cards.');
     try {
       const response = await onAnalyzeAiImport({ text });
       const analysis = response.data;
+      const source = `${analysis.provider || 'AI'}${analysis.model ? `/${analysis.model}` : ''}`;
       if (analysis.rows.length === 0) {
         setRows([]);
         setError('AI did not find any gift cards to review.');
         return;
       }
       setRows(analysis.rows);
-      setAnalysisSource(`${analysis.provider || 'AI'}${analysis.model ? `/${analysis.model}` : ''}`);
-      setSuccess(`AI parsed ${analysis.rows.length} cards with ${analysis.provider || 'AI'}${analysis.model ? `/${analysis.model}` : ''}. Review before import.`);
+      setAnalysisSource(source);
+      setSuccess(`AI parsed ${analysis.rows.length} cards with ${source}. Review before import.`);
       setReviewOpen(true);
     } catch (caught) {
       setError(errorMessage(caught));
     } finally {
+      setAiStatus('');
       setAiAnalyzing(false);
     }
   }
@@ -395,6 +402,7 @@ export function BulkImportPanel({
       await onCreateDeal(bulkImportRowsToDealPayload(rows));
       setReviewOpen(false);
       setSuccess(`Imported ${rows.length} ${rows.length === 1 ? 'card' : 'cards'}.`);
+      setAiStatus('');
       setRows([]);
       setAnalysisSource('');
       setText('');
@@ -448,6 +456,11 @@ export function BulkImportPanel({
           {fileName ? <p className="muted-text import-file-name">{fileName}</p> : null}
           {rows.length > 0 ? <p className="muted-text">{parsedSummary}</p> : null}
           <FieldError message={error} />
+          {aiStatus ? (
+            <p className="info-copy" role="status" aria-live="polite">
+              {aiStatus}
+            </p>
+          ) : null}
           {success ? <p className="success-copy">{success}</p> : null}
           <div className="panel-actions">
             <button type="button" className="secondary-action" onClick={onClose}>

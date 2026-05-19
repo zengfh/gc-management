@@ -2069,6 +2069,70 @@ describe('App', () => {
   });
 
   it('uses AI analysis for messy bulk gift-card import text', async () => {
+    let resolveAiAnalysis: (value: Response) => void = () => {};
+    const aiAnalysisPromise = new Promise<Response>((resolve) => {
+      resolveAiAnalysis = resolve;
+    });
+    const aiAnalysisPayload = {
+      data: {
+        provider: 'google',
+        model: 'gemini-2.5-flash',
+        rows: [
+          {
+            id: 'ai-header',
+            lineNumber: 1,
+            rawLine: 'Card Code/PIN',
+            brand: 'Card',
+            faceValue: '',
+            credentialProfile: 'merchant_number_pin',
+            primaryCode: 'Code/PIN',
+            secondaryCode: '',
+            expirationMonth: '',
+            expirationYear: '',
+            billingZip: '',
+            barcodeFormat: 'code128',
+            source: '',
+            notes: '',
+            warnings: ['AI parsed with google/gemini-2.5-flash; verify before import.'],
+          },
+          {
+            id: 'ai-1',
+            lineNumber: 2,
+            rawLine: 'Lowes 250 6006491727039277301 7640 05/02/2026',
+            brand: 'Lowes',
+            faceValue: '250',
+            credentialProfile: 'merchant_number_pin',
+            primaryCode: '6006491727039277301',
+            secondaryCode: '7640',
+            expirationMonth: '',
+            expirationYear: '',
+            billingZip: '',
+            barcodeFormat: 'code128',
+            source: '',
+            notes: 'Memo: 05/02/2026',
+            warnings: ['AI parsed with google/gemini-2.5-flash; verify before import.'],
+          },
+          {
+            id: 'ai-2',
+            lineNumber: 3,
+            rawLine: 'Uber 50 NAAD XYHD QR65 U8LY',
+            brand: 'Uber',
+            faceValue: '50',
+            credentialProfile: 'claim_code',
+            primaryCode: 'NAAD XYHD QR65 U8LY',
+            secondaryCode: '',
+            expirationMonth: '',
+            expirationYear: '',
+            billingZip: '',
+            barcodeFormat: 'code128',
+            source: '',
+            notes: '',
+            warnings: ['AI parsed with google/gemini-2.5-flash; verify before import.'],
+          },
+        ],
+      },
+    };
+
     fetchMock()
       .mockResolvedValueOnce(
         jsonResponse({
@@ -2094,67 +2158,7 @@ describe('App', () => {
           },
         }),
       )
-      .mockResolvedValueOnce(
-        jsonResponse({
-          data: {
-            provider: 'google',
-            model: 'gemini-2.5-flash',
-            rows: [
-              {
-                id: 'ai-header',
-                lineNumber: 1,
-                rawLine: 'Card Code/PIN',
-                brand: 'Card',
-                faceValue: '',
-                credentialProfile: 'merchant_number_pin',
-                primaryCode: 'Code/PIN',
-                secondaryCode: '',
-                expirationMonth: '',
-                expirationYear: '',
-                billingZip: '',
-                barcodeFormat: 'code128',
-                source: '',
-                notes: '',
-                warnings: ['AI parsed with google/gemini-2.5-flash; verify before import.'],
-              },
-              {
-                id: 'ai-1',
-                lineNumber: 2,
-                rawLine: 'Lowes 250 6006491727039277301 7640 05/02/2026',
-                brand: 'Lowes',
-                faceValue: '250',
-                credentialProfile: 'merchant_number_pin',
-                primaryCode: '6006491727039277301',
-                secondaryCode: '7640',
-                expirationMonth: '',
-                expirationYear: '',
-                billingZip: '',
-                barcodeFormat: 'code128',
-                source: '',
-                notes: 'Memo: 05/02/2026',
-                warnings: ['AI parsed with google/gemini-2.5-flash; verify before import.'],
-              },
-              {
-                id: 'ai-2',
-                lineNumber: 3,
-                rawLine: 'Uber 50 NAAD XYHD QR65 U8LY',
-                brand: 'Uber',
-                faceValue: '50',
-                credentialProfile: 'claim_code',
-                primaryCode: 'NAAD XYHD QR65 U8LY',
-                secondaryCode: '',
-                expirationMonth: '',
-                expirationYear: '',
-                billingZip: '',
-                barcodeFormat: 'code128',
-                source: '',
-                notes: '',
-                warnings: ['AI parsed with google/gemini-2.5-flash; verify before import.'],
-              },
-            ],
-          },
-        }),
-      )
+      .mockImplementationOnce(() => aiAnalysisPromise)
       .mockResolvedValueOnce(
         jsonResponse(
           {
@@ -2177,6 +2181,8 @@ describe('App', () => {
       'Lowes\t250\t\t6006491727039277301\t7640\t05/02/2026\nUber\t50\t\tNAAD XYHD QR65 U8LY',
     );
     await user.click(screen.getByRole('button', { name: /^analyze with ai$/i }));
+    await expect(screen.findByRole('status')).resolves.toHaveTextContent(/live provider request/i);
+    resolveAiAnalysis(jsonResponse(aiAnalysisPayload));
 
     const review = await screen.findByRole('dialog', { name: /^review parsed cards$/i });
     expect(within(review).getAllByText(/google\/gemini-2\.5-flash/i).length).toBeGreaterThan(0);
