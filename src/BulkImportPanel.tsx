@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { FilePlus2, Upload, X } from 'lucide-react';
 import type { FeatureFlags, ReferenceValue, ReferenceValueState } from '../shared/domain';
 import type { ApiPayload, AsyncApiHandler, VoidHandler } from './appTypes';
@@ -102,6 +102,8 @@ function BulkImportReviewModal({
     onRowsChange(rows.filter((row) => row.id !== rowId));
   }
 
+  const isAiAnalysis = analysisSource.startsWith('AI:');
+
   return (
     <div className="modal-backdrop review-backdrop" role="presentation">
       <section
@@ -126,11 +128,35 @@ function BulkImportReviewModal({
           <span>{newBrands.length} new brands</span>
           {analysisSource ? <span>{analysisSource}</span> : null}
         </div>
+        {isAiAnalysis ? (
+          <details className="bulk-ai-diagnostics">
+            <summary>AI diagnostics</summary>
+            <dl>
+              <div>
+                <dt>Parser</dt>
+                <dd>{analysisSource}</dd>
+              </div>
+              <div>
+                <dt>Parsed</dt>
+                <dd>{rows.length}</dd>
+              </div>
+              <div>
+                <dt>Needs edits</dt>
+                <dd>{invalidRows.length}</dd>
+              </div>
+              <div>
+                <dt>New brands</dt>
+                <dd>{newBrands.length}</dd>
+              </div>
+            </dl>
+          </details>
+        ) : null}
         <div className="table-wrap bulk-review-wrap">
           <table className="bulk-review-table">
             <colgroup>
               <col className="bulk-col-action" />
               <col className="bulk-col-line" />
+              <col className="bulk-col-status" />
               <col className="bulk-col-brand" />
               <col className="bulk-col-value" />
               <col className="bulk-col-type" />
@@ -138,12 +164,12 @@ function BulkImportReviewModal({
               <col className="bulk-col-pin" />
               <col className="bulk-col-source" />
               <col className="bulk-col-notes" />
-              <col className="bulk-col-warnings" />
             </colgroup>
             <thead>
               <tr>
                 <th aria-label="Discard row" />
                 <th>Line</th>
+                <th>Status</th>
                 <th>Brand</th>
                 <th>Value</th>
                 <th>Credential type</th>
@@ -151,98 +177,109 @@ function BulkImportReviewModal({
                 <th>PIN</th>
                 <th>Source</th>
                 <th>Notes</th>
-                <th>Warnings</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((row) => {
                 const missing = bulkImportMissingFields(row);
                 return (
-                  <tr key={row.id}>
-                    <td>
-                      <button
-                        type="button"
-                        className="icon-button compact"
-                        aria-label={`Discard line ${row.lineNumber}`}
-                        onClick={() => removeRow(row.id)}
-                      >
-                        <X aria-hidden="true" size={15} />
-                      </button>
-                    </td>
-                    <td>{row.lineNumber}</td>
-                    <td>
-                      <input
-                        list="bulk-brand-options"
-                        value={row.brand}
-                        aria-label={`Line ${row.lineNumber} brand`}
-                        onChange={(event) => updateRow(row.id, { brand: event.target.value })}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        inputMode="decimal"
-                        value={row.faceValue}
-                        aria-label={`Line ${row.lineNumber} face value`}
-                        onChange={(event) => updateRow(row.id, { faceValue: event.target.value })}
-                      />
-                    </td>
-                    <td>
-                      <select
-                        value={row.credentialProfile}
-                        aria-label={`Line ${row.lineNumber} credential type`}
-                        onChange={(event) => updateRow(row.id, { credentialProfile: event.target.value as BulkImportProfile })}
-                      >
-                        {credentialProfileOptions.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td>
-                      <input
-                        className="mono"
-                        autoComplete="off"
-                        value={row.primaryCode}
-                        aria-label={`Line ${row.lineNumber} code or card number`}
-                        onChange={(event) => updateRow(row.id, { primaryCode: event.target.value })}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        className="mono"
-                        autoComplete="off"
-                        value={row.secondaryCode}
-                        aria-label={`Line ${row.lineNumber} PIN`}
-                        onChange={(event) => updateRow(row.id, { secondaryCode: event.target.value })}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        list="bulk-source-options"
-                        value={row.source}
-                        aria-label={`Line ${row.lineNumber} source`}
-                        onChange={(event) => updateRow(row.id, { source: event.target.value })}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        value={row.notes}
-                        aria-label={`Line ${row.lineNumber} notes`}
-                        onChange={(event) => updateRow(row.id, { notes: event.target.value })}
-                      />
-                    </td>
-                    <td>
-                      {missing.length > 0 ? (
-                        <span className="status-badge status-reserved">Needs {missing.join(', ')}</span>
-                      ) : (
-                        <span className="status-badge status-available">Ready</span>
-                      )}
-                      {row.warnings.length > 0 ? (
-                        <small className="bulk-warning">{row.warnings.join(' ')}</small>
-                      ) : null}
-                    </td>
-                  </tr>
+                  <Fragment key={row.id}>
+                    <tr>
+                      <td>
+                        <button
+                          type="button"
+                          className="icon-button compact"
+                          aria-label={`Discard line ${row.lineNumber}`}
+                          onClick={() => removeRow(row.id)}
+                        >
+                          <X aria-hidden="true" size={15} />
+                        </button>
+                      </td>
+                      <td>{row.lineNumber}</td>
+                      <td>
+                        {missing.length > 0 ? (
+                          <span className="status-badge status-reserved">Needs edit</span>
+                        ) : (
+                          <span className="status-badge status-available">Ready</span>
+                        )}
+                      </td>
+                      <td>
+                        <input
+                          list="bulk-brand-options"
+                          value={row.brand}
+                          aria-label={`Line ${row.lineNumber} brand`}
+                          onChange={(event) => updateRow(row.id, { brand: event.target.value })}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          inputMode="decimal"
+                          value={row.faceValue}
+                          aria-label={`Line ${row.lineNumber} face value`}
+                          onChange={(event) => updateRow(row.id, { faceValue: event.target.value })}
+                        />
+                      </td>
+                      <td>
+                        <select
+                          value={row.credentialProfile}
+                          aria-label={`Line ${row.lineNumber} credential type`}
+                          onChange={(event) => updateRow(row.id, { credentialProfile: event.target.value as BulkImportProfile })}
+                        >
+                          {credentialProfileOptions.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td>
+                        <input
+                          className="mono"
+                          autoComplete="off"
+                          value={row.primaryCode}
+                          aria-label={`Line ${row.lineNumber} code or card number`}
+                          onChange={(event) => updateRow(row.id, { primaryCode: event.target.value })}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          className="mono"
+                          autoComplete="off"
+                          value={row.secondaryCode}
+                          aria-label={`Line ${row.lineNumber} PIN`}
+                          onChange={(event) => updateRow(row.id, { secondaryCode: event.target.value })}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          list="bulk-source-options"
+                          value={row.source}
+                          aria-label={`Line ${row.lineNumber} source`}
+                          onChange={(event) => updateRow(row.id, { source: event.target.value })}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          value={row.notes}
+                          aria-label={`Line ${row.lineNumber} notes`}
+                          onChange={(event) => updateRow(row.id, { notes: event.target.value })}
+                        />
+                      </td>
+                    </tr>
+                    {(missing.length > 0 || row.warnings.length > 0) ? (
+                      <tr className="bulk-row-diagnostics">
+                        <td />
+                        <td colSpan={9}>
+                          {missing.length > 0 ? (
+                            <span>Needs {missing.join(', ')}</span>
+                          ) : null}
+                          {row.warnings.length > 0 ? (
+                            <small className="bulk-warning">{row.warnings.join(' ')}</small>
+                          ) : null}
+                        </td>
+                      </tr>
+                    ) : null}
+                  </Fragment>
                 );
               })}
             </tbody>

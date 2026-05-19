@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
+import { mixedAiImportText } from './testFixtures/bulkImportSamples';
 
 function fetchMock() {
   return vi.mocked(globalThis.fetch);
@@ -2177,16 +2178,14 @@ describe('App', () => {
 
     await screen.findByRole('heading', { name: /dashboard/i });
     await user.click(screen.getByRole('button', { name: /^bulk import$/i }));
-    await user.type(
-      screen.getByLabelText(/^gift-card lines$/i),
-      'Lowes\t250\t\t6006491727039277301\t7640\t05/02/2026\nUber\t50\t\tNAAD XYHD QR65 U8LY',
-    );
+    await user.type(screen.getByLabelText(/^gift-card lines$/i), mixedAiImportText);
     await user.click(screen.getByRole('button', { name: /^analyze with ai$/i }));
     await expect(screen.findByRole('status')).resolves.toHaveTextContent(/live provider request/i);
     resolveAiAnalysis(jsonResponse(aiAnalysisPayload));
 
     const review = await screen.findByRole('dialog', { name: /^review parsed cards$/i });
-    expect(within(review).getByText(/AI: google\/gemini-2\.5-flash · \d+(?:ms|[.0-9]+s)/i)).toBeInTheDocument();
+    expect(within(review).getAllByText(/AI: google\/gemini-2\.5-flash · \d+(?:ms|[.0-9]+s)/i).length).toBeGreaterThan(0);
+    expect(within(review).getByText(/^AI diagnostics$/i)).toBeInTheDocument();
     await user.click(within(review).getByRole('button', { name: /^discard line 1$/i }));
     expect(within(review).queryByDisplayValue('Code/PIN')).not.toBeInTheDocument();
     expect(within(review).getByLabelText(/^line 2 brand$/i)).toHaveValue('Lowes');

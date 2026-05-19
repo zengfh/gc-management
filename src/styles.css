@@ -1174,7 +1174,7 @@ tbody tr:hover td {
 }
 
 .bulk-review-modal {
-  width: min(1120px, calc(100vw - 24px));
+  width: min(1280px, calc(100vw - 24px));
 }
 
 .bulk-review-summary {
@@ -1197,13 +1197,58 @@ tbody tr:hover td {
   font-weight: 800;
 }
 
+.bulk-ai-diagnostics {
+  margin: 10px 16px 0;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-muted);
+}
+
+.bulk-ai-diagnostics summary {
+  padding: 10px 12px;
+  color: var(--color-text);
+  font-size: 0.86rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.bulk-ai-diagnostics dl {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  margin: 0;
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.bulk-ai-diagnostics dl > div {
+  min-width: 0;
+  padding: 10px 12px;
+}
+
+.bulk-ai-diagnostics dt {
+  color: var(--color-muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.bulk-ai-diagnostics dd {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+  color: var(--color-text);
+  font-size: 0.88rem;
+  font-weight: 800;
+}
+
 .bulk-review-wrap {
   margin: 14px 16px;
+  max-height: min(58svh, 560px);
+  overflow: auto;
 }
 
 .bulk-review-table {
   width: 100%;
-  min-width: 1000px;
+  min-width: 1080px;
   table-layout: fixed;
 }
 
@@ -1222,6 +1267,13 @@ tbody tr:hover td {
   vertical-align: top;
 }
 
+.bulk-review-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--color-surface);
+}
+
 .bulk-col-action {
   width: 40px;
 }
@@ -1230,8 +1282,12 @@ tbody tr:hover td {
   width: 52px;
 }
 
+.bulk-col-status {
+  width: 104px;
+}
+
 .bulk-col-brand {
-  width: 120px;
+  width: 130px;
 }
 
 .bulk-col-value {
@@ -1243,7 +1299,7 @@ tbody tr:hover td {
 }
 
 .bulk-col-code {
-  width: 190px;
+  width: 230px;
 }
 
 .bulk-col-pin {
@@ -1255,11 +1311,27 @@ tbody tr:hover td {
 }
 
 .bulk-col-notes {
-  width: 170px;
+  width: 180px;
 }
 
-.bulk-col-warnings {
-  width: 200px;
+.bulk-row-diagnostics td {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.bulk-row-diagnostics td:last-child {
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+  background: var(--color-surface-muted);
+  color: var(--color-muted-strong);
+  font-size: 0.82rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.bulk-row-diagnostics span {
+  margin-right: 12px;
+  color: var(--color-amber);
+  font-weight: 900;
 }
 
 .icon-button.compact {
