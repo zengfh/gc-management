@@ -150,12 +150,12 @@ test.describe.serial('MVP Release 1 critical flows', () => {
       'Doordash 50 DD-E2E-CODE',
       'Bestbuy $50 BB-E2E-CARD BB-E2E-PIN',
     ].join('\n'));
-    await page.getByRole('button', { name: /^analyze cards$/i }).click();
+    await page.getByRole('button', { name: /^fast parse \(rules\)$/i }).click();
 
     const review = page.getByRole('dialog', { name: /^review parsed cards$/i });
     await expect(review).toBeVisible();
     await expect(review.getByLabel(/^line 1 brand$/i)).toHaveValue('DoorDash');
-    await expect(review.getByLabel(/^line 2 PIN or access code$/i)).toHaveValue('BB-E2E-PIN');
+    await expect(review.getByLabel(/^line 2 PIN$/i)).toHaveValue('BB-E2E-PIN');
     await review.getByLabel(/^line 1 source$/i).fill('Promo');
     await review.getByLabel(/^line 2 notes$/i).fill('Email delivery');
     await review.getByRole('button', { name: /^import 2 cards$/i }).click();

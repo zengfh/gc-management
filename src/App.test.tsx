@@ -2030,7 +2030,7 @@ describe('App', () => {
     await screen.findByRole('heading', { name: /dashboard/i });
     await user.click(screen.getByRole('button', { name: /^bulk import$/i }));
     await user.type(screen.getByLabelText(/^gift-card lines$/i), 'Doordash 50 DD-CODE\nBestbuy $50 BB-CARD BB-PIN');
-    await user.click(screen.getByRole('button', { name: /^analyze cards$/i }));
+    await user.click(screen.getByRole('button', { name: /^fast parse \(rules\)$/i }));
 
     const review = await screen.findByRole('dialog', { name: /^review parsed cards$/i });
     expect(within(review).getByLabelText(/^line 1 brand$/i)).toHaveValue('DoorDash');
@@ -2141,7 +2141,7 @@ describe('App', () => {
                 brand: 'Uber',
                 faceValue: '50',
                 credentialProfile: 'claim_code',
-                primaryCode: 'NAADXYHDQR65U8LY',
+                primaryCode: 'NAAD XYHD QR65 U8LY',
                 secondaryCode: '',
                 expirationMonth: '',
                 expirationYear: '',
@@ -2185,7 +2185,7 @@ describe('App', () => {
     expect(within(review).getByLabelText(/^line 2 brand$/i)).toHaveValue('Lowes');
     expect(within(review).getByLabelText(/^line 2 PIN$/i)).toHaveValue('7640');
     expect(within(review).getByLabelText(/^line 2 notes$/i)).toHaveValue('Memo: 05/02/2026');
-    expect(within(review).getByLabelText(/^line 3 code or card number$/i)).toHaveValue('NAADXYHDQR65U8LY');
+    expect(within(review).getByLabelText(/^line 3 code or card number$/i)).toHaveValue('NAAD XYHD QR65 U8LY');
     await user.click(within(review).getByRole('button', { name: /^import 2 cards$/i }));
 
     await waitFor(() => {
@@ -2214,7 +2214,7 @@ describe('App', () => {
           expect.objectContaining({
             brand: 'Uber',
             credentialProfile: 'claim_code',
-            redemptionCode: 'NAADXYHDQR65U8LY',
+            redemptionCode: 'NAAD XYHD QR65 U8LY',
             faceValueCents: 5000,
           }),
         ],

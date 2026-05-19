@@ -339,7 +339,7 @@ export function BulkImportPanel({
       return;
     }
     setRows(analysis.rows);
-    setAnalysisSource('Rule-based parser');
+    setAnalysisSource('Fast rule-based parser (no AI)');
     setReviewOpen(true);
   }
 
@@ -453,13 +453,13 @@ export function BulkImportPanel({
             <button type="button" className="secondary-action" onClick={onClose}>
               Cancel
             </button>
-            <button type="button" className="primary-action" onClick={analyze} disabled={!canImport || !text.trim()}>
-              <Upload aria-hidden="true" size={17} />
-              Analyze cards
-            </button>
-            <button type="button" className="secondary-action" onClick={analyzeWithAi} disabled={!canImport || !text.trim() || aiAnalyzing}>
+            <button type="button" className="primary-action" onClick={analyzeWithAi} disabled={!canImport || !text.trim() || aiAnalyzing}>
               <FilePlus2 aria-hidden="true" size={17} />
               {aiAnalyzing ? 'Asking AI...' : 'Analyze with AI'}
+            </button>
+            <button type="button" className="secondary-action" onClick={analyze} disabled={!canImport || !text.trim()}>
+              <Upload aria-hidden="true" size={17} />
+              Fast parse (rules)
             </button>
           </div>
         </div>

@@ -29,6 +29,12 @@ export interface BulkImportAnalysis {
   skippedLines: number[];
 }
 
+interface BulkImportContext {
+  brand: string;
+  faceValue: string;
+  credentialProfile: BulkImportProfile;
+}
+
 const builtInBrandAliases: Array<{ aliases: string[]; brand: string }> = [
   { brand: 'DoorDash', aliases: ['doordash', 'door dash'] },
   { brand: 'Best Buy', aliases: ['bestbuy', 'best buy'] },
@@ -383,6 +389,34 @@ function draftFromFields(fields: string[], delimited: boolean, lineNumber: numbe
   return withWarnings(draft);
 }
 
+function applyContinuationContext(draft: BulkImportDraft, fields: string[], context: BulkImportContext | null): BulkImportDraft {
+  if (!context || draft.brand || draft.faceValue || !draft.primaryCode || context.credentialProfile !== 'claim_code') {
+    return draft;
+  }
+
+  return withWarnings({
+    ...draft,
+    warnings: [],
+    brand: context.brand,
+    faceValue: context.faceValue,
+    credentialProfile: 'claim_code',
+    primaryCode: fields.join(' ').trim() || draft.primaryCode,
+    secondaryCode: '',
+    notes: '',
+  });
+}
+
+function nextContinuationContext(row: BulkImportDraft): BulkImportContext | null {
+  if (!row.brand || !row.faceValue || !row.primaryCode || bulkImportMissingFields(row).length > 0) {
+    return null;
+  }
+  return {
+    brand: row.brand,
+    faceValue: row.faceValue,
+    credentialProfile: row.credentialProfile,
+  };
+}
+
 export function bulkImportMissingFields(row: BulkImportDraft): string[] {
   const missing: string[] = [];
   if (!row.brand.trim()) {
@@ -420,6 +454,7 @@ export function analyzeBulkImportText(text: string, referenceValues?: ReferenceV
   const skippedLines: number[] = [];
   const rows: BulkImportDraft[] = [];
   let headers: string[] | null = null;
+  let continuationContext: BulkImportContext | null = null;
 
   lines.forEach((line, index) => {
     const lineNumber = index + 1;
@@ -429,7 +464,7 @@ export function analyzeBulkImportText(text: string, referenceValues?: ReferenceV
       return;
     }
 
-    const { fields, delimited } = splitLine(trimmed);
+    const { fields, delimited } = splitLine(line);
     if (!fields.length) {
       skippedLines.push(lineNumber);
       return;
@@ -440,11 +475,15 @@ export function analyzeBulkImportText(text: string, referenceValues?: ReferenceV
       return;
     }
 
-    rows.push(
-      headers
-        ? draftFromHeader(fields, headers, lineNumber, trimmed)
-        : draftFromFields(fields, delimited, lineNumber, trimmed, referenceValues),
-    );
+    const row = headers
+      ? draftFromHeader(fields, headers, lineNumber, trimmed)
+      : applyContinuationContext(
+          draftFromFields(fields, delimited, lineNumber, trimmed, referenceValues),
+          fields,
+          continuationContext,
+        );
+    rows.push(row);
+    continuationContext = nextContinuationContext(row) || continuationContext;
   });
 
   return { rows, skippedLines };

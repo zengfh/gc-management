@@ -290,7 +290,12 @@ function aiPrompt(text: string): string {
     '- A row like "Card Code/PIN" is a header, not a gift card.',
     '- If a trailing date is not clearly an expiration field supported by the app, keep it in notes as memo text.',
     '- Face values should be numeric strings without a dollar sign.',
+    '- Preserve human-readable code grouping such as spaces or hyphens in primaryCode.',
     '- Preserve each extracted card as one item. The database write will happen only after human review.',
+    '',
+    'Continuation example:',
+    'Input rows: "Uber<TAB>50<TAB><TAB>NAAD XYHD QR65 U8LY" followed by "<TAB><TAB><TAB>NAAD X373 WSR8 UBNH".',
+    'Output two Uber cards, both faceValue "50", both credentialProfile "claim_code", with the full grouped code in primaryCode and empty secondaryCode.',
     '',
     'User text:',
     text,
@@ -339,7 +344,7 @@ function compactText(value: string): string {
 }
 
 function normalizePrimaryCode(value: string): string {
-  return value.trim().replace(/[\s-]+/g, '').toUpperCase();
+  return value.trim().replace(/\s+/g, ' ').toUpperCase();
 }
 
 function isHeaderLikeCard(card: AiParsedCard): boolean {

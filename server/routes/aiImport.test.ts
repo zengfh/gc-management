@@ -80,7 +80,7 @@ describe('AI import routes', () => {
                         brand: 'Uber',
                         faceValue: '50',
                         credentialProfile: 'claim_code',
-                        primaryCode: 'NAADXYHDQR65U8LY',
+                        primaryCode: 'NAAD XYHD QR65 U8LY',
                         confidence: 0.9,
                       },
                     ],
@@ -121,7 +121,7 @@ describe('AI import routes', () => {
           brand: 'Uber',
           faceValue: '50',
           credentialProfile: 'claim_code',
-          primaryCode: 'NAADXYHDQR65U8LY',
+          primaryCode: 'NAAD XYHD QR65 U8LY',
         },
       ],
     });

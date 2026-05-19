@@ -51,6 +51,89 @@ describe('bulk gift-card import parser', () => {
     });
   });
 
+  it('inherits brand and value for tab-indented code-only continuation rows', () => {
+    const rows = analyzeBulkImportText(
+      [
+        'Uber\t50\t\tNAAD XYHD QR65 U8LY\t\t',
+        '\t\t\tNAAD X373 WSR8 UBNH\t\t',
+        '\t\t\tNAAD XBYA JWGS DTCB\t\t',
+        '\t\t\tNAAD XY8E S59A 839G\t\t',
+        '\t\t\tNAAD XM6R 48DQ 5TZA\t\t',
+        '\t\t\tNAAD XDFP HDEN LH3Z\t\t',
+        '\t\t\tNAAD XAX6 RZXM RXU8\t\t',
+        '\t\t\tNAAD XUP5 8VDB ZV93\t\t',
+      ].join('\n'),
+      defaultReferenceValues,
+    ).rows;
+
+    expect(rows).toHaveLength(8);
+    expect(rows.map((row) => ({
+      brand: row.brand,
+      faceValue: row.faceValue,
+      credentialProfile: row.credentialProfile,
+      primaryCode: row.primaryCode,
+      secondaryCode: row.secondaryCode,
+    }))).toEqual([
+      {
+        brand: 'Uber',
+        faceValue: '50',
+        credentialProfile: 'claim_code',
+        primaryCode: 'NAAD XYHD QR65 U8LY',
+        secondaryCode: '',
+      },
+      {
+        brand: 'Uber',
+        faceValue: '50',
+        credentialProfile: 'claim_code',
+        primaryCode: 'NAAD X373 WSR8 UBNH',
+        secondaryCode: '',
+      },
+      {
+        brand: 'Uber',
+        faceValue: '50',
+        credentialProfile: 'claim_code',
+        primaryCode: 'NAAD XBYA JWGS DTCB',
+        secondaryCode: '',
+      },
+      {
+        brand: 'Uber',
+        faceValue: '50',
+        credentialProfile: 'claim_code',
+        primaryCode: 'NAAD XY8E S59A 839G',
+        secondaryCode: '',
+      },
+      {
+        brand: 'Uber',
+        faceValue: '50',
+        credentialProfile: 'claim_code',
+        primaryCode: 'NAAD XM6R 48DQ 5TZA',
+        secondaryCode: '',
+      },
+      {
+        brand: 'Uber',
+        faceValue: '50',
+        credentialProfile: 'claim_code',
+        primaryCode: 'NAAD XDFP HDEN LH3Z',
+        secondaryCode: '',
+      },
+      {
+        brand: 'Uber',
+        faceValue: '50',
+        credentialProfile: 'claim_code',
+        primaryCode: 'NAAD XAX6 RZXM RXU8',
+        secondaryCode: '',
+      },
+      {
+        brand: 'Uber',
+        faceValue: '50',
+        credentialProfile: 'claim_code',
+        primaryCode: 'NAAD XUP5 8VDB ZV93',
+        secondaryCode: '',
+      },
+    ]);
+    expect(rows.flatMap((row) => bulkImportMissingFields(row))).toEqual([]);
+  });
+
   it('keeps missing brand and value editable for code plus password rows', () => {
     const row = firstRow('abcd ef');
 
