@@ -2101,8 +2101,25 @@ describe('App', () => {
             model: 'gemini-2.5-flash',
             rows: [
               {
-                id: 'ai-1',
+                id: 'ai-header',
                 lineNumber: 1,
+                rawLine: 'Card Code/PIN',
+                brand: 'Card',
+                faceValue: '',
+                credentialProfile: 'merchant_number_pin',
+                primaryCode: 'Code/PIN',
+                secondaryCode: '',
+                expirationMonth: '',
+                expirationYear: '',
+                billingZip: '',
+                barcodeFormat: 'code128',
+                source: '',
+                notes: '',
+                warnings: ['AI parsed with google/gemini-2.5-flash; verify before import.'],
+              },
+              {
+                id: 'ai-1',
+                lineNumber: 2,
                 rawLine: 'Lowes 250 6006491727039277301 7640 05/02/2026',
                 brand: 'Lowes',
                 faceValue: '250',
@@ -2119,7 +2136,7 @@ describe('App', () => {
               },
               {
                 id: 'ai-2',
-                lineNumber: 2,
+                lineNumber: 3,
                 rawLine: 'Uber 50 NAAD XYHD QR65 U8LY',
                 brand: 'Uber',
                 faceValue: '50',
@@ -2162,10 +2179,13 @@ describe('App', () => {
     await user.click(screen.getByRole('button', { name: /^analyze with ai$/i }));
 
     const review = await screen.findByRole('dialog', { name: /^review parsed cards$/i });
-    expect(within(review).getByLabelText(/^line 1 brand$/i)).toHaveValue('Lowes');
-    expect(within(review).getByLabelText(/^line 1 PIN$/i)).toHaveValue('7640');
-    expect(within(review).getByLabelText(/^line 1 notes$/i)).toHaveValue('Memo: 05/02/2026');
-    expect(within(review).getByLabelText(/^line 2 code or card number$/i)).toHaveValue('NAADXYHDQR65U8LY');
+    expect(within(review).getAllByText(/google\/gemini-2\.5-flash/i).length).toBeGreaterThan(0);
+    await user.click(within(review).getByRole('button', { name: /^discard line 1$/i }));
+    expect(within(review).queryByDisplayValue('Code/PIN')).not.toBeInTheDocument();
+    expect(within(review).getByLabelText(/^line 2 brand$/i)).toHaveValue('Lowes');
+    expect(within(review).getByLabelText(/^line 2 PIN$/i)).toHaveValue('7640');
+    expect(within(review).getByLabelText(/^line 2 notes$/i)).toHaveValue('Memo: 05/02/2026');
+    expect(within(review).getByLabelText(/^line 3 code or card number$/i)).toHaveValue('NAADXYHDQR65U8LY');
     await user.click(within(review).getByRole('button', { name: /^import 2 cards$/i }));
 
     await waitFor(() => {

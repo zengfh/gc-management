@@ -1174,7 +1174,7 @@ tbody tr:hover td {
 }
 
 .bulk-review-modal {
-  width: min(1180px, calc(100vw - 32px));
+  width: min(1120px, calc(100vw - 24px));
 }
 
 .bulk-review-summary {
@@ -1202,21 +1202,75 @@ tbody tr:hover td {
 }
 
 .bulk-review-table {
-  min-width: 1320px;
+  width: 100%;
+  min-width: 1000px;
+  table-layout: fixed;
 }
 
 .bulk-review-table input,
 .bulk-review-table select {
-  min-width: 130px;
+  width: 100%;
+  min-width: 0;
+}
+
+.bulk-review-table th,
+.bulk-review-table td {
+  padding: 8px;
 }
 
 .bulk-review-table td {
   vertical-align: top;
 }
 
+.bulk-col-action {
+  width: 40px;
+}
+
+.bulk-col-line {
+  width: 52px;
+}
+
+.bulk-col-brand {
+  width: 120px;
+}
+
+.bulk-col-value {
+  width: 82px;
+}
+
+.bulk-col-type {
+  width: 150px;
+}
+
+.bulk-col-code {
+  width: 190px;
+}
+
+.bulk-col-pin {
+  width: 92px;
+}
+
+.bulk-col-source {
+  width: 112px;
+}
+
+.bulk-col-notes {
+  width: 170px;
+}
+
+.bulk-col-warnings {
+  width: 200px;
+}
+
+.icon-button.compact {
+  width: 30px;
+  height: 30px;
+  min-height: 30px;
+}
+
 .bulk-warning {
   display: block;
-  max-width: 240px;
+  max-width: 100%;
   margin-top: 6px;
   color: var(--color-muted-strong);
   white-space: normal;

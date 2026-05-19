@@ -53,6 +53,13 @@ describe('AI import routes', () => {
                   text: JSON.stringify({
                     cards: [
                       {
+                        brand: 'Card',
+                        faceValue: '',
+                        credentialProfile: 'merchant_number_pin',
+                        primaryCode: 'Code/PIN',
+                        confidence: 0.4,
+                      },
+                      {
                         brand: 'Lowes',
                         faceValue: '250',
                         credentialProfile: 'merchant_number_pin',
@@ -60,6 +67,14 @@ describe('AI import routes', () => {
                         secondaryCode: '7640',
                         notes: 'Memo: 05/02/2026',
                         confidence: 0.95,
+                      },
+                      {
+                        brand: 'Instacart',
+                        faceValue: '100',
+                        credentialProfile: 'merchant_number_pin',
+                        primaryCode: 'NAAFSYC5FE2VFGF4',
+                        secondaryCode: 'wrong-pin',
+                        confidence: 0.8,
                       },
                       {
                         brand: 'Uber',
@@ -94,6 +109,13 @@ describe('AI import routes', () => {
           primaryCode: '6006491727039277301',
           secondaryCode: '7640',
           notes: 'Memo: 05/02/2026',
+        },
+        {
+          brand: 'Instacart',
+          faceValue: '100',
+          credentialProfile: 'claim_code',
+          primaryCode: 'NAAFSYC5FE2VFGF4',
+          secondaryCode: '',
         },
         {
           brand: 'Uber',

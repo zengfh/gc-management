@@ -99,6 +99,9 @@ const googlePreference = [
   'gemini-2.5-flash-lite',
   'gemini-2.0-flash',
 ];
+const oneCodeBrandPattern = /\b(uber|uber eats|ubereats|doordash|door dash|instacart|amazon|apple|steam|google play|playstation|xbox)\b/i;
+const headerTokenPattern = /^(card|cards?|brand|merchant|value|amount|code|pin|code\/pin|number|notes?|memo|source)$/i;
+const separatorPattern = /^[-_\s|]+$/;
 
 function env(name: string): string {
   return process.env[name]?.trim() || '';
@@ -279,10 +282,12 @@ function aiPrompt(text: string): string {
     'Return ONLY strict JSON with this shape: {"cards":[{"brand":"","faceValue":"","credentialProfile":"claim_code|merchant_number_pin|barcode|network_prepaid|custom","primaryCode":"","secondaryCode":"","notes":"","source":"","rawLine":"","confidence":0.0}]}',
     'Rules:',
     '- Do not invent missing values. Leave uncertain optional fields empty and mention uncertainty in notes.',
+    '- Ignore table header rows, separator rows, blank rows, labels, and other non-gift-card text. Do not return them as cards.',
     '- For one-code cards such as Uber, DoorDash, Instacart, Amazon, and Apple, use credentialProfile "claim_code", primaryCode as the redeemable code, and no secondaryCode.',
     '- For merchant cards with a number plus a secondary PIN, use credentialProfile "merchant_number_pin", primaryCode as card number, secondaryCode as PIN.',
     '- Treat issuer terms such as access number, passcode, or password as PIN and put them in secondaryCode.',
     '- If a brand and value header applies to multiple following code-only rows, inherit that brand and value for each row until a new brand/value row or table header appears.',
+    '- A row like "Card Code/PIN" is a header, not a gift card.',
     '- If a trailing date is not clearly an expiration field supported by the app, keep it in notes as memo text.',
     '- Face values should be numeric strings without a dollar sign.',
     '- Preserve each extracted card as one item. The database write will happen only after human review.',
@@ -327,6 +332,58 @@ function textFromOpenAiPayload(payload: unknown): string {
 function textFromGooglePayload(payload: unknown): string {
   const candidates = (payload as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> }).candidates || [];
   return candidates[0]?.content?.parts?.map((part) => part.text || '').join('') || '';
+}
+
+function compactText(value: string): string {
+  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
+function normalizePrimaryCode(value: string): string {
+  return value.trim().replace(/[\s-]+/g, '').toUpperCase();
+}
+
+function isHeaderLikeCard(card: AiParsedCard): boolean {
+  const brand = card.brand.trim();
+  const primaryCode = card.primaryCode.trim();
+  const raw = card.rawLine?.trim() || '';
+  if (!brand || !primaryCode) {
+    return true;
+  }
+  if (separatorPattern.test(raw) || separatorPattern.test(brand) || separatorPattern.test(primaryCode)) {
+    return true;
+  }
+  if (headerTokenPattern.test(brand) && headerTokenPattern.test(primaryCode)) {
+    return true;
+  }
+  if (compactText(brand) === 'card' && ['code', 'codepin', 'pin'].includes(compactText(primaryCode))) {
+    return true;
+  }
+  return false;
+}
+
+function normalizeAiCard(card: AiParsedCard): AiParsedCard | null {
+  if (isHeaderLikeCard(card)) {
+    return null;
+  }
+
+  const next: AiParsedCard = {
+    ...card,
+    primaryCode: normalizePrimaryCode(card.primaryCode),
+    secondaryCode: card.secondaryCode?.trim() || '',
+  };
+
+  if (oneCodeBrandPattern.test(next.brand)) {
+    const removedPin = next.secondaryCode;
+    next.credentialProfile = 'claim_code';
+    next.secondaryCode = '';
+    if (removedPin) {
+      next.notes = [next.notes, `AI supplied an extra PIN for ${next.brand}; removed because this brand is treated as code-only.`]
+        .filter(Boolean)
+        .join(' ');
+    }
+  }
+
+  return next;
 }
 
 async function callGoogle(text: string, selection: AiModelSelection, apiKey: string): Promise<unknown> {
@@ -388,7 +445,10 @@ async function callOpenAiCompatible(
 }
 
 function toRows(cards: AiParsedCard[], provider: AiProviderName, model: string): AiImportRow[] {
-  return cards.map((card, index) => ({
+  return cards.flatMap((card) => {
+    const normalized = normalizeAiCard(card);
+    return normalized ? [normalized] : [];
+  }).map((card, index) => ({
     id: `ai-${index + 1}`,
     lineNumber: index + 1,
     rawLine: card.rawLine || '',

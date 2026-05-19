@@ -41,6 +41,7 @@ function indexedSourceValues(referenceValues: ReferenceValueState): string[] {
 function BulkImportReviewModal({
   rows,
   referenceValues,
+  analysisSource,
   submitting,
   error,
   onRowsChange,
@@ -49,6 +50,7 @@ function BulkImportReviewModal({
 }: {
   rows: BulkImportDraft[];
   referenceValues: ReferenceValueState;
+  analysisSource: string;
   submitting: boolean;
   error: string;
   onRowsChange: (rows: BulkImportDraft[]) => void;
@@ -73,6 +75,10 @@ function BulkImportReviewModal({
     )));
   }
 
+  function removeRow(rowId: string) {
+    onRowsChange(rows.filter((row) => row.id !== rowId));
+  }
+
   return (
     <div className="modal-backdrop review-backdrop" role="presentation">
       <section
@@ -95,11 +101,25 @@ function BulkImportReviewModal({
           <span>{rows.length} parsed</span>
           <span>{invalidRows.length} need edits</span>
           <span>{newBrands.length} new brands</span>
+          {analysisSource ? <span>{analysisSource}</span> : null}
         </div>
         <div className="table-wrap bulk-review-wrap">
           <table className="bulk-review-table">
+            <colgroup>
+              <col className="bulk-col-action" />
+              <col className="bulk-col-line" />
+              <col className="bulk-col-brand" />
+              <col className="bulk-col-value" />
+              <col className="bulk-col-type" />
+              <col className="bulk-col-code" />
+              <col className="bulk-col-pin" />
+              <col className="bulk-col-source" />
+              <col className="bulk-col-notes" />
+              <col className="bulk-col-warnings" />
+            </colgroup>
             <thead>
               <tr>
+                <th aria-label="Discard row" />
                 <th>Line</th>
                 <th>Brand</th>
                 <th>Value</th>
@@ -116,6 +136,16 @@ function BulkImportReviewModal({
                 const missing = bulkImportMissingFields(row);
                 return (
                   <tr key={row.id}>
+                    <td>
+                      <button
+                        type="button"
+                        className="icon-button compact"
+                        aria-label={`Discard line ${row.lineNumber}`}
+                        onClick={() => removeRow(row.id)}
+                      >
+                        <X aria-hidden="true" size={15} />
+                      </button>
+                    </td>
                     <td>{row.lineNumber}</td>
                     <td>
                       <input
@@ -253,6 +283,7 @@ export function BulkImportPanel({
   const [reviewOpen, setReviewOpen] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [analysisSource, setAnalysisSource] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [aiAnalyzing, setAiAnalyzing] = useState(false);
   const dialogRef = useDialogFocus(onClose);
@@ -285,6 +316,7 @@ export function BulkImportPanel({
     setSuccess('');
     setRows([]);
     setReviewOpen(false);
+    setAnalysisSource('');
     if (!file) {
       setFileName('');
       return;
@@ -307,6 +339,7 @@ export function BulkImportPanel({
       return;
     }
     setRows(analysis.rows);
+    setAnalysisSource('Rule-based parser');
     setReviewOpen(true);
   }
 
@@ -328,6 +361,7 @@ export function BulkImportPanel({
         return;
       }
       setRows(analysis.rows);
+      setAnalysisSource(`${analysis.provider || 'AI'}${analysis.model ? `/${analysis.model}` : ''}`);
       setSuccess(`AI parsed ${analysis.rows.length} cards with ${analysis.provider || 'AI'}${analysis.model ? `/${analysis.model}` : ''}. Review before import.`);
       setReviewOpen(true);
     } catch (caught) {
@@ -362,6 +396,7 @@ export function BulkImportPanel({
       setReviewOpen(false);
       setSuccess(`Imported ${rows.length} ${rows.length === 1 ? 'card' : 'cards'}.`);
       setRows([]);
+      setAnalysisSource('');
       setText('');
       setFileName('');
     } catch (caught) {
@@ -433,6 +468,7 @@ export function BulkImportPanel({
         <BulkImportReviewModal
           rows={rows}
           referenceValues={referenceValues}
+          analysisSource={analysisSource}
           submitting={submitting}
           error={error}
           onRowsChange={setRows}
