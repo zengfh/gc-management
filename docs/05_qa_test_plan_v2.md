@@ -243,6 +243,7 @@ Example:
 | IMP-018 | Integration/UI | Standalone AI import analysis | Messy pasted text is sent to `/api/ai-import/analyze`; the AI Import workspace shows live status, provider/model/timing, returned candidate counts, normalized review rows, and confirm still sends one normal create-deal request; audit omits pasted secrets |
 | IMP-019 | Integration | AI provider unavailable/quota exhausted | Missing keys or exhausted free quotas return a clear error and do not clear pasted text |
 | IMP-020 | UI | AI import correction pass | User can add a correction, rerun the AI agent with the original text and current draft context, and review the corrected full card list before saving |
+| IMP-021 | Integration/UI | AI import network prepaid security code | Number/balance/expiration/CVV text maps to a network prepaid draft with Security code shown separately from PIN and persisted only when local-only storage is enabled |
 | EXP-001 | E2E | Plaintext export happy path | Fresh secret + type EXPORT; file returned; no-store; audit |
 | EXP-002 | Integration | Plaintext export wrong secret | Rejected; no file |
 | EXP-003 | Integration | Raw DB export | Fresh secret required; no-store; audit |

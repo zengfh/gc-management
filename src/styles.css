@@ -1248,7 +1248,7 @@ tbody tr:hover td {
 
 .bulk-review-table {
   width: 100%;
-  min-width: 1080px;
+  min-width: 1180px;
   table-layout: fixed;
 }
 
@@ -1304,6 +1304,10 @@ tbody tr:hover td {
 
 .bulk-col-pin {
   width: 92px;
+}
+
+.bulk-col-security {
+  width: 118px;
 }
 
 .bulk-col-source {
@@ -1605,7 +1609,7 @@ tbody tr:hover td {
 }
 
 .ai-review-table {
-  min-width: 1080px;
+  min-width: 1180px;
 }
 
 @media (max-width: 760px) {

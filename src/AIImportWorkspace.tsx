@@ -518,6 +518,7 @@ export function AIImportWorkspace({
                 <col className="bulk-col-type" />
                 <col className="bulk-col-code" />
                 <col className="bulk-col-pin" />
+                <col className="bulk-col-security" />
                 <col className="bulk-col-source" />
                 <col className="bulk-col-notes" />
               </colgroup>
@@ -531,6 +532,7 @@ export function AIImportWorkspace({
                   <th>Credential type</th>
                   <th>Code / number</th>
                   <th>PIN</th>
+                  <th>Security code</th>
                   <th>Source</th>
                   <th>Notes</th>
                 </tr>
@@ -606,6 +608,15 @@ export function AIImportWorkspace({
                             onChange={(event) => updateRow(row.id, { secondaryCode: event.target.value })}
                           />
                         </td>
+                        <td data-label="Security code">
+                          <input
+                            className="mono"
+                            autoComplete="off"
+                            value={row.networkSecurityCode || ''}
+                            aria-label={`Line ${row.lineNumber} security code`}
+                            onChange={(event) => updateRow(row.id, { networkSecurityCode: event.target.value })}
+                          />
+                        </td>
                         <td data-label="Source">
                           <input
                             list="ai-import-source-options"
@@ -625,7 +636,7 @@ export function AIImportWorkspace({
                       {(missing.length > 0 || row.warnings.length > 0) ? (
                         <tr className="bulk-row-diagnostics">
                           <td />
-                          <td colSpan={9} data-label="Warnings">
+                          <td colSpan={10} data-label="Warnings">
                             {missing.length > 0 ? (
                               <span>Needs {missing.join(', ')}</span>
                             ) : null}

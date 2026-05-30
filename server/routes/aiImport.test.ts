@@ -251,11 +251,13 @@ describe('AI import routes', () => {
           secondaryCode: '',
           expirationMonth: '11',
           expirationYear: '2026',
+          networkSecurityCode: '123',
         },
       ],
     });
-    expect(response.body.data.rows[0].warnings.join(' ')).toMatch(/Security code was detected but not imported/i);
-    expect(JSON.stringify(response.body)).not.toContain('123');
+    expect(response.body.data.rows[0].warnings.join(' ')).toMatch(/Security code was parsed for local encrypted storage/i);
+    const auditRows = db.prepare("SELECT * FROM audit_log WHERE action = 'ai_import.analyze' ORDER BY id DESC LIMIT 1").all();
+    expect(JSON.stringify(auditRows)).not.toContain('123');
   });
 
   it('returns safe provider failure details when every AI response is unusable', async () => {

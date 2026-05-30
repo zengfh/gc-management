@@ -185,9 +185,9 @@ describe('bulk gift-card import parser', () => {
     });
   });
 
-  it('parses network prepaid CSV rows with expiration and billing ZIP', () => {
+  it('parses network prepaid CSV rows with expiration, security code, and billing ZIP', () => {
     const payload = bulkImportRowToDealPayload(firstRow(
-      'brand,value,profile,card_number,exp_month,exp_year,zip\nVisa,100,network_prepaid,4111111111111111,08,2028,94105',
+      'brand,value,profile,card_number,exp_month,exp_year,cvv,zip\nVisa,100,network_prepaid,4111111111111111,08,2028,123,94105',
     ));
 
     expect(payload).toMatchObject({
@@ -198,14 +198,16 @@ describe('bulk gift-card import parser', () => {
           credentialProfile: 'network_prepaid',
           network: 'visa',
           cardNumber: '4111111111111111',
+          networkSecurityCode: '123',
           billingZip: '94105',
           credentials: {
-            fields: [
+            fields: expect.arrayContaining([
               expect.objectContaining({ fieldKind: 'card_number', value: '4111111111111111' }),
               expect.objectContaining({ fieldKind: 'expiration_month', value: '08' }),
               expect.objectContaining({ fieldKind: 'expiration_year', value: '2028' }),
+              expect.objectContaining({ fieldKind: 'network_security_code', value: '123' }),
               expect.objectContaining({ fieldKind: 'billing_postal_code', value: '94105' }),
-            ],
+            ]),
           },
           faceValueCents: 10000,
         },

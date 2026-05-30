@@ -18,6 +18,7 @@ interface AiParsedCard {
   expirationMonth?: string;
   expirationYear?: string;
   billingZip?: string;
+  networkSecurityCode?: string;
   barcodeFormat?: string;
   source?: string;
   notes?: string;
@@ -38,6 +39,7 @@ export interface AiImportRow {
   expirationMonth: string;
   expirationYear: string;
   billingZip: string;
+  networkSecurityCode: string;
   barcodeFormat: string;
   source: string;
   notes: string;
@@ -132,7 +134,8 @@ const aiCardSchema = z.object({
   const expiration = splitExpiration(firstPresent(row.expiration, row.exp, row.validThrough));
   const primaryCode = firstPresent(row.primaryCode, row.cardNumber, row.number, row.pan, row.code);
   const secondaryCode = firstPresent(row.secondaryCode, row.pin, row.password, row.accessCode);
-  const securityCodePresent = Boolean(firstPresent(row.cvv, row.cvc, row.cid, row.securityCode));
+  const networkSecurityCode = firstPresent(row.cvv, row.cvc, row.cid, row.securityCode);
+  const securityCodePresent = Boolean(networkSecurityCode);
   const credentialProfile = (
     row.credentialProfile === 'claim_code'
       && (securityCodePresent || firstPresent(row.expirationMonth, expiration.expirationMonth) || firstPresent(row.expirationYear, expiration.expirationYear))
@@ -149,6 +152,7 @@ const aiCardSchema = z.object({
     expirationMonth: firstPresent(row.expirationMonth, expiration.expirationMonth),
     expirationYear: firstPresent(row.expirationYear, expiration.expirationYear),
     billingZip: firstPresent(row.billingZip, row.zip, row.postalCode),
+    networkSecurityCode,
     barcodeFormat: row.barcodeFormat || 'code128',
     source: row.source,
     notes: row.notes,
@@ -391,7 +395,7 @@ function aiPrompt(text: string, options: AiImportPromptOptions = {}): string {
     '- A row like "Card Code/PIN" is a header, not a gift card.',
     '- If a trailing date is not clearly an expiration field supported by the app, keep it in notes as memo text.',
     '- For rows with labels like Number, Card Number, Balance, Exp, CVV, CVC, or Security Code, map Number/Card Number to primaryCode, Balance to faceValue, Exp to expirationMonth/expirationYear, and set credentialProfile to network_prepaid.',
-    '- Do not put CVV/CVC/CID/security-code values in notes, source, rawLine, primaryCode, or secondaryCode. If present, omit the value; the app will warn the user that a security code was detected but not imported.',
+    '- Do not put CVV/CVC/CID/security-code values in notes, source, rawLine, primaryCode, or secondaryCode. Put the value only in networkSecurityCode.',
     '- Face values should be numeric strings without a dollar sign.',
     '- Preserve human-readable code grouping such as spaces or hyphens in primaryCode.',
     '- Preserve each extracted card as one item. The database write will happen only after human review.',
@@ -635,12 +639,13 @@ function toRows(cards: AiParsedCard[], provider: AiProviderName, model: string):
     expirationMonth: card.expirationMonth || '',
     expirationYear: card.expirationYear || '',
     billingZip: card.billingZip || '',
+    networkSecurityCode: card.networkSecurityCode || '',
     barcodeFormat: card.barcodeFormat || 'code128',
     source: card.source || '',
     notes: card.notes || '',
     warnings: [
       `AI parsed with ${provider}/${model}; verify before import.`,
-      ...(card.securityCodePresent ? ['Security code was detected but not imported. Network-card CVV/CVC is not stored by default.'] : []),
+      ...(card.securityCodePresent ? ['Security code was parsed for local encrypted storage. Verify before import.'] : []),
       ...(typeof card.confidence === 'number' && card.confidence < 0.8 ? ['Low AI confidence.'] : []),
     ],
   }));
