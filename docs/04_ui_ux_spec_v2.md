@@ -468,7 +468,9 @@ Loose bulk import:
 - Missing brand, value, and required credential fields are editable in the review dialog before confirm.
 - Confirm imports only when all rows are complete, then creates the reviewed cards through one normal encrypted create-deal request so the batch is transactionally accepted or rejected.
 - New brands discovered during review are added to the local hint index on import.
-- AI analysis is available as a separate action for messy pasted text. It sends the pasted text to the configured server-side AI provider, returns editable review rows, and never writes to the database until the user confirms.
+- AI Import is a standalone workspace for messy pasted text. It uses an agent-style layout with raw input, live activity messages, provider/model/timing metadata, system normalization counts, editable review rows, discard, confirm import, and another-pass correction controls.
+- AI Import sends the pasted text to the configured server-side AI provider, returns editable review rows, and never writes to the database until the user confirms.
+- Another-pass correction sends the original text, optional user correction, and current draft context back to the server so the provider can return a full corrected card list.
 - Server-side AI model selection checks configured providers at most once per day and prefers free models. If all configured free providers are out of quota, the UI must show a clear error and leave the pasted text intact.
 
 Flow:

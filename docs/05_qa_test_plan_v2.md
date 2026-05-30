@@ -240,8 +240,9 @@ Example:
 | IMP-015 | Unit | Loose bulk import parser examples | Parses `Doordash 50 abcd`, `Bestbuy $50 abcd ef`, tab-separated spreadsheet rows, code/PIN-only rows, brand/code rows with missing value, barcode rows, and network prepaid rows |
 | IMP-016 | UI | Bulk import review dialog | One popup shows all parsed rows; missing brand/value/credential fields and row source/notes are editable; confirm is disabled until complete; confirm sends one atomic multi-card create request |
 | IMP-017 | UI | Bulk import CSV/TSV file input | Simple header and no-header files populate the same review dialog as pasted text |
-| IMP-018 | Integration/UI | AI bulk import analysis | Messy pasted text is sent to `/api/ai-import/analyze`; provider output fills the same review dialog; confirm still sends one normal create-deal request; audit omits pasted secrets |
+| IMP-018 | Integration/UI | Standalone AI import analysis | Messy pasted text is sent to `/api/ai-import/analyze`; the AI Import workspace shows live status, provider/model/timing, returned candidate counts, normalized review rows, and confirm still sends one normal create-deal request; audit omits pasted secrets |
 | IMP-019 | Integration | AI provider unavailable/quota exhausted | Missing keys or exhausted free quotas return a clear error and do not clear pasted text |
+| IMP-020 | UI | AI import correction pass | User can add a correction, rerun the AI agent with the original text and current draft context, and review the corrected full card list before saving |
 | EXP-001 | E2E | Plaintext export happy path | Fresh secret + type EXPORT; file returned; no-store; audit |
 | EXP-002 | Integration | Plaintext export wrong secret | Rejected; no file |
 | EXP-003 | Integration | Raw DB export | Fresh secret required; no-store; audit |

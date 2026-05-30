@@ -2070,7 +2070,7 @@ describe('App', () => {
     });
   });
 
-  it('uses AI analysis for messy bulk gift-card import text', async () => {
+  it('uses the standalone AI import workspace for messy gift-card text', async () => {
     let resolveAiAnalysis: (value: Response) => void = () => {};
     const aiAnalysisPromise = new Promise<Response>((resolve) => {
       resolveAiAnalysis = resolve;
@@ -2132,24 +2132,35 @@ describe('App', () => {
             warnings: ['AI parsed with google/gemini-2.5-flash; verify before import.'],
           },
         ],
+        diagnostics: {
+          candidatesReturned: 3,
+          rowsAccepted: 3,
+          rowsDiscarded: 0,
+        },
       },
     };
 
-    fetchMock()
-      .mockResolvedValueOnce(
-        jsonResponse({
+    fetchMock().mockImplementation((url, init) => {
+      const path = String(url);
+      const method = (init as RequestInit | undefined)?.method || 'GET';
+      if (path === '/api/auth/status') {
+        return Promise.resolve(jsonResponse({
           data: {
             setupComplete: true,
             sessionValid: true,
             dekLoaded: true,
             csrfToken: 'csrf_ready',
           },
-        }),
-      )
-      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
-      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
-      .mockResolvedValueOnce(
-        jsonResponse({
+        }));
+      }
+      if (path === '/api/cards') {
+        return Promise.resolve(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }));
+      }
+      if (path === '/api/deals' && method === 'GET') {
+        return Promise.resolve(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }));
+      }
+      if (path.startsWith('/api/reference-values')) {
+        return Promise.resolve(jsonResponse({
           data: {
             deal_name: [],
             source: [],
@@ -2158,11 +2169,13 @@ describe('App', () => {
               { id: 2, type: 'card_brand', value: 'Uber', usageCount: 1 },
             ],
           },
-        }),
-      )
-      .mockImplementationOnce(() => aiAnalysisPromise)
-      .mockResolvedValueOnce(
-        jsonResponse(
+        }));
+      }
+      if (path === '/api/ai-import/analyze') {
+        return aiAnalysisPromise;
+      }
+      if (path === '/api/deals' && method === 'POST') {
+        return Promise.resolve(jsonResponse(
           {
             data: {
               deal: { id: 44, name: 'Bulk import', source: null, inputTotalCostCents: null, rowVersion: 1 },
@@ -2170,29 +2183,33 @@ describe('App', () => {
             },
           },
           201,
-        ),
-      );
+        ));
+      }
+      return Promise.reject(new Error(`Unhandled test request: ${method} ${path}`));
+    });
 
     const user = userEvent.setup();
     render(<App />);
 
     await screen.findByRole('heading', { name: /dashboard/i });
-    await user.click(screen.getByRole('button', { name: /^bulk import$/i }));
-    await user.type(screen.getByLabelText(/^gift-card lines$/i), mixedAiImportText);
+    await user.click(within(screen.getByRole('navigation', { name: /primary/i })).getByRole('button', { name: /^ai import$/i }));
+    await screen.findByRole('heading', { name: /^ai import$/i });
+    await user.type(screen.getByLabelText(/^raw gift-card text$/i), mixedAiImportText);
     await user.click(screen.getByRole('button', { name: /^analyze with ai$/i }));
-    await expect(screen.findByRole('status')).resolves.toHaveTextContent(/live provider request/i);
+    await expect(screen.findByRole('status')).resolves.toHaveTextContent(/AI provider/i);
     resolveAiAnalysis(jsonResponse(aiAnalysisPayload));
 
-    const review = await screen.findByRole('dialog', { name: /^review parsed cards$/i });
-    expect(within(review).getAllByText(/AI: google\/gemini-2\.5-flash · \d+(?:ms|[.0-9]+s)/i).length).toBeGreaterThan(0);
-    expect(within(review).getByText(/^AI diagnostics$/i)).toBeInTheDocument();
-    await user.click(within(review).getByRole('button', { name: /^discard line 1$/i }));
-    expect(within(review).queryByDisplayValue('Code/PIN')).not.toBeInTheDocument();
-    expect(within(review).getByLabelText(/^line 2 brand$/i)).toHaveValue('Lowes');
-    expect(within(review).getByLabelText(/^line 2 PIN$/i)).toHaveValue('7640');
-    expect(within(review).getByLabelText(/^line 2 notes$/i)).toHaveValue('Memo: 05/02/2026');
-    expect(within(review).getByLabelText(/^line 3 code or card number$/i)).toHaveValue('NAAD XYHD QR65 U8LY');
-    await user.click(within(review).getByRole('button', { name: /^import 2 cards$/i }));
+    await screen.findByDisplayValue('Lowes');
+    expect(screen.getByText('google')).toBeInTheDocument();
+    expect(screen.getByText('gemini-2.5-flash')).toBeInTheDocument();
+    expect(screen.getByText('3 parsed · 2 ready · 1 need edits')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /^discard line 1$/i }));
+    expect(screen.queryByDisplayValue('Code/PIN')).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/^line 2 brand$/i)).toHaveValue('Lowes');
+    expect(screen.getByLabelText(/^line 2 PIN$/i)).toHaveValue('7640');
+    expect(screen.getByLabelText(/^line 2 notes$/i)).toHaveValue('Memo: 05/02/2026');
+    expect(screen.getByLabelText(/^line 3 code or card number$/i)).toHaveValue('NAAD XYHD QR65 U8LY');
+    await user.click(screen.getByRole('button', { name: /^import 2 cards$/i }));
 
     await waitFor(() => {
       expect(globalThis.fetch).toHaveBeenCalledWith(
@@ -2225,6 +2242,154 @@ describe('App', () => {
           }),
         ],
       });
+    });
+  });
+
+  it('lets AI import run another pass with correction context', async () => {
+    const firstAiAnalysis = {
+      data: {
+        provider: 'google',
+        model: 'gemini-2.5-flash',
+        rows: [
+          {
+            id: 'ai-1',
+            lineNumber: 1,
+            rawLine: 'Uber 50 NAAD XYHD QR65 U8LY',
+            brand: 'Uber',
+            faceValue: '50',
+            credentialProfile: 'merchant_number_pin',
+            primaryCode: 'NAAD',
+            secondaryCode: 'XYHD',
+            expirationMonth: '',
+            expirationYear: '',
+            billingZip: '',
+            barcodeFormat: 'code128',
+            source: '',
+            notes: '',
+            warnings: ['AI parsed with google/gemini-2.5-flash; verify before import.'],
+          },
+        ],
+        diagnostics: {
+          candidatesReturned: 1,
+          rowsAccepted: 1,
+          rowsDiscarded: 0,
+        },
+      },
+    };
+    const secondAiAnalysis = {
+      data: {
+        provider: 'google',
+        model: 'gemini-2.5-flash',
+        rows: [
+          {
+            id: 'ai-1',
+            lineNumber: 1,
+            rawLine: 'Uber 50 NAAD XYHD QR65 U8LY',
+            brand: 'Uber',
+            faceValue: '50',
+            credentialProfile: 'claim_code',
+            primaryCode: 'NAAD XYHD QR65 U8LY',
+            secondaryCode: '',
+            expirationMonth: '',
+            expirationYear: '',
+            billingZip: '',
+            barcodeFormat: 'code128',
+            source: '',
+            notes: '',
+            warnings: ['AI parsed with google/gemini-2.5-flash; verify before import.'],
+          },
+          {
+            id: 'ai-2',
+            lineNumber: 2,
+            rawLine: 'NAAD X373 WSR8 UBNH',
+            brand: 'Uber',
+            faceValue: '50',
+            credentialProfile: 'claim_code',
+            primaryCode: 'NAAD X373 WSR8 UBNH',
+            secondaryCode: '',
+            expirationMonth: '',
+            expirationYear: '',
+            billingZip: '',
+            barcodeFormat: 'code128',
+            source: '',
+            notes: '',
+            warnings: ['AI parsed with google/gemini-2.5-flash; verify before import.'],
+          },
+        ],
+        diagnostics: {
+          candidatesReturned: 2,
+          rowsAccepted: 2,
+          rowsDiscarded: 0,
+        },
+      },
+    };
+
+    let aiAnalyzeCalls = 0;
+    fetchMock().mockImplementation((url, init) => {
+      const path = String(url);
+      const method = (init as RequestInit | undefined)?.method || 'GET';
+      if (path === '/api/auth/status') {
+        return Promise.resolve(jsonResponse({
+          data: {
+            setupComplete: true,
+            sessionValid: true,
+            dekLoaded: true,
+            csrfToken: 'csrf_ready',
+          },
+        }));
+      }
+      if (path === '/api/cards') {
+        return Promise.resolve(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }));
+      }
+      if (path === '/api/deals' && method === 'GET') {
+        return Promise.resolve(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }));
+      }
+      if (path.startsWith('/api/reference-values')) {
+        return Promise.resolve(jsonResponse({
+          data: {
+            deal_name: [],
+            source: [],
+            card_brand: [{ id: 1, type: 'card_brand', value: 'Uber', usageCount: 1 }],
+          },
+        }));
+      }
+      if (path === '/api/ai-import/analyze') {
+        aiAnalyzeCalls += 1;
+        return Promise.resolve(jsonResponse(aiAnalyzeCalls === 1 ? firstAiAnalysis : secondAiAnalysis));
+      }
+      return Promise.reject(new Error(`Unhandled test request: ${method} ${path}`));
+    });
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByRole('heading', { name: /dashboard/i });
+    await user.click(within(screen.getByRole('navigation', { name: /primary/i })).getByRole('button', { name: /^ai import$/i }));
+    await user.type(
+      screen.getByLabelText(/^raw gift-card text$/i),
+      'Uber\t50\t\tNAAD XYHD QR65 U8LY\n\t\t\tNAAD X373 WSR8 UBNH',
+    );
+    await user.click(screen.getByRole('button', { name: /^analyze with ai$/i }));
+    await screen.findByDisplayValue('NAAD');
+
+    await user.type(screen.getByLabelText(/^correction for another pass$/i), 'Uber rows inherit value 50 and have no PIN.');
+    await user.click(screen.getByRole('button', { name: /^run another pass$/i }));
+
+    await screen.findByDisplayValue('NAAD X373 WSR8 UBNH');
+    const aiCalls = fetchMock().mock.calls.filter(([url]) => url === '/api/ai-import/analyze');
+    expect(aiCalls).toHaveLength(2);
+    const secondCall = aiCalls[1];
+    expect(secondCall).toBeDefined();
+    const secondBody = JSON.parse(String((secondCall?.[1] as RequestInit).body));
+    expect(secondBody).toMatchObject({
+      instruction: 'Uber rows inherit value 50 and have no PIN.',
+      previousRows: [
+        expect.objectContaining({
+          brand: 'Uber',
+          primaryCode: 'NAAD',
+          secondaryCode: 'XYHD',
+        }),
+      ],
     });
   });
 

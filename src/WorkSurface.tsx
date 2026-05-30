@@ -14,10 +14,12 @@ import {
   ScrollText,
   Settings,
   ShieldCheck,
+  Sparkles,
   Tag,
   Upload,
   type LucideIcon,
 } from 'lucide-react';
+import { AIImportWorkspace } from './AIImportWorkspace';
 import { AddDealPanel } from './AddDealPanel';
 import { BulkImportPanel } from './BulkImportPanel';
 import {
@@ -68,6 +70,7 @@ import type { AuthState, Card, CardSearchCriteria, Deal, RevealedCredentials } f
 const navItems: Array<{ id: ViewId; label: string; icon: LucideIcon }> = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'cards', label: 'Cards', icon: CreditCard },
+  { id: 'aiImport', label: 'AI Import', icon: Sparkles },
   { id: 'deals', label: 'Deals', icon: Tag },
   { id: 'backup', label: 'Backup', icon: DatabaseBackup },
   { id: 'audit', label: 'Audit Log', icon: ScrollText },
@@ -383,6 +386,9 @@ export function WorkSurface({
               if (item.id === 'backup') {
                 return userCanManageInventory;
               }
+              if (item.id === 'aiImport') {
+                return userCanManageInventory;
+              }
               return true;
             })
             .map((item) => {
@@ -427,6 +433,12 @@ export function WorkSurface({
               <button type="button" className="secondary-action" onClick={() => setActiveView('backup')} title="Open strict CSV import and backup import/export tools.">
                 <FilePlus2 aria-hidden="true" size={17} />
                 Import
+              </button>
+            ) : null}
+            {userCanManageInventory ? (
+              <button type="button" className="secondary-action" onClick={() => void activateView('aiImport')} title="Open the agent-style AI import workspace for messy gift-card text.">
+                <Sparkles aria-hidden="true" size={17} />
+                AI Import
               </button>
             ) : null}
             {userCanManageInventory ? (
@@ -532,6 +544,20 @@ export function WorkSurface({
             />
             <CardsPagination page={cardsPage} currentCount={cards.length} onPageCards={pageCards} />
           </section>
+        ) : null}
+
+        {activeView === 'aiImport' ? (
+          <AIImportWorkspace
+            onCreateDeal={async (payload) => {
+              await onCreateDeal(payload);
+              setActiveView('dashboard');
+            }}
+            onAnalyzeAiImport={onAnalyzeAiImport}
+            referenceValues={referenceValues}
+            onLoadReferenceValues={onLoadReferenceValues}
+            onUpsertReferenceValues={onUpsertReferenceValues}
+            features={enabledFeatures}
+          />
         ) : null}
 
         {activeView === 'deals' ? (

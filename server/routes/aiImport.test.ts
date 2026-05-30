@@ -107,6 +107,11 @@ describe('AI import routes', () => {
     expect(response.body.data).toMatchObject({
       provider: 'google',
       model: 'gemini-2.5-flash',
+      diagnostics: {
+        candidatesReturned: 4,
+        rowsAccepted: 3,
+        rowsDiscarded: 1,
+      },
       rows: [
         {
           brand: 'Lowes',
@@ -139,7 +144,11 @@ describe('AI import routes', () => {
       provider: 'google',
       model: 'gemini-2.5-flash',
       rowCount: 3,
+      candidatesReturned: 4,
+      rowsDiscarded: 1,
       textLength: expect.any(Number),
+      instructionLength: 0,
+      previousRowCount: 0,
       elapsedMs: expect.any(Number),
     });
     expect(JSON.stringify(auditRows)).not.toContain('6006491727039277301');

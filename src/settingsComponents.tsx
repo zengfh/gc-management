@@ -64,7 +64,7 @@ export function UserAdminPanel({
       {loading ? <div className="loading-strip inline-loading">Loading users...</div> : null}
       <FieldError message={error} />
       {loaded ? (
-        <div className="table-wrap">
+        <div className="table-wrap" tabIndex={0}>
           <table>
             <thead>
               <tr>
@@ -84,7 +84,7 @@ export function UserAdminPanel({
         </div>
       ) : null}
       {loaded && invites?.length ? (
-        <div className="table-wrap">
+        <div className="table-wrap" tabIndex={0}>
           <table>
             <thead>
               <tr>

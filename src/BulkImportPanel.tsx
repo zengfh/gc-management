@@ -1,13 +1,13 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { FilePlus2, Upload, X } from 'lucide-react';
 import type { FeatureFlags, ReferenceValue, ReferenceValueState } from '../shared/domain';
-import type { ApiPayload, AsyncApiHandler, VoidHandler } from './appTypes';
+import type { AiImportAnalyzePayload, AiImportAnalyzeResult, ApiPayload, AsyncApiHandler, VoidHandler } from './appTypes';
+import { aiImportErrorMessage, formatElapsedTime } from './aiImportUi';
 import {
   analyzeBulkImportText,
   bulkImportMissingFields,
   bulkImportRowsToDealPayload,
   refreshBulkImportWarnings,
-  type BulkImportAnalysis,
   type BulkImportDraft,
   type BulkImportProfile,
 } from './bulkImport';
@@ -29,29 +29,6 @@ const sampleText = [
   'abcd ef',
   'Doordash abcd',
 ].join('\n');
-
-function formatElapsedTime(milliseconds: number): string {
-  if (milliseconds < 1000) {
-    return `${Math.max(1, Math.round(milliseconds))}ms`;
-  }
-  return `${(milliseconds / 1000).toFixed(1)}s`;
-}
-
-function aiImportErrorMessage(caught: unknown, elapsedMs: number): string {
-  const error = caught as Error & { code?: string; status?: number };
-  const baseMessage = errorMessage(caught);
-  const elapsed = formatElapsedTime(elapsedMs);
-  if (error.code === 'AI_IMPORT_QUOTA_EXHAUSTED' || error.status === 429) {
-    return `AI import failed after ${elapsed}: all configured AI providers are out of quota or rate-limited. You can retry later or use Fast parse (rules). ${baseMessage}`;
-  }
-  if (error.code === 'AI_IMPORT_NOT_CONFIGURED') {
-    return `AI import is not configured on this server. Set a GC_AI_* provider key, then retry. ${baseMessage}`;
-  }
-  if (error.code === 'AI_IMPORT_FAILED' || error.status === 503) {
-    return `AI import failed after ${elapsed}: the configured providers did not return a usable parse. You can retry or use Fast parse (rules). ${baseMessage}`;
-  }
-  return `AI import failed after ${elapsed}. ${baseMessage}`;
-}
 
 function indexedBrandValues(referenceValues: ReferenceValueState): string[] {
   return (referenceValues?.[referenceValueTypes.cardBrand] || []).map((row) => row.value).filter(Boolean);
@@ -151,7 +128,7 @@ function BulkImportReviewModal({
             </dl>
           </details>
         ) : null}
-        <div className="table-wrap bulk-review-wrap">
+        <div className="table-wrap bulk-review-wrap" tabIndex={0}>
           <table className="bulk-review-table">
             <colgroup>
               <col className="bulk-col-action" />
@@ -331,7 +308,7 @@ export function BulkImportPanel({
 }: {
   onClose: VoidHandler;
   onCreateDeal: AsyncApiHandler<ApiPayload, unknown>;
-  onAnalyzeAiImport: AsyncApiHandler<{ text: string }, { data: BulkImportAnalysis & { provider?: string; model?: string } }>;
+  onAnalyzeAiImport: AsyncApiHandler<AiImportAnalyzePayload, { data: AiImportAnalyzeResult }>;
   referenceValues: ReferenceValueState;
   onLoadReferenceValues?: () => Promise<ReferenceValueState>;
   onUpsertReferenceValues: (values?: ReferenceValue[]) => Promise<ReferenceValue[]>;

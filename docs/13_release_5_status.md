@@ -24,6 +24,8 @@ Status: Release 5 complete
 - Added a browser-level Release 5 acceptance test that imports the synthetic CSV through the UI, verifies exact credential search, reveals a scannable barcode, confirms network-prepaid security codes are omitted by default, exports an encrypted backup, and restores it through replace import.
 - Updated CSV import preview to show a profile-aware masked credential summary and PIN status instead of implying code-only credentials have a PIN.
 - Made Playwright ports configurable so browser tests can run on alternate ports without disturbing a local dev server.
+- Added a standalone AI Import workspace with agent-style live status, provider/model diagnostics, system normalization counts, editable review rows, discard, confirm import, and another-pass correction.
+- Extended AI import analysis so a correction pass can send the original pasted text plus the current draft context back to the provider for a corrected full card list.
 
 ## Verification
 
@@ -33,6 +35,17 @@ Status: Release 5 complete
 - `npm run test:release5-acceptance` passed.
 - `npm run test:e2e:release5` passed.
 - `E2E_CLIENT_PORT=5174 E2E_API_PORT=3002 npm run test:e2e` passed.
+
+## AI Import Rework Verification
+
+Completed on 2026-05-30:
+
+- `npm run typecheck -- --pretty false`
+- `npm run lint`
+- `npm run build`
+- `npm test`
+- `npm test -- src/App.test.tsx server/routes/aiImport.test.ts src/bulkImport.test.ts`
+- `npm run test:e2e`
 
 ## Follow-Up Opportunities
 

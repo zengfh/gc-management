@@ -21,9 +21,22 @@ import type {
   SupportPolicy,
   UserInvite,
 } from '../shared/domain';
-import type { BulkImportAnalysis } from './bulkImport';
+import type { BulkImportAnalysis, BulkImportDraft } from './bulkImport';
+import type { AiImportDiagnostics } from './aiImportUi';
 
-export type ViewId = 'dashboard' | 'cards' | 'deals' | 'backup' | 'audit' | 'settings';
+export type ViewId = 'dashboard' | 'cards' | 'aiImport' | 'deals' | 'backup' | 'audit' | 'settings';
+
+export interface AiImportAnalyzePayload {
+  text: string;
+  instruction?: string;
+  previousRows?: BulkImportDraft[];
+}
+
+export type AiImportAnalyzeResult = BulkImportAnalysis & {
+  provider?: string;
+  model?: string;
+  diagnostics?: AiImportDiagnostics;
+};
 
 export interface CountSummary {
   cards?: number;
@@ -184,7 +197,7 @@ export interface WorkSurfaceProps {
   onExportRawDatabase: AsyncApiHandler<ApiPayload, { blob: Blob; filename: string | null }>;
   onPreviewCsv: AsyncApiHandler<{ csv: string }, ApiResponse<CsvPreviewPayload>>;
   onConfirmCsv: AsyncApiHandler<{ csv: string }, ApiResponse<CsvImportResult>>;
-  onAnalyzeAiImport: AsyncApiHandler<{ text: string }, ApiResponse<BulkImportAnalysis & { provider?: string; model?: string }>>;
+  onAnalyzeAiImport: AsyncApiHandler<AiImportAnalyzePayload, ApiResponse<AiImportAnalyzeResult>>;
   onImportBackup: AsyncApiHandler<ApiPayload, ApiResponse<{ summary: ImportSummary }>>;
   onChangeUnlockSecret: AsyncApiHandler<ApiPayload, ApiResponse<unknown>>;
   onGenerateRecoveryCodes: AsyncApiHandler<{ currentUnlockSecret: string }, { codes: string[]; activeCount: number }>;

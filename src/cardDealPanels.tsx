@@ -511,7 +511,7 @@ export function DealDetailPanel({ detailState, onClose }: { detailState: DealDet
           <section className="detail-section">
             <h3>Cards</h3>
             {dealCards.length ? (
-              <div className="table-wrap detail-table-wrap">
+              <div className="table-wrap detail-table-wrap" tabIndex={0}>
                 <table className="detail-table">
                   <thead>
                     <tr>

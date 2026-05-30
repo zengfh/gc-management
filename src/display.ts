@@ -76,6 +76,9 @@ export function viewTitle(view: ViewId): string {
   if (view === 'cards') {
     return 'Cards';
   }
+  if (view === 'aiImport') {
+    return 'AI Import';
+  }
   if (view === 'audit') {
     return 'Audit Log';
   }

@@ -47,6 +47,16 @@ export interface AiImportAnalysis {
   provider: AiProviderName;
   model: string;
   rows: AiImportRow[];
+  diagnostics: {
+    candidatesReturned: number;
+    rowsAccepted: number;
+    rowsDiscarded: number;
+  };
+}
+
+export interface AiImportPromptOptions {
+  instruction?: string;
+  previousRows?: unknown[];
 }
 
 class AiProviderError extends Error {
@@ -276,8 +286,26 @@ async function selectModel(provider: AiProviderName): Promise<AiModelSelection> 
   return selectGroqModel(apiKey);
 }
 
-function aiPrompt(text: string): string {
-  return [
+function safePreviousRows(previousRows: unknown[] | undefined): unknown[] {
+  if (!previousRows?.length) {
+    return [];
+  }
+  return previousRows.slice(0, 100).map((row) => {
+    const draft = row as Partial<AiImportRow>;
+    return {
+      brand: draft.brand || '',
+      faceValue: draft.faceValue || '',
+      credentialProfile: draft.credentialProfile || '',
+      primaryCode: draft.primaryCode || '',
+      secondaryCode: draft.secondaryCode || '',
+      notes: draft.notes || '',
+      rawLine: draft.rawLine || '',
+    };
+  });
+}
+
+function aiPrompt(text: string, options: AiImportPromptOptions = {}): string {
+  const lines = [
     'Extract gift card inventory from the user text.',
     'Return ONLY strict JSON with this shape: {"cards":[{"brand":"","faceValue":"","credentialProfile":"claim_code|merchant_number_pin|barcode|network_prepaid|custom","primaryCode":"","secondaryCode":"","notes":"","source":"","rawLine":"","confidence":0.0}]}',
     'Rules:',
@@ -296,10 +324,29 @@ function aiPrompt(text: string): string {
     'Continuation example:',
     'Input rows: "Uber<TAB>50<TAB><TAB>NAAD XYHD QR65 U8LY" followed by "<TAB><TAB><TAB>NAAD X373 WSR8 UBNH".',
     'Output two Uber cards, both faceValue "50", both credentialProfile "claim_code", with the full grouped code in primaryCode and empty secondaryCode.',
-    '',
-    'User text:',
-    text,
-  ].join('\n');
+  ];
+
+  if (options.instruction?.trim()) {
+    lines.push(
+      '',
+      'User correction for this iteration:',
+      options.instruction.trim(),
+      'Apply the correction while preserving valid cards from the original text.',
+    );
+  }
+
+  const previousRows = safePreviousRows(options.previousRows);
+  if (previousRows.length > 0) {
+    lines.push(
+      '',
+      'Current draft rows shown to the user:',
+      JSON.stringify(previousRows),
+      'Use these only as context for the correction. Return the full corrected card list.',
+    );
+  }
+
+  lines.push('', 'User text:', text);
+  return lines.join('\n');
 }
 
 function extractJsonObject(text: string): unknown {
@@ -391,14 +438,19 @@ function normalizeAiCard(card: AiParsedCard): AiParsedCard | null {
   return next;
 }
 
-async function callGoogle(text: string, selection: AiModelSelection, apiKey: string): Promise<unknown> {
+async function callGoogle(
+  text: string,
+  selection: AiModelSelection,
+  apiKey: string,
+  options: AiImportPromptOptions,
+): Promise<unknown> {
   const payload = await fetchJson(
     `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(selection.model)}:generateContent?key=${encodeURIComponent(apiKey)}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        contents: [{ role: 'user', parts: [{ text: aiPrompt(text) }] }],
+        contents: [{ role: 'user', parts: [{ text: aiPrompt(text, options) }] }],
         generationConfig: {
           temperature: 0,
           responseMimeType: 'application/json',
@@ -414,6 +466,7 @@ async function callOpenAiCompatible(
   text: string,
   selection: AiModelSelection,
   apiKey: string,
+  options: AiImportPromptOptions,
 ): Promise<unknown> {
   const url = provider === 'openrouter'
     ? 'https://openrouter.ai/api/v1/chat/completions'
@@ -441,7 +494,7 @@ async function callOpenAiCompatible(
         },
         {
           role: 'user',
-          content: aiPrompt(text),
+          content: aiPrompt(text, options),
         },
       ],
     }),
@@ -449,11 +502,12 @@ async function callOpenAiCompatible(
   return extractJsonObject(textFromOpenAiPayload(payload));
 }
 
-function toRows(cards: AiParsedCard[], provider: AiProviderName, model: string): AiImportRow[] {
-  return cards.flatMap((card) => {
+function toRows(cards: AiParsedCard[], provider: AiProviderName, model: string): Pick<AiImportAnalysis, 'rows' | 'diagnostics'> {
+  const normalizedCards = cards.flatMap((card) => {
     const normalized = normalizeAiCard(card);
     return normalized ? [normalized] : [];
-  }).map((card, index) => ({
+  });
+  const rows = normalizedCards.map((card, index) => ({
     id: `ai-${index + 1}`,
     lineNumber: index + 1,
     rawLine: card.rawLine || '',
@@ -473,9 +527,20 @@ function toRows(cards: AiParsedCard[], provider: AiProviderName, model: string):
       ...(typeof card.confidence === 'number' && card.confidence < 0.8 ? ['Low AI confidence.'] : []),
     ],
   }));
+  return {
+    rows,
+    diagnostics: {
+      candidatesReturned: cards.length,
+      rowsAccepted: rows.length,
+      rowsDiscarded: cards.length - rows.length,
+    },
+  };
 }
 
-export async function analyzeGiftCardsWithAi(text: string): Promise<AiImportAnalysis> {
+export async function analyzeGiftCardsWithAi(
+  text: string,
+  options: AiImportPromptOptions = {},
+): Promise<AiImportAnalysis> {
   const providers = configuredProviders();
   if (providers.length === 0) {
     throw new HttpError(503, 'AI_IMPORT_NOT_CONFIGURED', 'AI import is not configured. Set at least one GC_AI_* API key on the server.');
@@ -487,13 +552,15 @@ export async function analyzeGiftCardsWithAi(text: string): Promise<AiImportAnal
     try {
       const selection = await selectModel(provider);
       const raw = provider === 'google'
-        ? await callGoogle(text, selection, apiKey)
-        : await callOpenAiCompatible(provider, text, selection, apiKey);
+        ? await callGoogle(text, selection, apiKey, options)
+        : await callOpenAiCompatible(provider, text, selection, apiKey, options);
       const parsed = aiResponseSchema.parse(raw);
+      const { rows, diagnostics } = toRows(parsed.cards, provider, selection.model);
       return {
         provider,
         model: selection.model,
-        rows: toRows(parsed.cards, provider, selection.model),
+        rows,
+        diagnostics,
       };
     } catch (caught) {
       const error = caught as Error & { status?: number; retryable?: boolean };

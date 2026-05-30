@@ -13,6 +13,8 @@ import {
 } from './appStateReducers';
 import type {
   ApiPayload,
+  AiImportAnalyzePayload,
+  AiImportAnalyzeResult,
   CardMutationResult,
   CardSalePayload,
   CsvImportResult,
@@ -23,7 +25,6 @@ import {
   cardSearchQuery,
   mergeCardSearchCriteria,
 } from './cardSearch';
-import type { BulkImportAnalysis } from './bulkImport';
 import { defaultPage } from './defaults';
 import type {
   ApiResponse,
@@ -129,8 +130,8 @@ export function useInventoryController({ csrfToken }: InventoryControllerOptions
     return response;
   }
 
-  async function analyzeAiImport(payload: { text: string }) {
-    return apiFetch<ApiResponse<BulkImportAnalysis & { provider?: string; model?: string }>>('/api/ai-import/analyze', {
+  async function analyzeAiImport(payload: AiImportAnalyzePayload) {
+    return apiFetch<ApiResponse<AiImportAnalyzeResult>>('/api/ai-import/analyze', {
       method: 'POST',
       body: payload,
       csrfToken: csrfToken(),

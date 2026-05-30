@@ -309,7 +309,7 @@ function CsvPreviewTable({ rows }: { rows: CsvPreviewRow[] }) {
   }
 
   return (
-    <div className="table-wrap import-preview-wrap">
+    <div className="table-wrap import-preview-wrap" tabIndex={0}>
       <table className="import-preview-table">
         <thead>
           <tr>

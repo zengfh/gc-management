@@ -1349,6 +1349,265 @@ tbody tr:hover td {
   line-height: 1.35;
 }
 
+.spin-icon {
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.ai-import-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.65fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.ai-import-console,
+.ai-import-inspector,
+.ai-review-section {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-raised);
+  backdrop-filter: var(--blur-md);
+  -webkit-backdrop-filter: var(--blur-md);
+}
+
+.ai-import-console {
+  min-height: 620px;
+  display: grid;
+  grid-template-rows: auto minmax(220px, 1fr) auto;
+  overflow: hidden;
+}
+
+.ai-agent-header {
+  min-height: 74px;
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr) max-content;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid var(--color-border-subtle);
+  padding: 16px;
+}
+
+.ai-agent-avatar {
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-md);
+  color: #ffffff;
+  background: var(--gradient-primary);
+  box-shadow: var(--glow-primary);
+}
+
+.ai-message-list {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-height: 0;
+  max-height: 360px;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.ai-message {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 10px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  padding: 10px;
+  background: var(--color-surface-muted);
+}
+
+.ai-message-agent {
+  margin-right: 28px;
+}
+
+.ai-message-user {
+  margin-left: 28px;
+  background: var(--color-primary-muted);
+}
+
+.ai-message-icon {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  color: var(--color-primary-strong);
+  background: var(--color-primary-soft);
+}
+
+.ai-message-success .ai-message-icon {
+  color: var(--color-success);
+  background: var(--color-success-soft);
+}
+
+.ai-message-warning .ai-message-icon {
+  color: var(--color-amber);
+  background: var(--color-amber-soft);
+}
+
+.ai-message-error .ai-message-icon {
+  color: var(--color-danger);
+  background: var(--color-danger-soft);
+}
+
+.ai-message-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.ai-message-heading strong {
+  min-width: 0;
+  color: var(--color-text);
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.ai-message-heading span {
+  flex: 0 0 auto;
+  color: var(--color-muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.ai-message p {
+  color: var(--color-muted-strong);
+  font-size: 0.86rem;
+  font-weight: 650;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.ai-composer {
+  display: grid;
+  gap: 12px;
+  border-top: 1px solid var(--color-border-subtle);
+  padding: 16px;
+  background: var(--color-surface-muted);
+}
+
+.ai-composer label {
+  display: grid;
+  gap: 6px;
+  color: var(--color-text-soft);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.ai-import-textarea {
+  min-height: 220px;
+}
+
+.ai-instruction-textarea {
+  min-height: 84px;
+}
+
+.ai-composer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ai-import-inspector {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+}
+
+.ai-inspector-card {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  background: var(--color-surface-muted);
+}
+
+.ai-inspector-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-text);
+}
+
+.ai-inspector-heading svg {
+  color: var(--color-primary);
+}
+
+.ai-inspector-heading h3 {
+  margin: 0;
+  font-size: 0.94rem;
+}
+
+.ai-import-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.ai-import-stats div {
+  min-width: 0;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 9px 10px;
+  background: var(--color-surface);
+}
+
+.ai-import-stats dt {
+  color: var(--color-muted);
+  font-size: 0.7rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.ai-import-stats dd {
+  margin: 4px 0 0;
+  color: var(--color-text);
+  font-size: 0.88rem;
+  font-weight: 850;
+  overflow-wrap: anywhere;
+}
+
+.ai-review-section {
+  grid-column: 1 / -1;
+  overflow: hidden;
+}
+
+.ai-review-section .section-heading {
+  align-items: center;
+}
+
+.ai-review-section .section-heading > div {
+  display: grid;
+  gap: 4px;
+}
+
+.ai-review-section .section-heading .primary-action {
+  border: 1px solid transparent;
+  color: #ffffff;
+  background: var(--gradient-primary);
+  box-shadow: var(--glow-primary);
+}
+
+.ai-review-wrap {
+  max-height: min(58svh, 620px);
+}
+
+.ai-review-table {
+  min-width: 1080px;
+}
+
 @media (max-width: 760px) {
   .review-backdrop {
     align-items: stretch;
@@ -1461,6 +1720,38 @@ tbody tr:hover td {
   }
 }
 
+@media (max-width: 1100px) {
+  .ai-import-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 760px) {
+  .ai-agent-header {
+    grid-template-columns: 42px minmax(0, 1fr);
+  }
+
+  .ai-agent-header .status-badge {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+
+  .ai-message-agent,
+  .ai-message-user {
+    margin-right: 0;
+    margin-left: 0;
+  }
+
+  .ai-import-stats {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ai-composer-actions .primary-action,
+  .ai-composer-actions .secondary-action {
+    width: 100%;
+  }
+}
+
 .reference-review-body {
   display: grid;
   gap: 12px;
@@ -1517,7 +1808,7 @@ tbody tr:hover td {
   border: 1px solid #fedf89;
   border-radius: var(--radius-md);
   background: #fffbeb;
-  color: var(--color-amber);
+  color: #92400e;
   padding: 10px 12px;
   font-size: 0.86rem;
 }
@@ -1528,7 +1819,7 @@ tbody tr:hover td {
   gap: 8px;
   border-color: #fecdca;
   background: #fffbfa;
-  color: var(--color-danger);
+  color: #b42318;
   line-height: 1.45;
 }
 

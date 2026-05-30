@@ -10,6 +10,8 @@ import { objectResponse } from '../http/response.js';
 
 const aiImportAnalyzeSchema = z.object({
   text: z.string().trim().min(1).max(25_000),
+  instruction: z.string().trim().max(4_000).optional().default(''),
+  previousRows: z.array(z.unknown()).max(200).optional().default([]),
 });
 
 function elapsedSince(startedAt: number): number {
@@ -40,7 +42,10 @@ export function createAiImportRouter({ db }: { db: Database.Database }) {
 
       const startedAt = Date.now();
       try {
-        const analysis = await analyzeGiftCardsWithAi(parsed.data.text);
+        const analysis = await analyzeGiftCardsWithAi(parsed.data.text, {
+          instruction: parsed.data.instruction,
+          previousRows: parsed.data.previousRows,
+        });
         insertAuditEvent(db, {
           accountId: req.auth.accountId,
           userId: req.auth.userId,
@@ -53,7 +58,11 @@ export function createAiImportRouter({ db }: { db: Database.Database }) {
             provider: analysis.provider,
             model: analysis.model,
             rowCount: analysis.rows.length,
+            candidatesReturned: analysis.diagnostics.candidatesReturned,
+            rowsDiscarded: analysis.diagnostics.rowsDiscarded,
             textLength: parsed.data.text.length,
+            instructionLength: parsed.data.instruction.length,
+            previousRowCount: parsed.data.previousRows.length,
             elapsedMs: elapsedSince(startedAt),
           },
           timestamp: new Date().toISOString(),
@@ -74,6 +83,8 @@ export function createAiImportRouter({ db }: { db: Database.Database }) {
             errorCode: details.code,
             errorStatus: details.status,
             textLength: parsed.data.text.length,
+            instructionLength: parsed.data.instruction.length,
+            previousRowCount: parsed.data.previousRows.length,
             elapsedMs: elapsedSince(startedAt),
             ...(details.providersTried ? { providersTried: details.providersTried } : {}),
           },
