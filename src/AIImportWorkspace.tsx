@@ -14,6 +14,8 @@ import type { FeatureFlags, ReferenceValue, ReferenceValueState } from '../share
 import type { AiImportAnalyzePayload, AiImportAnalyzeResult, ApiPayload, AsyncApiHandler } from './appTypes';
 import { aiImportErrorMessage, formatElapsedTime } from './aiImportUi';
 import {
+  bulkImportExpirationDate,
+  bulkImportExpirationPatch,
   bulkImportMissingFields,
   bulkImportRowsToDealPayload,
   refreshBulkImportWarnings,
@@ -516,6 +518,7 @@ export function AIImportWorkspace({
                 <col className="bulk-col-brand" />
                 <col className="bulk-col-value" />
                 <col className="bulk-col-type" />
+                <col className="bulk-col-exp" />
                 <col className="bulk-col-code" />
                 <col className="bulk-col-pin" />
                 <col className="bulk-col-security" />
@@ -530,6 +533,7 @@ export function AIImportWorkspace({
                   <th>Brand</th>
                   <th>Value</th>
                   <th>Credential type</th>
+                  <th>EXP date</th>
                   <th>Code / number</th>
                   <th>PIN</th>
                   <th>Security code</th>
@@ -590,6 +594,16 @@ export function AIImportWorkspace({
                             ))}
                           </select>
                         </td>
+                        <td data-label="EXP date">
+                          <input
+                            className="mono"
+                            autoComplete="off"
+                            placeholder="MM/YYYY"
+                            value={bulkImportExpirationDate(row)}
+                            aria-label={`Line ${row.lineNumber} EXP date`}
+                            onChange={(event) => updateRow(row.id, bulkImportExpirationPatch(event.target.value))}
+                          />
+                        </td>
                         <td data-label="Code / number">
                           <input
                             className="mono"
@@ -636,7 +650,7 @@ export function AIImportWorkspace({
                       {(missing.length > 0 || row.warnings.length > 0) ? (
                         <tr className="bulk-row-diagnostics">
                           <td />
-                          <td colSpan={10} data-label="Warnings">
+                          <td colSpan={11} data-label="Warnings">
                             {missing.length > 0 ? (
                               <span>Needs {missing.join(', ')}</span>
                             ) : null}

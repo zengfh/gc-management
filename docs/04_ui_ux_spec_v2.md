@@ -471,7 +471,7 @@ Loose bulk import:
 - AI Import is a standalone workspace for messy pasted text. It uses an agent-style layout with raw input, live activity messages, provider/model/timing metadata, system normalization counts, editable review rows, discard, confirm import, and another-pass correction controls.
 - AI Import sends the pasted text to the configured server-side AI provider, returns editable review rows, and never writes to the database until the user confirms.
 - Another-pass correction sends the original text, optional user correction, and current draft context back to the server so the provider can return a full corrected card list.
-- For network prepaid cards, AI Import review shows a separate Security code field instead of misusing PIN. Security-code storage must stay gated to private/local deployments through `GC_FEATURE_NETWORK_SECURITY_CODE_STORAGE`.
+- For network prepaid cards, AI Import review shows separate EXP date and Security code fields instead of hiding expiration in notes or misusing PIN. Security-code storage must stay gated to private/local deployments through `GC_FEATURE_NETWORK_SECURITY_CODE_STORAGE`.
 - Server-side AI model selection checks configured providers at most once per day and prefers free models. If all configured free providers are out of quota, the UI must show a clear error and leave the pasted text intact.
 
 Flow:

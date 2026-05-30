@@ -260,6 +260,64 @@ describe('AI import routes', () => {
     expect(JSON.stringify(auditRows)).not.toContain('123');
   });
 
+  it('enriches network prepaid rows from labeled pasted text when the AI omits CVV and expiration fields', async () => {
+    process.env.GC_AI_GOOGLE_API_KEY = 'test-google-key';
+    process.env.GC_AI_GOOGLE_MODEL = 'gemini-2.5-flash';
+    delete process.env.GC_AI_OPENROUTER_API_KEY;
+    delete process.env.GC_AI_GROQ_API_KEY;
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response(JSON.stringify({
+      candidates: [
+        {
+          content: {
+            parts: [
+              {
+                text: JSON.stringify({
+                  cards: [
+                    {
+                      brand: '',
+                      balance: '$800.00',
+                      number: '5274 8000 0000 1425',
+                      notes: 'Expiration: 11/2026',
+                      confidence: 0.9,
+                    },
+                  ],
+                }),
+              },
+            ],
+          },
+        },
+      ],
+    })));
+    const csrfToken = await setupOwner();
+
+    const response = await postWithCsrf('/api/ai-import/analyze', csrfToken).send({
+      text: [
+        'Card 1 (ending 1425)',
+        '- Number: 5274 8000 0000 1425',
+        '- CVV: 987',
+        '- Exp: 11/2026',
+        '- Balance: $800.00',
+      ].join('\n'),
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.rows).toEqual([
+      expect.objectContaining({
+        brand: 'Mastercard',
+        faceValue: '800.00',
+        credentialProfile: 'network_prepaid',
+        primaryCode: '5274 8000 0000 1425',
+        expirationMonth: '11',
+        expirationYear: '2026',
+        networkSecurityCode: '987',
+        notes: '',
+      }),
+    ]);
+    expect(response.body.data.rows[0].warnings.join(' ')).toMatch(/Security code was parsed for local encrypted storage/i);
+    const auditRows = db.prepare("SELECT * FROM audit_log WHERE action = 'ai_import.analyze' ORDER BY id DESC LIMIT 1").all();
+    expect(JSON.stringify(auditRows)).not.toContain('987');
+  });
+
   it('returns safe provider failure details when every AI response is unusable', async () => {
     process.env.GC_AI_GOOGLE_API_KEY = 'test-google-key';
     process.env.GC_AI_GOOGLE_MODEL = 'gemini-2.5-flash';

@@ -503,6 +503,30 @@ export function refreshBulkImportWarnings(row: BulkImportDraft): BulkImportDraft
   return withWarnings({ ...row, warnings: [] });
 }
 
+export function bulkImportExpirationDate(row: Pick<BulkImportDraft, 'expirationMonth' | 'expirationYear'>): string {
+  if (!row.expirationMonth.trim() && !row.expirationYear.trim()) {
+    return '';
+  }
+  return [row.expirationMonth.trim(), row.expirationYear.trim()].filter(Boolean).join('/');
+}
+
+export function bulkImportExpirationPatch(value: string): Pick<BulkImportDraft, 'expirationMonth' | 'expirationYear'> {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return { expirationMonth: '', expirationYear: '' };
+  }
+  const match = trimmed.match(/^(0?[1-9]|1[0-2])\s*[/-]\s*(\d{2}|\d{4})$/);
+  if (!match) {
+    return { expirationMonth: trimmed, expirationYear: '' };
+  }
+  const month = (match[1] || '').padStart(2, '0');
+  const yearPart = match[2] || '';
+  return {
+    expirationMonth: month,
+    expirationYear: yearPart.length === 2 ? `20${yearPart}` : yearPart,
+  };
+}
+
 export function bulkImportRowToDealPayload(row: BulkImportDraft): ApiPayload {
   return {
     cards: [bulkImportRowToCardPayload(row)],

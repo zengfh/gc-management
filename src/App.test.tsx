@@ -2092,6 +2092,7 @@ describe('App', () => {
             expirationMonth: '',
             expirationYear: '',
             billingZip: '',
+            networkSecurityCode: '',
             barcodeFormat: 'code128',
             source: '',
             notes: '',
@@ -2109,6 +2110,7 @@ describe('App', () => {
             expirationMonth: '',
             expirationYear: '',
             billingZip: '',
+            networkSecurityCode: '',
             barcodeFormat: 'code128',
             source: '',
             notes: 'Memo: 05/02/2026',
@@ -2126,15 +2128,37 @@ describe('App', () => {
             expirationMonth: '',
             expirationYear: '',
             billingZip: '',
+            networkSecurityCode: '',
             barcodeFormat: 'code128',
             source: '',
             notes: '',
             warnings: ['AI parsed with google/gemini-2.5-flash; verify before import.'],
           },
+          {
+            id: 'ai-3',
+            lineNumber: 4,
+            rawLine: 'Card 1 Number 5274 8000 0000 1425 CVV 123 Exp 11/2026 Balance $800.00',
+            brand: 'Mastercard',
+            faceValue: '800.00',
+            credentialProfile: 'network_prepaid',
+            primaryCode: '5274 8000 0000 1425',
+            secondaryCode: '',
+            expirationMonth: '11',
+            expirationYear: '2026',
+            billingZip: '',
+            networkSecurityCode: '123',
+            barcodeFormat: 'code128',
+            source: '',
+            notes: '',
+            warnings: [
+              'AI parsed with google/gemini-2.5-flash; verify before import.',
+              'Security code was parsed for local encrypted storage. Verify before import.',
+            ],
+          },
         ],
         diagnostics: {
-          candidatesReturned: 3,
-          rowsAccepted: 3,
+          candidatesReturned: 4,
+          rowsAccepted: 4,
           rowsDiscarded: 0,
         },
       },
@@ -2159,6 +2183,9 @@ describe('App', () => {
       if (path === '/api/deals' && method === 'GET') {
         return Promise.resolve(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }));
       }
+      if (path === '/api/reference-values' && method === 'POST') {
+        return Promise.resolve(jsonResponse({ data: [] }));
+      }
       if (path.startsWith('/api/reference-values')) {
         return Promise.resolve(jsonResponse({
           data: {
@@ -2167,6 +2194,7 @@ describe('App', () => {
             card_brand: [
               { id: 1, type: 'card_brand', value: 'Lowes', usageCount: 1 },
               { id: 2, type: 'card_brand', value: 'Uber', usageCount: 1 },
+              { id: 3, type: 'card_brand', value: 'Mastercard', usageCount: 1 },
             ],
           },
         }));
@@ -2202,14 +2230,16 @@ describe('App', () => {
     await screen.findByDisplayValue('Lowes');
     expect(screen.getByText('google')).toBeInTheDocument();
     expect(screen.getByText('gemini-2.5-flash')).toBeInTheDocument();
-    expect(screen.getByText('3 parsed · 2 ready · 1 need edits')).toBeInTheDocument();
+    expect(screen.getByText('4 parsed · 3 ready · 1 need edits')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /^discard line 1$/i }));
     expect(screen.queryByDisplayValue('Code/PIN')).not.toBeInTheDocument();
     expect(screen.getByLabelText(/^line 2 brand$/i)).toHaveValue('Lowes');
     expect(screen.getByLabelText(/^line 2 PIN$/i)).toHaveValue('7640');
     expect(screen.getByLabelText(/^line 2 notes$/i)).toHaveValue('Memo: 05/02/2026');
     expect(screen.getByLabelText(/^line 3 code or card number$/i)).toHaveValue('NAAD XYHD QR65 U8LY');
-    await user.click(screen.getByRole('button', { name: /^import 2 cards$/i }));
+    expect(screen.getByLabelText(/^line 4 EXP date$/i)).toHaveValue('11/2026');
+    expect(screen.getByLabelText(/^line 4 security code$/i)).toHaveValue('123');
+    await user.click(screen.getByRole('button', { name: /^import 3 cards$/i }));
 
     await waitFor(() => {
       expect(globalThis.fetch).toHaveBeenCalledWith(
@@ -2239,6 +2269,20 @@ describe('App', () => {
             credentialProfile: 'claim_code',
             redemptionCode: 'NAAD XYHD QR65 U8LY',
             faceValueCents: 5000,
+          }),
+          expect.objectContaining({
+            brand: 'Mastercard',
+            credentialProfile: 'network_prepaid',
+            cardNumber: '5274 8000 0000 1425',
+            networkSecurityCode: '123',
+            credentials: expect.objectContaining({
+              fields: expect.arrayContaining([
+                expect.objectContaining({ fieldKey: 'expiration_month', value: '11' }),
+                expect.objectContaining({ fieldKey: 'expiration_year', value: '2026' }),
+                expect.objectContaining({ fieldKey: 'network_security_code', value: '123' }),
+              ]),
+            }),
+            faceValueCents: 80000,
           }),
         ],
       });

@@ -62,6 +62,14 @@ export interface AiImportPromptOptions {
   previousRows?: unknown[];
 }
 
+interface TextPrepaidDetail {
+  last4: string;
+  faceValue: string;
+  expirationMonth: string;
+  expirationYear: string;
+  networkSecurityCode: string;
+}
+
 class AiProviderError extends Error {
   status: number | undefined;
   retryable: boolean;
@@ -95,6 +103,48 @@ function splitExpiration(value: string): { expirationMonth: string; expirationYe
   const month = monthPart.padStart(2, '0');
   const year = yearPart.length === 2 ? `20${yearPart}` : yearPart;
   return { expirationMonth: month, expirationYear: year };
+}
+
+function primaryCodeDigits(value: string): string {
+  return value.replace(/\D/g, '');
+}
+
+function splitTextBlocks(text: string): string[] {
+  const blocks: string[] = [];
+  let current: string[] = [];
+  for (const line of text.replace(/\r\n/g, '\n').split('\n')) {
+    if (/^\s*card\s+\d+\b/i.test(line) && current.some((row) => row.trim())) {
+      blocks.push(current.join('\n'));
+      current = [];
+    }
+    current.push(line);
+  }
+  if (current.some((row) => row.trim())) {
+    blocks.push(current.join('\n'));
+  }
+  return blocks.flatMap((block) => block.split(/\n\s*\n/g).map((row) => row.trim()).filter(Boolean));
+}
+
+function extractPrepaidDetailsFromText(text: string): TextPrepaidDetail[] {
+  return splitTextBlocks(text).flatMap((block) => {
+    const number = block.match(/\b(?:number|card\s*number|pan)\s*:\s*([0-9][0-9\s-]{11,30}[0-9])\b/i)?.[1]
+      || block.match(/\b((?:\d[ -]*){13,19})\b/)?.[1]
+      || '';
+    const digits = primaryCodeDigits(number);
+    if (digits.length < 13) {
+      return [];
+    }
+    const expiration = splitExpiration(
+      block.match(/\b(?:exp|expiration|valid\s*through)\s*:\s*([0-9]{1,2}\s*[/-]\s*[0-9]{2,4})\b/i)?.[1] || '',
+    );
+    return [{
+      last4: digits.slice(-4),
+      faceValue: moneyText(block.match(/\b(?:balance|value|amount)\s*:\s*\$?\s*([0-9][0-9,]*(?:\.\d{1,2})?)\b/i)?.[1] || ''),
+      expirationMonth: expiration.expirationMonth,
+      expirationYear: expiration.expirationYear,
+      networkSecurityCode: block.match(/\b(?:cvv|cvc|cid|security\s*code)\s*:\s*([0-9]{3,4})\b/i)?.[1] || '',
+    }];
+  });
 }
 
 const aiCardSchema = z.object({
@@ -473,10 +523,6 @@ function normalizePrimaryCode(value: string): string {
   return value.trim().replace(/\s+/g, ' ').toUpperCase();
 }
 
-function primaryCodeDigits(value: string): string {
-  return value.replace(/\D/g, '');
-}
-
 function inferNetworkBrandFromNumber(value: string): string {
   const digits = primaryCodeDigits(value);
   if (/^4\d{12,18}$/.test(digits)) {
@@ -558,6 +604,51 @@ function normalizeAiCard(card: AiParsedCard): AiParsedCard | null {
   return next;
 }
 
+function removeExpirationOnlyNote(notes: string | undefined): string {
+  const value = notes?.trim() || '';
+  if (!value) {
+    return '';
+  }
+  return value
+    .replace(/\b(?:exp|expiration|valid\s*through)\s*:\s*[0-9]{1,2}\s*[/-]\s*[0-9]{2,4}\b/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+function enrichCardFromText(card: AiParsedCard, details: TextPrepaidDetail[]): AiParsedCard {
+  const last4 = primaryCodeDigits(card.primaryCode).slice(-4);
+  const detail = last4 ? details.find((candidate) => candidate.last4 === last4) : null;
+  if (!detail) {
+    return card;
+  }
+  const next = { ...card };
+  let enriched = false;
+  if (!next.faceValue && detail.faceValue) {
+    next.faceValue = detail.faceValue;
+    enriched = true;
+  }
+  if (!next.expirationMonth && detail.expirationMonth) {
+    next.expirationMonth = detail.expirationMonth;
+    enriched = true;
+  }
+  if (!next.expirationYear && detail.expirationYear) {
+    next.expirationYear = detail.expirationYear;
+    enriched = true;
+  }
+  if (!next.networkSecurityCode && detail.networkSecurityCode) {
+    next.networkSecurityCode = detail.networkSecurityCode;
+    next.securityCodePresent = true;
+    enriched = true;
+  }
+  if (next.expirationMonth && next.expirationYear) {
+    next.notes = removeExpirationOnlyNote(next.notes);
+  }
+  if (enriched) {
+    next.credentialProfile = 'network_prepaid';
+  }
+  return next;
+}
+
 async function callGoogle(
   text: string,
   selection: AiModelSelection,
@@ -622,9 +713,10 @@ async function callOpenAiCompatible(
   return extractJsonObject(textFromOpenAiPayload(payload));
 }
 
-function toRows(cards: AiParsedCard[], provider: AiProviderName, model: string): Pick<AiImportAnalysis, 'rows' | 'diagnostics'> {
+function toRows(cards: AiParsedCard[], provider: AiProviderName, model: string, sourceText: string): Pick<AiImportAnalysis, 'rows' | 'diagnostics'> {
+  const textDetails = extractPrepaidDetailsFromText(sourceText);
   const normalizedCards = cards.flatMap((card) => {
-    const normalized = normalizeAiCard(card);
+    const normalized = normalizeAiCard(enrichCardFromText(card, textDetails));
     return normalized ? [normalized] : [];
   });
   const rows = normalizedCards.map((card, index) => ({
@@ -696,7 +788,7 @@ export async function analyzeGiftCardsWithAi(
         ? await callGoogle(text, selection, apiKey, options)
         : await callOpenAiCompatible(provider, text, selection, apiKey, options);
       const parsed = aiResponseSchema.parse(raw);
-      const { rows, diagnostics } = toRows(parsed.cards, provider, selection.model);
+      const { rows, diagnostics } = toRows(parsed.cards, provider, selection.model, text);
       return {
         provider,
         model: selection.model,
