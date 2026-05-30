@@ -8,6 +8,7 @@ export interface ApiOptions {
 
 export class ApiError extends Error {
   code: string | undefined;
+  details: unknown;
   fieldErrors: unknown[];
   requestId: string | null | undefined;
   status: number | undefined;
@@ -16,6 +17,7 @@ export class ApiError extends Error {
     super(message);
     this.name = 'ApiError';
     this.code = payload.code;
+    this.details = payload.details;
     this.fieldErrors = payload.fieldErrors || [];
     this.requestId = payload.requestId;
     this.status = status;

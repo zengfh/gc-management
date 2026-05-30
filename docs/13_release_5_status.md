@@ -26,6 +26,8 @@ Status: Release 5 complete
 - Made Playwright ports configurable so browser tests can run on alternate ports without disturbing a local dev server.
 - Added a standalone AI Import workspace with agent-style live status, provider/model diagnostics, system normalization counts, editable review rows, discard, confirm import, and another-pass correction.
 - Extended AI import analysis so a correction pass can send the original pasted text plus the current draft context back to the provider for a corrected full card list.
+- Fixed AI Import for network prepaid text that omits an explicit brand but includes card number, balance, expiration, and CVV/CVC labels. The parser now accepts common aliases, infers the card network when safe, and warns that network security codes are detected but not imported by default.
+- Improved AI Import failure messages with safe provider-level failure reasons instead of only saying every provider failed.
 
 ## Verification
 
@@ -46,6 +48,15 @@ Completed on 2026-05-30:
 - `npm test`
 - `npm test -- src/App.test.tsx server/routes/aiImport.test.ts src/bulkImport.test.ts`
 - `npm run test:e2e`
+
+Completed on 2026-05-30 for AI prepaid parsing diagnostics:
+
+- `npm run typecheck -- --pretty false`
+- `npm test -- server/routes/aiImport.test.ts src/App.test.tsx`
+- `npm run lint`
+- `npm run build`
+- `npm test`
+- `npm run test:e2e:release5`
 
 ## Follow-Up Opportunities
 

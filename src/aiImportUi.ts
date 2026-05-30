@@ -20,17 +20,23 @@ export function formatElapsedTime(milliseconds: number): string {
 }
 
 export function aiImportErrorMessage(caught: unknown, elapsedMs: number): string {
-  const error = caught as Error & { code?: string; status?: number };
+  const error = caught as Error & { code?: string; status?: number; details?: { providerFailures?: unknown } };
   const baseMessage = errorMessage(caught);
   const elapsed = formatElapsedTime(elapsedMs);
+  const providerFailures = Array.isArray(error.details?.providerFailures)
+    ? error.details.providerFailures.map((failure) => String(failure)).filter(Boolean)
+    : [];
+  const providerDetail = providerFailures.length > 0
+    ? ` Provider details: ${providerFailures.join(' ')}.`
+    : '';
   if (error.code === 'AI_IMPORT_QUOTA_EXHAUSTED' || error.status === 429) {
-    return `AI import failed after ${elapsed}: all configured AI providers are out of quota or rate-limited. You can retry later or use Fast parse (rules). ${baseMessage}`;
+    return `AI import failed after ${elapsed}: all configured AI providers are out of quota or rate-limited. You can retry later or use Fast parse (rules). ${baseMessage}${providerDetail}`;
   }
   if (error.code === 'AI_IMPORT_NOT_CONFIGURED') {
     return `AI import is not configured on this server. Set a GC_AI_* provider key, then retry. ${baseMessage}`;
   }
   if (error.code === 'AI_IMPORT_FAILED' || error.status === 503) {
-    return `AI import failed after ${elapsed}: the configured providers did not return a usable parse. You can retry or use Fast parse (rules). ${baseMessage}`;
+    return `AI import failed after ${elapsed}: the configured providers did not return a usable parse. You can retry or use Fast parse (rules). ${baseMessage}${providerDetail}`;
   }
-  return `AI import failed after ${elapsed}. ${baseMessage}`;
+  return `AI import failed after ${elapsed}. ${baseMessage}${providerDetail}`;
 }

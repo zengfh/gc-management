@@ -252,6 +252,7 @@ export interface ApiErrorPayload {
   message?: string;
   requestId?: string | null;
   fieldErrors?: UnknownRecord[];
+  details?: unknown;
 }
 
 export interface ApiResponse<T = unknown> {

@@ -22,6 +22,7 @@ interface AiParsedCard {
   source?: string;
   notes?: string;
   rawLine?: string;
+  securityCodePresent?: boolean;
   confidence?: number | undefined;
 }
 
@@ -71,20 +72,90 @@ class AiProviderError extends Error {
   }
 }
 
+const looseString = z.union([z.string(), z.number(), z.null()]).optional()
+  .transform((value) => (value == null ? '' : String(value).trim()));
+
+function moneyText(value: string): string {
+  return value.replace(/^\$/, '').replace(/,/g, '').trim();
+}
+
+function firstPresent(...values: string[]): string {
+  return values.find((value) => value.trim())?.trim() || '';
+}
+
+function splitExpiration(value: string): { expirationMonth: string; expirationYear: string } {
+  const match = value.trim().match(/\b(0?[1-9]|1[0-2])\s*[/-]\s*(\d{2}|\d{4})\b/);
+  if (!match) {
+    return { expirationMonth: '', expirationYear: '' };
+  }
+  const monthPart = match[1] || '';
+  const yearPart = match[2] || '';
+  const month = monthPart.padStart(2, '0');
+  const year = yearPart.length === 2 ? `20${yearPart}` : yearPart;
+  return { expirationMonth: month, expirationYear: year };
+}
+
 const aiCardSchema = z.object({
-  brand: z.string().trim().min(1),
-  faceValue: z.union([z.string(), z.number()]).transform((value) => String(value).replace(/^\$/, '').trim()),
-  credentialProfile: z.enum(['claim_code', 'merchant_number_pin', 'barcode', 'network_prepaid', 'custom']).default('claim_code'),
-  primaryCode: z.string().trim().min(1),
-  secondaryCode: z.string().trim().optional().default(''),
-  expirationMonth: z.string().trim().optional().default(''),
-  expirationYear: z.string().trim().optional().default(''),
-  billingZip: z.string().trim().optional().default(''),
-  barcodeFormat: z.string().trim().optional().default('code128'),
-  source: z.string().trim().optional().default(''),
-  notes: z.string().trim().optional().default(''),
-  rawLine: z.string().trim().optional().default(''),
+  brand: looseString,
+  faceValue: looseString,
+  value: looseString,
+  amount: looseString,
+  balance: looseString,
+  credentialProfile: z.enum(['claim_code', 'merchant_number_pin', 'barcode', 'network_prepaid', 'custom']).optional().default('claim_code'),
+  primaryCode: looseString,
+  code: looseString,
+  cardNumber: looseString,
+  number: looseString,
+  pan: looseString,
+  secondaryCode: looseString,
+  pin: looseString,
+  password: looseString,
+  accessCode: looseString,
+  expirationMonth: looseString,
+  expirationYear: looseString,
+  expiration: looseString,
+  exp: looseString,
+  validThrough: looseString,
+  billingZip: looseString,
+  zip: looseString,
+  postalCode: looseString,
+  barcodeFormat: looseString,
+  source: looseString,
+  notes: looseString,
+  rawLine: looseString,
+  cvv: looseString,
+  cvc: looseString,
+  cid: looseString,
+  securityCode: looseString,
   confidence: z.number().min(0).max(1).optional(),
+}).transform((row): AiParsedCard => {
+  const expiration = splitExpiration(firstPresent(row.expiration, row.exp, row.validThrough));
+  const primaryCode = firstPresent(row.primaryCode, row.cardNumber, row.number, row.pan, row.code);
+  const secondaryCode = firstPresent(row.secondaryCode, row.pin, row.password, row.accessCode);
+  const securityCodePresent = Boolean(firstPresent(row.cvv, row.cvc, row.cid, row.securityCode));
+  const credentialProfile = (
+    row.credentialProfile === 'claim_code'
+      && (securityCodePresent || firstPresent(row.expirationMonth, expiration.expirationMonth) || firstPresent(row.expirationYear, expiration.expirationYear))
+  )
+    ? 'network_prepaid'
+    : row.credentialProfile;
+
+  return {
+    brand: row.brand,
+    faceValue: moneyText(firstPresent(row.faceValue, row.value, row.amount, row.balance)),
+    credentialProfile,
+    primaryCode,
+    secondaryCode,
+    expirationMonth: firstPresent(row.expirationMonth, expiration.expirationMonth),
+    expirationYear: firstPresent(row.expirationYear, expiration.expirationYear),
+    billingZip: firstPresent(row.billingZip, row.zip, row.postalCode),
+    barcodeFormat: row.barcodeFormat || 'code128',
+    source: row.source,
+    notes: row.notes,
+    rawLine: row.rawLine,
+    securityCodePresent,
+    confidence: row.confidence,
+  };
 });
 
 const aiResponseSchema = z.object({
@@ -112,6 +183,7 @@ const googlePreference = [
 const oneCodeBrandPattern = /\b(uber|uber eats|ubereats|doordash|door dash|instacart|amazon|apple|steam|google play|playstation|xbox)\b/i;
 const headerTokenPattern = /^(card|cards?|brand|merchant|value|amount|code|pin|code\/pin|number|notes?|memo|source)$/i;
 const separatorPattern = /^[-_\s|]+$/;
+const networkBrandPattern = /\b(visa|mastercard|master card|amex|american express|discover)\b/i;
 
 function env(name: string): string {
   return process.env[name]?.trim() || '';
@@ -310,6 +382,7 @@ function aiPrompt(text: string, options: AiImportPromptOptions = {}): string {
     'Return ONLY strict JSON with this shape: {"cards":[{"brand":"","faceValue":"","credentialProfile":"claim_code|merchant_number_pin|barcode|network_prepaid|custom","primaryCode":"","secondaryCode":"","notes":"","source":"","rawLine":"","confidence":0.0}]}',
     'Rules:',
     '- Do not invent missing values. Leave uncertain optional fields empty and mention uncertainty in notes.',
+    '- If the merchant/brand is missing but the card is clearly network prepaid, infer only the card network when obvious from the number: Visa starts with 4, Mastercard commonly starts with 51-55 or 2221-2720, Amex starts with 34 or 37, Discover commonly starts with 6011/65/644-649.',
     '- Ignore table header rows, separator rows, blank rows, labels, and other non-gift-card text. Do not return them as cards.',
     '- For one-code cards such as Uber, DoorDash, Instacart, Amazon, and Apple, use credentialProfile "claim_code", primaryCode as the redeemable code, and no secondaryCode.',
     '- For merchant cards with a number plus a secondary PIN, use credentialProfile "merchant_number_pin", primaryCode as card number, secondaryCode as PIN.',
@@ -317,6 +390,8 @@ function aiPrompt(text: string, options: AiImportPromptOptions = {}): string {
     '- If a brand and value header applies to multiple following code-only rows, inherit that brand and value for each row until a new brand/value row or table header appears.',
     '- A row like "Card Code/PIN" is a header, not a gift card.',
     '- If a trailing date is not clearly an expiration field supported by the app, keep it in notes as memo text.',
+    '- For rows with labels like Number, Card Number, Balance, Exp, CVV, CVC, or Security Code, map Number/Card Number to primaryCode, Balance to faceValue, Exp to expirationMonth/expirationYear, and set credentialProfile to network_prepaid.',
+    '- Do not put CVV/CVC/CID/security-code values in notes, source, rawLine, primaryCode, or secondaryCode. If present, omit the value; the app will warn the user that a security code was detected but not imported.',
     '- Face values should be numeric strings without a dollar sign.',
     '- Preserve human-readable code grouping such as spaces or hyphens in primaryCode.',
     '- Preserve each extracted card as one item. The database write will happen only after human review.',
@@ -394,11 +469,45 @@ function normalizePrimaryCode(value: string): string {
   return value.trim().replace(/\s+/g, ' ').toUpperCase();
 }
 
+function primaryCodeDigits(value: string): string {
+  return value.replace(/\D/g, '');
+}
+
+function inferNetworkBrandFromNumber(value: string): string {
+  const digits = primaryCodeDigits(value);
+  if (/^4\d{12,18}$/.test(digits)) {
+    return 'Visa';
+  }
+  if (/^(5[1-5]\d{14}|2(?:2[2-9]|[3-6]\d|7[01]|720)\d{12})$/.test(digits)) {
+    return 'Mastercard';
+  }
+  if (/^3[47]\d{13}$/.test(digits)) {
+    return 'American Express';
+  }
+  if (/^(6011|65|64[4-9]|622)\d{12,15}$/.test(digits)) {
+    return 'Discover';
+  }
+  return '';
+}
+
+function looksLikeNetworkPrepaid(card: AiParsedCard): boolean {
+  if (card.credentialProfile === 'network_prepaid') {
+    return true;
+  }
+  if (networkBrandPattern.test(card.brand)) {
+    return true;
+  }
+  if (inferNetworkBrandFromNumber(card.primaryCode) && (card.expirationMonth || card.expirationYear || card.securityCodePresent)) {
+    return true;
+  }
+  return false;
+}
+
 function isHeaderLikeCard(card: AiParsedCard): boolean {
   const brand = card.brand.trim();
   const primaryCode = card.primaryCode.trim();
   const raw = card.rawLine?.trim() || '';
-  if (!brand || !primaryCode) {
+  if (!primaryCode) {
     return true;
   }
   if (separatorPattern.test(raw) || separatorPattern.test(brand) || separatorPattern.test(primaryCode)) {
@@ -423,6 +532,13 @@ function normalizeAiCard(card: AiParsedCard): AiParsedCard | null {
     primaryCode: normalizePrimaryCode(card.primaryCode),
     secondaryCode: card.secondaryCode?.trim() || '',
   };
+
+  if (looksLikeNetworkPrepaid(next)) {
+    next.credentialProfile = 'network_prepaid';
+    if (!next.brand.trim()) {
+      next.brand = inferNetworkBrandFromNumber(next.primaryCode);
+    }
+  }
 
   if (oneCodeBrandPattern.test(next.brand)) {
     const removedPin = next.secondaryCode;
@@ -524,6 +640,7 @@ function toRows(cards: AiParsedCard[], provider: AiProviderName, model: string):
     notes: card.notes || '',
     warnings: [
       `AI parsed with ${provider}/${model}; verify before import.`,
+      ...(card.securityCodePresent ? ['Security code was detected but not imported. Network-card CVV/CVC is not stored by default.'] : []),
       ...(typeof card.confidence === 'number' && card.confidence < 0.8 ? ['Low AI confidence.'] : []),
     ],
   }));
@@ -535,6 +652,25 @@ function toRows(cards: AiParsedCard[], provider: AiProviderName, model: string):
       rowsDiscarded: cards.length - rows.length,
     },
   };
+}
+
+function safeFailureReason(provider: AiProviderName, caught: unknown): string {
+  if (caught instanceof z.ZodError) {
+    const paths = caught.issues
+      .slice(0, 4)
+      .map((issue) => issue.path.join('.') || issue.code)
+      .filter(Boolean)
+      .join(', ');
+    return `${provider}: provider response did not match the expected card schema${paths ? ` (${paths})` : ''}`;
+  }
+  const error = caught as Error & { status?: number };
+  if (error.status) {
+    return `${provider}: provider request failed with HTTP ${error.status}`;
+  }
+  if (/json/i.test(error.message || '')) {
+    return `${provider}: provider did not return valid JSON`;
+  }
+  return `${provider}: ${error.message || 'unknown provider failure'}`;
 }
 
 export async function analyzeGiftCardsWithAi(
@@ -563,8 +699,8 @@ export async function analyzeGiftCardsWithAi(
         diagnostics,
       };
     } catch (caught) {
-      const error = caught as Error & { status?: number; retryable?: boolean };
-      failures.push(`${provider}: ${error.message}`);
+      const error = caught as Error & { retryable?: boolean };
+      failures.push(safeFailureReason(provider, caught));
       if (error.retryable === false) {
         continue;
       }
@@ -578,6 +714,6 @@ export async function analyzeGiftCardsWithAi(
     quotaHit
       ? 'No configured free AI provider has quota available right now.'
       : 'AI import failed for all configured providers.',
-    { details: { providersTried: providers } },
+    { details: { providersTried: providers, providerFailures: failures } },
   );
 }

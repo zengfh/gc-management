@@ -2422,6 +2422,12 @@ describe('App', () => {
             error: {
               code: 'AI_IMPORT_QUOTA_EXHAUSTED',
               message: 'No configured free AI provider has quota available right now.',
+              details: {
+                providerFailures: [
+                  'google: provider request failed with HTTP 429',
+                  'openrouter: provider request failed with HTTP 429',
+                ],
+              },
               requestId: 'req_ai_quota',
             },
           },
@@ -2439,6 +2445,8 @@ describe('App', () => {
 
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent(/out of quota or rate-limited/i);
+    expect(alert).toHaveTextContent(/provider details/i);
+    expect(alert).toHaveTextContent(/google: provider request failed with HTTP 429/i);
     expect(alert).toHaveTextContent(/fast parse \(rules\)/i);
     expect(screen.queryByRole('dialog', { name: /^review parsed cards$/i })).not.toBeInTheDocument();
   });

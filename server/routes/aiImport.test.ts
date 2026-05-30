@@ -14,8 +14,11 @@ describe('AI import routes', () => {
     agent = request.agent(createApp({ db }));
     originalAiEnv = {
       GC_AI_GOOGLE_API_KEY: process.env.GC_AI_GOOGLE_API_KEY,
+      GC_AI_GOOGLE_MODEL: process.env.GC_AI_GOOGLE_MODEL,
       GC_AI_OPENROUTER_API_KEY: process.env.GC_AI_OPENROUTER_API_KEY,
+      GC_AI_OPENROUTER_MODEL: process.env.GC_AI_OPENROUTER_MODEL,
       GC_AI_GROQ_API_KEY: process.env.GC_AI_GROQ_API_KEY,
+      GC_AI_GROQ_MODEL: process.env.GC_AI_GROQ_MODEL,
     };
   });
 
@@ -187,5 +190,103 @@ describe('AI import routes', () => {
       elapsedMs: expect.any(Number),
     });
     expect(JSON.stringify(auditRows)).not.toContain('ABCD');
+  });
+
+  it('accepts network prepaid AI rows with missing brand and security-code aliases without storing the security code', async () => {
+    process.env.GC_AI_GOOGLE_API_KEY = 'test-google-key';
+    process.env.GC_AI_GOOGLE_MODEL = 'gemini-2.5-flash';
+    delete process.env.GC_AI_OPENROUTER_API_KEY;
+    delete process.env.GC_AI_GROQ_API_KEY;
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response(JSON.stringify({
+      candidates: [
+        {
+          content: {
+            parts: [
+              {
+                text: JSON.stringify({
+                  cards: [
+                    {
+                      brand: '',
+                      balance: '$800.00',
+                      number: '5274 8000 0000 1425',
+                      exp: '11/2026',
+                      cvv: '123',
+                      confidence: 0.92,
+                    },
+                  ],
+                }),
+              },
+            ],
+          },
+        },
+      ],
+    })));
+    const csrfToken = await setupOwner();
+
+    const response = await postWithCsrf('/api/ai-import/analyze', csrfToken).send({
+      text: [
+        'Card 1 (ending 1425)',
+        '- Number: 5274 8000 0000 1425',
+        '- CVV: 123',
+        '- Exp: 11/2026',
+        '- Balance: $800.00',
+      ].join('\n'),
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data).toMatchObject({
+      provider: 'google',
+      model: 'gemini-2.5-flash',
+      diagnostics: {
+        candidatesReturned: 1,
+        rowsAccepted: 1,
+        rowsDiscarded: 0,
+      },
+      rows: [
+        {
+          brand: 'Mastercard',
+          faceValue: '800.00',
+          credentialProfile: 'network_prepaid',
+          primaryCode: '5274 8000 0000 1425',
+          secondaryCode: '',
+          expirationMonth: '11',
+          expirationYear: '2026',
+        },
+      ],
+    });
+    expect(response.body.data.rows[0].warnings.join(' ')).toMatch(/Security code was detected but not imported/i);
+    expect(JSON.stringify(response.body)).not.toContain('123');
+  });
+
+  it('returns safe provider failure details when every AI response is unusable', async () => {
+    process.env.GC_AI_GOOGLE_API_KEY = 'test-google-key';
+    process.env.GC_AI_GOOGLE_MODEL = 'gemini-2.5-flash';
+    delete process.env.GC_AI_OPENROUTER_API_KEY;
+    delete process.env.GC_AI_GROQ_API_KEY;
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response(JSON.stringify({
+      candidates: [
+        {
+          content: {
+            parts: [{ text: JSON.stringify({ cards: [] }) }],
+          },
+        },
+      ],
+    })));
+    const csrfToken = await setupOwner();
+
+    const response = await postWithCsrf('/api/ai-import/analyze', csrfToken).send({
+      text: 'Card without a usable code',
+    });
+
+    expect(response.status).toBe(503);
+    expect(response.body.error).toMatchObject({
+      code: 'AI_IMPORT_FAILED',
+      details: {
+        providersTried: ['google'],
+        providerFailures: [
+          expect.stringMatching(/google: provider response did not match the expected card schema/i),
+        ],
+      },
+    });
   });
 });

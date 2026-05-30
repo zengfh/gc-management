@@ -18,12 +18,13 @@ function elapsedSince(startedAt: number): number {
   return Math.max(1, Date.now() - startedAt);
 }
 
-function errorDetails(error: unknown): { code: string; status: number | null; providersTried?: unknown } {
-  const typed = error as { code?: string; status?: number; details?: { providersTried?: unknown } };
+function errorDetails(error: unknown): { code: string; status: number | null; providersTried?: unknown; providerFailures?: unknown } {
+  const typed = error as { code?: string; status?: number; details?: { providersTried?: unknown; providerFailures?: unknown } };
   return {
     code: typed.code || 'UNKNOWN_ERROR',
     status: typed.status || null,
     ...(typed.details?.providersTried ? { providersTried: typed.details.providersTried } : {}),
+    ...(typed.details?.providerFailures ? { providerFailures: typed.details.providerFailures } : {}),
   };
 }
 
