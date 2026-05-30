@@ -244,6 +244,9 @@ Example:
 | IMP-019 | Integration | AI provider unavailable/quota exhausted | Missing keys or exhausted free quotas return a clear error and do not clear pasted text |
 | IMP-020 | UI | AI import correction pass | User can add a correction, rerun the AI agent with the original text and current draft context, and review the corrected full card list before saving |
 | IMP-021 | Integration/UI | AI import network prepaid EXP/security code | Number/balance/expiration/CVV text maps to a network prepaid draft with EXP date and Security code shown separately from PIN and persisted only when local-only storage is enabled |
+| NOT-001 | Unit | Expiration date calculation | Network prepaid month/year expiration like 11/2026 is treated as 2026-11-01; blank expiration produces no notification candidate |
+| NOT-002 | Integration | Expiration email delivery | Active cards with remaining balance send owner/admin email notifications at 28, 21, 14, 7, 5, 4, 3, 2, and 1 days before expiration, without exposing full card credentials |
+| NOT-003 | Integration | Expiration notification dedupe | Re-running the notification job on the same day does not resend the same card/threshold/recipient delivery |
 | EXP-001 | E2E | Plaintext export happy path | Fresh secret + type EXPORT; file returned; no-store; audit |
 | EXP-002 | Integration | Plaintext export wrong secret | Rejected; no file |
 | EXP-003 | Integration | Raw DB export | Fresh secret required; no-store; audit |

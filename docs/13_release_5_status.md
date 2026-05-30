@@ -27,6 +27,7 @@ Status: Release 5 complete
 - Added a standalone AI Import workspace with agent-style live status, provider/model diagnostics, system normalization counts, editable review rows, discard, confirm import, and another-pass correction.
 - Extended AI import analysis so a correction pass can send the original pasted text plus the current draft context back to the provider for a corrected full card list.
 - Fixed AI Import for network prepaid text that omits an explicit brand but includes card number, balance, expiration, and CVV/CVC labels. The parser now accepts common aliases, infers the card network when safe, maps expiration to the explicit EXP date review field, maps security codes to the explicit local-only Security code review field, and persists security codes only when `GC_FEATURE_NETWORK_SECURITY_CODE_STORAGE` is enabled.
+- Added expiration email notification infrastructure. The server now checks active cards with remaining balance for expiration at 28, 21, 14, 7, 5, 4, 3, 2, and 1 days out, treats month/year expirations as the first day of the month, emails owner/admin recipients, and dedupes each card/threshold/recipient delivery.
 - Improved AI Import failure messages with safe provider-level failure reasons instead of only saying every provider failed.
 
 ## Verification

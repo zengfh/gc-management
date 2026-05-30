@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import request from 'supertest';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../app.js';
@@ -184,6 +187,58 @@ describe('admin operations routes', () => {
     expect(
       db.prepare("SELECT COUNT(*) AS count FROM audit_log WHERE action = 'data.retention_run'").get().count,
     ).toBe(1);
+  }, 45_000);
+
+  it('runs expiration notification emails to the owner/admin email address', async () => {
+    const outbox = path.join(os.tmpdir(), `gc-expiration-outbox-${Date.now()}-${Math.random()}.jsonl`);
+    process.env.GC_NOTIFICATION_OUTBOX_PATH = outbox;
+    try {
+      const csrfToken = await setupOwner();
+      const createCard = await withCsrf(agent.post('/api/cards'), csrfToken).send({
+        cards: [
+          {
+            brand: 'Mastercard',
+            cardType: 'prepaid',
+            credentialProfile: 'network_prepaid',
+            faceValueCents: 80000,
+            cardNumber: '5274800000001425',
+            expirationMonth: '11',
+            expirationYear: '2026',
+          },
+        ],
+      });
+      expect(createCard.status).toBe(201);
+
+      const response = await withCsrf(agent.post('/api/admin/notifications/expiration/run'), csrfToken).send({
+        now: '2026-10-04',
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.body.data).toMatchObject({
+        dueCards: 1,
+        recipients: 1,
+        sentEmails: 1,
+        sentDeliveries: 1,
+        skipped: [],
+      });
+      const outboxRows = fs.readFileSync(outbox, 'utf8').trim().split('\n').map((line) => JSON.parse(line));
+      expect(outboxRows).toHaveLength(1);
+      expect(outboxRows[0]).toMatchObject({
+        to: ['owner@example.com'],
+        subject: 'Gift cards expiring in 28 days',
+      });
+      expect(outboxRows[0].text).toContain('Mastercard');
+      expect(outboxRows[0].text).toContain('Expires: 2026-11-01');
+      expect(outboxRows[0].text).not.toContain('5274800000001425');
+      expect(
+        db.prepare("SELECT COUNT(*) AS count FROM audit_log WHERE action = 'notification.expiration_email_sent'").get().count,
+      ).toBe(1);
+    } finally {
+      if (fs.existsSync(outbox)) {
+        fs.unlinkSync(outbox);
+      }
+      delete process.env.GC_NOTIFICATION_OUTBOX_PATH;
+    }
   }, 45_000);
 
   it('deletes inventory data while preserving users and a deletion audit event', async () => {

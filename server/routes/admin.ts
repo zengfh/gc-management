@@ -8,6 +8,7 @@ import { verifyFreshUnlockSecret } from '../auth/verifyUnlockSecret.js';
 import { parseCredentialSummary } from '../cards/credentials.js';
 import { asyncHandler, badRequest } from '../http/errors.js';
 import { objectResponse } from '../http/response.js';
+import { sendExpirationNotifications } from '../notifications/expiration.js';
 import {
   readDataPolicy,
   readSupportPolicy,
@@ -131,6 +132,12 @@ const deleteInventorySchema = z
   .object({
     unlockSecret: z.string().min(1),
     confirmation: z.literal('DELETE_ACCOUNT_DATA'),
+  })
+  .strict();
+
+const expirationNotificationRunSchema = z
+  .object({
+    now: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   })
   .strict();
 
@@ -447,6 +454,21 @@ export function createAdminRouter({ db }: { db: Database.Database }) {
       }
 
       res.json(objectResponse({ dryRun: body.dryRun, counts }));
+    }),
+  );
+
+  router.post(
+    '/notifications/expiration/run',
+    asyncHandler(async (req, res) => {
+      const body = validateBody(expirationNotificationRunSchema, req.body || {});
+      const now = body.now ? new Date(`${body.now}T00:00:00.000Z`) : new Date();
+      const summary = await sendExpirationNotifications({
+        db,
+        now,
+        accountId: req.auth.accountId,
+      });
+
+      res.json(objectResponse(summary));
     }),
   );
 

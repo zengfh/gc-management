@@ -62,6 +62,13 @@ GC_FEATURE_CSV_IMPORT=true
 GC_FEATURE_REFERENCE_VALUE_HINTS=true
 GC_REQUEST_LOGS=true
 GC_METRICS_TOKEN=<long-random-token>
+GC_EXPIRATION_NOTIFICATIONS_ENABLED=true
+GC_NOTIFICATION_FROM_EMAIL=Gift Card Manager <notifications@giftcards.example.com>
+GC_SMTP_HOST=smtp.example.com
+GC_SMTP_PORT=587
+GC_SMTP_SECURE=false
+GC_SMTP_USER=<smtp-user>
+GC_SMTP_PASS=<smtp-password>
 ```
 
 Optional:
@@ -69,7 +76,10 @@ Optional:
 ```bash
 GC_ERROR_REPORT_URL=https://errors.example.com/report
 GC_ERROR_REPORT_TOKEN=<long-random-token>
+GC_NOTIFICATION_RECIPIENT_EMAIL=admin@example.com
 ```
+
+Expiration notifications are sent to active owner/admin users with email addresses. `GC_NOTIFICATION_RECIPIENT_EMAIL` can override recipients for a private single-user deployment where the existing owner record has no email. Month/year expirations such as `11/2026` are treated as `2026-11-01`; cards without expiration are ignored. The app sends at 28, 21, 14, 7, 5, 4, 3, 2, and 1 days before expiration and records a delivery row so each card/threshold/recipient is sent once.
 
 Temporary SSH-tunnel testing without TLS can set `GC_SESSION_COOKIE_SECURE=false` and use an `APP_ORIGIN` such as `http://localhost:5180,http://127.0.0.1:5180`. Do not use that setting for a public HTTPS deployment.
 
