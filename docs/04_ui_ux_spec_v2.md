@@ -456,6 +456,21 @@ Requirements:
 - Require reason or confirmation.
 - Warn that void is not the same as delete.
 
+### 7.10.1 Dashboard and Card Inventory Polish
+
+Release 5.1 inventory UX refinements:
+
+- The dashboard prioritizes operational metrics first: expiring in 30 days, active remaining balance, prepaid cash balance, and reserved balance.
+- Every top-priority dashboard metric is clickable and opens the Cards tab with the matching filter applied.
+- Secondary dashboard metrics remain visible but visually lower-priority: cost basis, gross margin, sold proceeds, realized P&L, available face, in-use remaining, stale reservations, and tracked cards.
+- Dashboard card-detail tables are removed. Detail inspection happens from the Cards tab or dashboard alert/activity items.
+- Dashboard lower sections show alerts for active cards expiring soon and recent card activity.
+- Cards tab includes a card-type filter and a prepaid cash-card focus section for Visa/Mastercard/Amex/Discover-style cards.
+- Cards tab supports selected-row bulk lifecycle actions for reserve, use remaining balance, sell remaining balance, and void. Bulk edit remains out of scope.
+- Cards table does not expose a separate row-level Edit button. Editing happens inside Card Details so the user can review credentials, status, balances, history, and editable metadata in one place.
+- Card Details supports editing brand, card type, network, face value, remaining balance, purchase cost, expiration date, format, source, and notes for non-terminal cards. Sold, used-up, and void cards show notes-only editing.
+- New prepaid cards created from month/year expiration fields populate the list-level `expirationDate` as the first day of the month, e.g. `11/2026` becomes `2026-11-01`.
+
 ### 7.11 CSV Import
 
 Loose bulk import:

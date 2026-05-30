@@ -317,6 +317,8 @@ describe('App', () => {
     expect(await screen.findByRole('heading', { name: /dashboard/i })).toBeInTheDocument();
     expect(screen.getByRole('navigation', { name: /primary/i })).toBeInTheDocument();
     expect(screen.getByText(/target/i)).toBeInTheDocument();
+    expect(screen.queryByText(/staples promo/i)).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /^deals$/i }));
     expect(screen.getByText(/staples promo/i)).toBeInTheDocument();
 
     await waitFor(() => {
@@ -389,12 +391,12 @@ describe('App', () => {
     render(<App />);
 
     await screen.findByRole('heading', { name: /dashboard/i });
-    expect(screen.getByText(/^Active remaining$/i).closest('article')).toHaveTextContent('$135.00');
-    expect(screen.getByText(/^Active cost basis$/i).closest('article')).toHaveTextContent('$145.00');
-    expect(screen.getByText(/^Active gross margin$/i).closest('article')).toHaveTextContent('-$10.00');
-    expect(screen.getByText(/^Sold proceeds$/i).closest('article')).toHaveTextContent('$95.00');
-    expect(screen.getByText(/^Realized P&L$/i).closest('article')).toHaveTextContent('$5.00');
-    expect(screen.getByText(/^Stale reservations$/i).closest('article')).toHaveTextContent('1');
+    expect(screen.getByText(/^Active remaining$/i).closest('.metric')).toHaveTextContent('$135.00');
+    expect(screen.getByText(/^Active cost basis$/i).closest('.metric')).toHaveTextContent('$145.00');
+    expect(screen.getByText(/^Active gross margin$/i).closest('.metric')).toHaveTextContent('-$10.00');
+    expect(screen.getByText(/^Sold proceeds$/i).closest('.metric')).toHaveTextContent('$95.00');
+    expect(screen.getByText(/^Realized P&L$/i).closest('.metric')).toHaveTextContent('$5.00');
+    expect(screen.getByText(/^Stale reservations$/i).closest('.metric')).toHaveTextContent('1');
   });
 
   it('loads the audit log from primary navigation', async () => {
@@ -1951,7 +1953,7 @@ describe('App', () => {
     await user.type(screen.getByLabelText(/^card number$/i), '4111 1111 1111 1111');
     await user.click(screen.getByRole('button', { name: /^create deal$/i }));
 
-    await screen.findByRole('button', { name: /open staples details/i });
+    await screen.findByRole('button', { name: /open target details/i });
     expect(screen.getByText(/target/i)).toBeInTheDocument();
     expect(globalThis.fetch).toHaveBeenLastCalledWith(
       '/api/deals',
@@ -2905,7 +2907,7 @@ describe('App', () => {
 
     await user.click(screen.getByRole('button', { name: /^create deal$/i }));
 
-    await screen.findByRole('button', { name: /open staples details/i });
+    await screen.findByRole('button', { name: /open amazon details/i });
     expect(globalThis.fetch).toHaveBeenNthCalledWith(
       5,
       '/api/reference-values',
@@ -3377,11 +3379,11 @@ describe('App', () => {
     const dialog = await screen.findByRole('dialog', { name: /card details/i });
     expect(within(dialog).getAllByText(/^target$/i).length).toBeGreaterThan(0);
     expect(within(dialog).getAllByText(/\*\*\*\* 1111/i).length).toBeGreaterThan(0);
-    expect(within(dialog).getByText(/merchant/i)).toBeInTheDocument();
-    expect(within(dialog).getByText(/staples/i)).toBeInTheDocument();
-    expect(within(dialog).getByText(/2028-01-31/i)).toBeInTheDocument();
-    expect(within(dialog).getByText(/digital/i)).toBeInTheDocument();
-    expect(within(dialog).getByText(/promo notes/i)).toBeInTheDocument();
+    expect(within(dialog).getAllByText(/merchant/i).length).toBeGreaterThan(0);
+    expect(within(dialog).getAllByText(/staples/i).length).toBeGreaterThan(0);
+    expect(within(dialog).getAllByText(/2028-01-31/i).length).toBeGreaterThan(0);
+    expect(within(dialog).getAllByText(/digital/i).length).toBeGreaterThan(0);
+    expect(within(dialog).getAllByText(/promo notes/i).length).toBeGreaterThan(0);
     expect(within(dialog).getByText(/dealer a/i)).toBeInTheDocument();
     expect(within(dialog).getByText(/card.use/i)).toBeInTheDocument();
     expect(within(dialog).getByText(/2026/i)).toBeInTheDocument();
@@ -4166,7 +4168,7 @@ describe('App', () => {
     expect(screen.getByText(/1-1 of 2/i)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /next page/i }));
 
-    expect(await screen.findByText(/amazon/i)).toBeInTheDocument();
+    await screen.findByRole('button', { name: /open amazon details/i });
     expect(screen.queryByText(/target/i)).not.toBeInTheDocument();
     expect(screen.getByText(/2-2 of 2/i)).toBeInTheDocument();
     expect(globalThis.fetch).toHaveBeenLastCalledWith(
@@ -4177,7 +4179,7 @@ describe('App', () => {
     );
   });
 
-  it('edits allowed card fields from the cards view', async () => {
+  it('edits allowed card fields from card details', async () => {
     fetchMock()
       .mockResolvedValueOnce(
         jsonResponse({
@@ -4196,11 +4198,15 @@ describe('App', () => {
               id: 1,
               brand: 'Target',
               status: 'available',
+              cardType: 'merchant',
+              network: null,
               faceValueCents: 5000,
               remainingBalanceCents: 5000,
               purchaseCostCents: 4500,
               cardNumberLast4: '1111',
               expirationDate: '2027-01-31',
+              format: 'digital',
+              source: 'Promo',
               notes: '',
               rowVersion: 3,
             },
@@ -4212,14 +4218,43 @@ describe('App', () => {
       .mockResolvedValueOnce(
         jsonResponse({
           data: {
+            card: {
+              id: 1,
+              brand: 'Target',
+              status: 'available',
+              cardType: 'merchant',
+              network: null,
+              faceValueCents: 5000,
+              remainingBalanceCents: 5000,
+              purchaseCostCents: 4500,
+              cardNumberLast4: '1111',
+              expirationDate: '2027-01-31',
+              format: 'digital',
+              source: 'Promo',
+              notes: '',
+              rowVersion: 3,
+            },
+            transactions: [],
+            usages: [],
+            audit: [],
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
             id: 1,
             brand: 'Amazon',
             status: 'available',
+            cardType: 'merchant',
+            network: null,
             faceValueCents: 5000,
             remainingBalanceCents: 5000,
             purchaseCostCents: 4500,
             cardNumberLast4: '1111',
             expirationDate: '2028-01-31',
+            format: 'digital',
+            source: 'Promo',
             notes: 'Updated notes',
             rowVersion: 4,
           },
@@ -4231,26 +4266,34 @@ describe('App', () => {
 
     await screen.findByRole('heading', { name: /dashboard/i });
     await user.click(screen.getByRole('button', { name: /^cards$/i }));
-    await user.click(screen.getByRole('button', { name: /edit target/i }));
+    expect(screen.queryByRole('button', { name: /edit target/i })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /open target details/i }));
 
-    const dialog = await screen.findByRole('dialog', { name: /edit card/i });
+    const dialog = await screen.findByRole('dialog', { name: /card details/i });
     await user.clear(within(dialog).getByLabelText(/^brand$/i));
     await user.type(within(dialog).getByLabelText(/^brand$/i), 'Amazon');
     await user.clear(within(dialog).getByLabelText(/^expiration date$/i));
     await user.type(within(dialog).getByLabelText(/^expiration date$/i), '2028-01-31');
     await user.type(within(dialog).getByLabelText(/^notes$/i), 'Updated notes');
-    await user.click(within(dialog).getByRole('button', { name: /^save changes$/i }));
+    await user.click(within(dialog).getByRole('button', { name: /^save card$/i }));
 
-    expect(await screen.findByText(/amazon/i)).toBeInTheDocument();
+    await screen.findByRole('button', { name: /open amazon details/i });
     expect(globalThis.fetch).toHaveBeenLastCalledWith(
       '/api/cards/1',
       expect.objectContaining({
         method: 'PUT',
         body: JSON.stringify({
           rowVersion: 3,
-          brand: 'Amazon',
-          expirationDate: '2028-01-31',
           notes: 'Updated notes',
+          brand: 'Amazon',
+          cardType: 'merchant',
+          network: null,
+          faceValueCents: 5000,
+          remainingBalanceCents: 5000,
+          purchaseCostCents: 4500,
+          expirationDate: '2028-01-31',
+          format: 'digital',
+          source: 'Promo',
         }),
         headers: expect.objectContaining({
           'X-CSRF-Token': 'csrf_ready',

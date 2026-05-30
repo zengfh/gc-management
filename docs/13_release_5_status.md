@@ -30,6 +30,8 @@ Status: Release 5 complete
 - Added expiration email notification infrastructure. The server now checks active cards with remaining balance for expiration at 28, 21, 14, 7, 5, 4, 3, 2, and 1 days out, treats month/year expirations as the first day of the month, emails owner/admin recipients, and dedupes each card/threshold/recipient delivery.
 - Added an admin Settings action to send an expiration notification test email through the configured production mail transport.
 - Improved AI Import failure messages with safe provider-level failure reasons instead of only saying every provider failed.
+- Added dashboard and cards inventory polish: priority clickable dashboard metrics, dashboard alerts/recent activity, no dashboard card-detail table, card-type filtering, prepaid cash-card focus section, selected-card bulk reserve/use/sell/void actions, and detail-page editing for editable card metadata.
+- Fixed list-level expiration population for new cards created from prepaid month/year credential fields and added migration `008_backfill_card_expiration_dates.sql` to backfill existing rows from stored expiration credential hints.
 
 ## Verification
 
@@ -59,6 +61,17 @@ Completed on 2026-05-30 for AI prepaid parsing diagnostics:
 - `npm run build`
 - `npm test`
 - `npm run test:e2e:release5`
+
+Completed on 2026-05-30 for dashboard/cards inventory polish:
+
+- `npm run typecheck -- --pretty false`
+- `npm run lint`
+- `npm run build`
+- `npm test`
+- `npm test -- server/routes/cards.test.ts src/App.test.tsx`
+- `npm run test:e2e:release5`
+- `npm run test:e2e`
+- `npm audit --audit-level=high`
 
 ## Follow-Up Opportunities
 

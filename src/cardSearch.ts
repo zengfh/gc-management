@@ -23,6 +23,8 @@ export function cardSearchQuery(criteria: CardSearchCriteria): string {
     ['limit', criteriaValue(criteria.limit)],
     ['offset', criteriaValue(criteria.offset)],
     ['status', criteriaValue(criteria.status)],
+    ['cardType', criteriaValue(criteria.cardType)],
+    ['activeOnly', criteriaValue(criteria.activeOnly)],
     ['brand', criteriaValue(criteria.brand)],
     ['source', criteriaValue(criteria.source)],
     ['dealId', criteriaValue(criteria.dealId)],

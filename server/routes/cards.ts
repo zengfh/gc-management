@@ -278,7 +278,14 @@ const updateCardSchema = z
   .object({
     rowVersion: z.number().int().positive().optional(),
     brand: z.string().trim().min(1).max(120).optional(),
+    cardType: z.enum(['merchant', 'prepaid']).optional(),
+    network: z.enum(['visa', 'mastercard', 'amex', 'discover', 'other']).nullable().optional(),
+    faceValueCents: z.number().int().positive().optional(),
+    remainingBalanceCents: z.number().int().nonnegative().optional(),
+    purchaseCostCents: z.number().int().nonnegative().optional(),
     expirationDate: z.string().trim().nullable().optional(),
+    format: z.enum(['digital', 'physical']).nullable().optional(),
+    source: z.string().trim().nullable().optional(),
     notes: z.string().trim().nullable().optional(),
   })
   .strict();
@@ -914,6 +921,38 @@ function buildCardCredentialFields(input: CredentialInput, auth: AuthContext) {
   }
 }
 
+function expirationDateFromParts(month: unknown, year: unknown): string | null {
+  const monthDigits = String(month || '').replace(/\D/g, '');
+  const yearDigits = String(year || '').replace(/\D/g, '');
+  if (!monthDigits || !yearDigits) {
+    return null;
+  }
+  const monthNumber = Number(monthDigits);
+  const yearNumber = Number(yearDigits.length === 2 ? `20${yearDigits}` : yearDigits);
+  if (
+    !Number.isInteger(monthNumber)
+    || monthNumber < 1
+    || monthNumber > 12
+    || !Number.isInteger(yearNumber)
+    || yearNumber < 2000
+    || yearNumber > 2200
+  ) {
+    return null;
+  }
+  return `${yearNumber}-${String(monthNumber).padStart(2, '0')}-01`;
+}
+
+function expirationDateFromCredentialFields(fields: PreparedCredentialField[]): string | null {
+  const month = fields.find((field) => field.fieldKind === 'expiration_month')?.displayHint;
+  const year = fields.find((field) => field.fieldKind === 'expiration_year')?.displayHint;
+  return expirationDateFromParts(month, year);
+}
+
+function cardExpirationDate(input: z.infer<typeof cardInputSchema>, fields: PreparedCredentialField[]): string | null {
+  const explicit = String(input.expirationDate || '').trim();
+  return explicit || expirationDateFromParts(input.expirationMonth, input.expirationYear) || expirationDateFromCredentialFields(fields);
+}
+
 function toCardResponse(row: CardRow) {
   const credentialSummary = parseCredentialSummary(row);
   return {
@@ -983,8 +1022,16 @@ function createCardAuditValue(card: CardRow) {
 function mutationAuditValue(card: CardRow) {
   return {
     brand: card.brand,
+    cardType: card.cardType,
+    network: card.network,
     status: card.status,
+    faceValueCents: card.faceValueCents,
     remainingBalanceCents: card.remainingBalanceCents,
+    purchaseCostCents: card.purchaseCostCents,
+    expirationDate: card.expirationDate,
+    format: card.format,
+    source: card.source,
+    notes: card.notes,
     rowVersion: card.rowVersion,
   };
 }
@@ -1033,6 +1080,25 @@ export function createCardsRouter({ db }: { db: Database.Database }) {
         }
         where.push('status = ?');
         params.push(status);
+      }
+
+      if (String(req.query.activeOnly || '').toLowerCase() === 'true') {
+        where.push("status IN ('available', 'reserved', 'in_use') AND remainingBalanceCents > 0");
+      }
+
+      if (req.query.cardType) {
+        const cardType = String(req.query.cardType);
+        if (!['merchant', 'prepaid'].includes(cardType)) {
+          throw badRequest('VALIDATION_FAILED', 'Request validation failed.', [
+            {
+              field: 'cardType',
+              code: 'invalid_enum',
+              message: 'Unsupported card type.',
+            },
+          ]);
+        }
+        where.push('cardType = ?');
+        params.push(cardType);
       }
 
       if (req.query.brand) {
@@ -1149,11 +1215,15 @@ export function createCardsRouter({ db }: { db: Database.Database }) {
     asyncHandler(async (req, res) => {
       const { cards } = validateBody(createCardsSchema, req.body);
       const timestamp = nowIso();
-      const preparedCards = cards.map((card) => ({
-        ...card,
-        ...buildCardCredentialFields(card, req.auth),
-        status: 'available' as const,
-      }));
+      const preparedCards = cards.map((card) => {
+        const credentials = buildCardCredentialFields(card, req.auth);
+        return {
+          ...card,
+          ...credentials,
+          expirationDate: cardExpirationDate(card, credentials.credentialFields),
+          status: 'available' as const,
+        };
+      });
       assertNoDuplicateInputs(preparedCards);
 
       try {
@@ -1256,11 +1326,15 @@ export function createCardsRouter({ db }: { db: Database.Database }) {
 
       const timestamp = nowIso();
       const cards = parseCsvRecords(body.csv).map(csvRecordToCardInput);
-      const preparedCards = cards.map((card) => ({
-        ...card,
-        ...buildCardCredentialFields(card, req.auth),
-        status: 'available' as const,
-      }));
+      const preparedCards = cards.map((card) => {
+        const credentials = buildCardCredentialFields(card, req.auth);
+        return {
+          ...card,
+          ...credentials,
+          expirationDate: cardExpirationDate(card, credentials.credentialFields),
+          status: 'available' as const,
+        };
+      });
       assertNoDuplicateInputs(preparedCards);
 
       try {
@@ -1546,14 +1620,42 @@ export function createCardsRouter({ db }: { db: Database.Database }) {
 
           const next = {
             brand: body.brand ?? before.brand,
+            cardType: body.cardType ?? before.cardType,
+            network: body.network === undefined ? before.network : body.network,
+            faceValueCents: body.faceValueCents ?? before.faceValueCents,
+            remainingBalanceCents: body.remainingBalanceCents ?? before.remainingBalanceCents,
+            purchaseCostCents: body.purchaseCostCents ?? before.purchaseCostCents,
             expirationDate: body.expirationDate === undefined ? before.expirationDate : body.expirationDate,
+            format: body.format === undefined ? before.format : body.format,
+            source: body.source === undefined ? before.source : body.source,
             notes: body.notes === undefined ? before.notes : body.notes,
           };
+
+          if (next.remainingBalanceCents > next.faceValueCents) {
+            throw badRequest(
+              'REMAINING_BALANCE_EXCEEDS_FACE_VALUE',
+              'Remaining balance cannot exceed face value.',
+              [
+                {
+                  field: 'remainingBalanceCents',
+                  code: 'too_large',
+                  message: 'Remaining balance cannot exceed face value.',
+                },
+              ],
+            );
+          }
 
           db.prepare(
             `UPDATE cards
              SET brand = ?,
+                 cardType = ?,
+                 network = ?,
+                 faceValueCents = ?,
+                 remainingBalanceCents = ?,
+                 purchaseCostCents = ?,
                  expirationDate = ?,
+                 format = ?,
+                 source = ?,
                  notes = ?,
                  updatedByUserId = ?,
                  updatedAt = ?,
@@ -1561,7 +1663,14 @@ export function createCardsRouter({ db }: { db: Database.Database }) {
              WHERE id = ? AND accountId = ?`,
           ).run(
             next.brand,
+            next.cardType,
+            next.network,
+            next.faceValueCents,
+            next.remainingBalanceCents,
+            next.purchaseCostCents,
             next.expirationDate,
+            next.format,
+            next.source,
             next.notes,
             req.auth.userId,
             timestamp,

@@ -176,12 +176,25 @@ Example:
 | CARD-004 | Integration | remainingBalanceCents > faceValueCents | Rejected |
 | CARD-005 | Integration | duplicate normalized number and brand | Conflict shown or hard-blocked |
 | CARD-006 | Integration | duplicate with different formatting | Treated as duplicate |
-| CARD-007 | Integration | PUT available card allowed fields | Updates allowed fields; audit created |
+| CARD-007 | Integration | PUT available card allowed fields | Updates brand, card type, network, face value, remaining balance, purchase cost, expiration date, format, source, notes; audit created |
 | CARD-008 | Integration | PUT sold card non-notes field | Rejected |
-| CARD-009 | Integration | PUT blocked faceValue/balance/status | Rejected |
+| CARD-009 | Integration | PUT remaining balance greater than face value | Rejected |
 | CARD-010 | Integration | Stale rowVersion update | 409; no overwrite |
 | CARD-011 | Integration | duplicate normalized primary credential and brand across profiles | Conflict shown or hard-blocked |
 | CARD-012 | UI | Add Deal credential profile picker | Brand templates show the right fields and labels; user can override profile |
+| CARD-013 | UI | Cards tab card type filter | Prepaid-only filter calls the card search endpoint with `cardType=prepaid` and shows prepaid cash cards |
+| CARD-014 | UI | Card detail edit form | Detail page saves editable metadata and removes the row-level Edit action from the cards table |
+| CARD-015 | UI | Bulk card lifecycle actions | Selecting multiple cards can reserve, use remaining, sell remaining, or void eligible cards; ineligible cards are skipped with clear feedback |
+| CARD-016 | Integration | Create network prepaid from month/year expiration | List-level expiration date is populated as the first day of that month |
+
+### 7.4.1 Dashboard Inventory UX
+
+| Test ID | Type | Scenario | Expected Result |
+|---|---|---|---|
+| DASH-001 | UI | Priority dashboard metrics render | Expiring 30d, Active remaining, Prepaid cash, and Reserved appear above secondary metrics |
+| DASH-002 | UI/API | Click Expiring 30d metric | Navigates to Cards and calls card search with `activeOnly=true`, `expiresBefore`, and expiration sort |
+| DASH-003 | UI/API | Click Prepaid cash metric | Navigates to Cards and calls card search with `activeOnly=true` and `cardType=prepaid` |
+| DASH-004 | UI | Dashboard lower content | Shows expiration alerts and recent activity instead of a full card-detail table |
 
 ### 7.5 Lifecycle and Money Accuracy
 

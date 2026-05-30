@@ -1,14 +1,24 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
-import { CreditCard, ScrollText, Search, Tag, type LucideIcon } from 'lucide-react';
+import { ArrowUpRight, CreditCard, ScrollText, Search, Tag, type LucideIcon } from 'lucide-react';
 import type { AuditCriteria, AuditEvent, Card, CardSearchCriteria, Deal, Page, RevealedCredentials } from '../shared/domain';
 import { credentialSummaryText } from './credentialHelpers';
 import { errorMessage, formatDateTime, formatMoney, statusLabels } from './display';
 import { FieldError } from './formUi';
 import { StatusBadge } from './StatusBadge';
 
-export function Metric({ label, value, icon: Icon }: { label: string; value: ReactNode; icon: LucideIcon }) {
-  return (
-    <article className="metric">
+export function Metric({
+  label,
+  value,
+  icon: Icon,
+  onClick,
+}: {
+  label: string;
+  value: ReactNode;
+  icon: LucideIcon;
+  onClick?: () => void;
+}) {
+  const content = (
+    <>
       <div className="metric-icon">
         <Icon aria-hidden="true" size={18} />
       </div>
@@ -16,6 +26,16 @@ export function Metric({ label, value, icon: Icon }: { label: string; value: Rea
         <p>{label}</p>
         <strong>{value}</strong>
       </div>
+      {onClick ? <ArrowUpRight className="metric-link-icon" aria-hidden="true" size={17} /> : null}
+    </>
+  );
+  return onClick ? (
+    <button type="button" className="metric metric-clickable" onClick={onClick}>
+      {content}
+    </button>
+  ) : (
+    <article className="metric">
+      {content}
     </article>
   );
 }
@@ -75,9 +95,11 @@ export function CardsTable({
   canManage,
   credentialsVisible = false,
   revealedCredentialsByCardId = {},
+  selectedCardIds,
+  onToggleCardSelected,
+  onToggleAllCardsSelected,
   onUseCard,
   onViewCard,
-  onEditCard,
   onDeleteCard,
   onSellCard,
   onUndoSale,
@@ -89,9 +111,11 @@ export function CardsTable({
   canManage: boolean;
   credentialsVisible?: boolean;
   revealedCredentialsByCardId?: Record<string, RevealedCredentials>;
+  selectedCardIds?: Set<string>;
+  onToggleCardSelected?: (cardId: string, checked: boolean) => void;
+  onToggleAllCardsSelected?: (checked: boolean) => void;
   onUseCard: (card: Card) => void;
   onViewCard: (card: Card) => void;
-  onEditCard: (card: Card) => void;
   onDeleteCard: (card: Card) => void;
   onSellCard: (card: Card) => void;
   onUndoSale: (card: Card) => void;
@@ -113,6 +137,15 @@ export function CardsTable({
       <table>
         <thead>
           <tr>
+            {selectedCardIds && onToggleCardSelected ? (
+              <th aria-label="Select cards">
+                <input
+                  type="checkbox"
+                  checked={cards.length > 0 && cards.every((card) => selectedCardIds.has(String(card.id)))}
+                  onChange={(event) => onToggleAllCardsSelected?.(event.target.checked)}
+                />
+              </th>
+            ) : null}
             <th>Status</th>
             <th>Brand</th>
             <th>Reservation</th>
@@ -129,6 +162,16 @@ export function CardsTable({
         <tbody>
           {cards.map((card) => (
             <tr key={card.id}>
+              {selectedCardIds && onToggleCardSelected ? (
+                <td>
+                  <input
+                    type="checkbox"
+                    checked={selectedCardIds.has(String(card.id))}
+                    aria-label={`Select ${card.brand}`}
+                    onChange={(event) => onToggleCardSelected(String(card.id), event.target.checked)}
+                  />
+                </td>
+              ) : null}
               <td>
                 <StatusBadge status={card.status} />
               </td>
@@ -165,16 +208,6 @@ export function CardsTable({
               <td>{card.updatedAt ? new Date(card.updatedAt).toLocaleDateString() : 'Not recorded'}</td>
               <td>
                 <div className="row-actions">
-                  {canManage ? (
-                    <button
-                      type="button"
-                      className="table-action"
-                      aria-label={`Edit ${card.brand}`}
-                      onClick={() => onEditCard(card)}
-                    >
-                      Edit
-                    </button>
-                  ) : null}
                   {canManage && card.status === 'available' ? (
                     <button
                       type="button"
@@ -481,18 +514,24 @@ export function AuditFilterForm({ onLoadAudit }: { onLoadAudit: (criteria?: Audi
 export function CardSearchForm({
   deals,
   onSearchCards,
+  initialCriteria = {},
 }: {
   deals: Deal[];
   onSearchCards: (criteria?: CardSearchCriteria) => Promise<unknown>;
+  initialCriteria?: CardSearchCriteria;
 }) {
-  const [cardNumber, setCardNumber] = useState('');
-  const [status, setStatus] = useState('');
-  const [brand, setBrand] = useState('');
-  const [source, setSource] = useState('');
-  const [dealId, setDealId] = useState('');
-  const [expiresBefore, setExpiresBefore] = useState('');
-  const [text, setText] = useState('');
-  const [sortValue, setSortValue] = useState('');
+  const initialSortValue = initialCriteria.sortBy && initialCriteria.sortDir
+    ? `${initialCriteria.sortBy}:${initialCriteria.sortDir}`
+    : '';
+  const [cardNumber, setCardNumber] = useState(String(initialCriteria.cardNumber || ''));
+  const [status, setStatus] = useState(initialCriteria.status || '');
+  const [cardType, setCardType] = useState(initialCriteria.cardType || '');
+  const [brand, setBrand] = useState(String(initialCriteria.brand || ''));
+  const [source, setSource] = useState(String(initialCriteria.source || ''));
+  const [dealId, setDealId] = useState(String(initialCriteria.dealId || ''));
+  const [expiresBefore, setExpiresBefore] = useState(String(initialCriteria.expiresBefore || ''));
+  const [text, setText] = useState(String(initialCriteria.text || ''));
+  const [sortValue, setSortValue] = useState(initialSortValue);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -506,6 +545,7 @@ export function CardSearchForm({
       await onSearchCards({
         cardNumber,
         status,
+        cardType,
         brand,
         source,
         dealId,
@@ -524,6 +564,7 @@ export function CardSearchForm({
     setError('');
     setCardNumber('');
     setStatus('');
+    setCardType('');
     setBrand('');
     setSource('');
     setDealId('');
@@ -535,6 +576,7 @@ export function CardSearchForm({
       await onSearchCards({
         cardNumber: '',
         status: '',
+        cardType: '',
         brand: '',
         source: '',
         dealId: '',
@@ -572,6 +614,14 @@ export function CardSearchForm({
               {label}
             </option>
           ))}
+        </select>
+      </label>
+      <label>
+        <span>Card type</span>
+        <select value={cardType} onChange={(event) => setCardType(event.target.value)}>
+          <option value="">All card types</option>
+          <option value="merchant">Merchant gift cards</option>
+          <option value="prepaid">Prepaid cash cards</option>
         </select>
       </label>
       <label>

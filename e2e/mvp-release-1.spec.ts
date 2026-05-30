@@ -54,8 +54,8 @@ test.describe.serial('MVP Release 1 critical flows', () => {
       .getByRole('button', { name: /^create deal$/i })
       .click();
 
-    await expect(page.getByText(/^staples may promo$/i)).toBeVisible();
     await page.getByRole('button', { name: /^cards$/i }).click();
+    await expect(page.getByRole('row', { name: /available.*target/i })).toBeVisible();
     await page.getByLabel(/^exact credential$/i).fill('4111 1111 1111 1111');
     await page.getByRole('button', { name: /^search cards$/i }).click();
 

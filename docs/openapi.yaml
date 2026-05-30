@@ -221,6 +221,15 @@ paths:
           in: query
           schema:
             $ref: "#/components/schemas/CardStatus"
+        - name: cardType
+          in: query
+          schema:
+            $ref: "#/components/schemas/CardType"
+        - name: activeOnly
+          in: query
+          description: When true, limits results to active cards with remaining balance.
+          schema:
+            type: boolean
         - name: brand
           in: query
           schema:
@@ -1790,10 +1799,34 @@ components:
           minimum: 1
         brand:
           type: string
+        cardType:
+          $ref: "#/components/schemas/CardType"
+        network:
+          type: string
+          nullable: true
+          enum: [visa, mastercard, amex, discover, other]
+        faceValueCents:
+          type: integer
+          minimum: 1
+        remainingBalanceCents:
+          type: integer
+          minimum: 0
+        purchaseCostCents:
+          type: integer
+          minimum: 0
         notes:
           type: string
+          nullable: true
         expirationDate:
           type: string
+          nullable: true
+        format:
+          type: string
+          nullable: true
+          enum: [digital, physical]
+        source:
+          type: string
+          nullable: true
     ReserveCardRequest:
       type: object
       properties:

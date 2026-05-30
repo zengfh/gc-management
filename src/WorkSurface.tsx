@@ -1,5 +1,8 @@
-import { useMemo, useState, type ChangeEvent } from 'react';
+import { useState, type ChangeEvent, type FormEvent } from 'react';
 import {
+  AlertTriangle,
+  ArrowUpRight,
+  Bell,
   CircleDollarSign,
   CreditCard,
   DatabaseBackup,
@@ -36,7 +39,6 @@ import {
   CardDetailPanel,
   DealDetailPanel,
   DeleteCardPanel,
-  EditCardPanel,
   EditDealPanel,
   ReserveCardPanel,
   SellCardPanel,
@@ -46,7 +48,7 @@ import {
 } from './cardDealPanels';
 import type { CardDetailState, DealDetailState, ViewId, WorkSurfaceProps } from './appTypes';
 import { defaultFeatureFlags, defaultPage } from './defaults';
-import { errorMessage, formatDisplayValue, formatMoney, isBeforeToday, isWithinNextDays, viewTitle } from './display';
+import { errorMessage, formatDisplayValue, formatMoney, isBeforeToday, isWithinNextDays, statusText, viewTitle } from './display';
 import { FieldError } from './formUi';
 import {
   ChangeUnlockSecretForm,
@@ -92,10 +94,138 @@ function canManageInventory(auth: AuthState | null | undefined): boolean {
   return operatorRoleSet.has(authRole(auth));
 }
 
+function dateInDays(days: number): string {
+  const date = new Date();
+  date.setHours(0, 0, 0, 0);
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function BulkCardActionPanel({
+  action,
+  selectedCount,
+  submitting,
+  error,
+  message,
+  onSelectAction,
+  onSubmit,
+  onClear,
+}: {
+  action: 'reserve' | 'use' | 'sell' | 'void' | null;
+  selectedCount: number;
+  submitting: boolean;
+  error: string;
+  message: string;
+  onSelectAction: (action: 'reserve' | 'use' | 'sell' | 'void') => void;
+  onSubmit: (payload?: Record<string, unknown>) => Promise<void>;
+  onClear: () => void;
+}) {
+  const [form, setForm] = useState({
+    reservedFor: '',
+    reservedUntil: '',
+    reservedNotes: '',
+    merchant: '',
+    description: '',
+    buyerName: '',
+    buyerType: '',
+    platform: '',
+    notes: '',
+    reason: '',
+  });
+
+  function updateField(field: keyof typeof form, value: string) {
+    setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (action === 'reserve') {
+      await onSubmit({
+        reservedFor: form.reservedFor || null,
+        reservedUntil: form.reservedUntil || null,
+        reservedNotes: form.reservedNotes || null,
+      });
+      return;
+    }
+    if (action === 'use') {
+      await onSubmit({ merchant: form.merchant || null, description: form.description || null });
+      return;
+    }
+    if (action === 'sell') {
+      await onSubmit({
+        buyerName: form.buyerName || null,
+        buyerType: form.buyerType || null,
+        platform: form.platform || null,
+        notes: form.notes || null,
+      });
+      return;
+    }
+    await onSubmit({ reason: form.reason || null });
+  }
+
+  if (selectedCount === 0) {
+    return message ? <p className="success-copy">{message}</p> : null;
+  }
+
+  return (
+    <div className="bulk-action-panel">
+      <div className="bulk-action-toolbar">
+        <strong>{selectedCount} selected</strong>
+        <button type="button" className="table-action" onClick={() => onSelectAction('reserve')}>Reserve</button>
+        <button type="button" className="table-action" onClick={() => onSelectAction('use')}>Use remaining</button>
+        <button type="button" className="table-action" onClick={() => onSelectAction('sell')}>Sell remaining</button>
+        <button type="button" className="table-action danger" onClick={() => onSelectAction('void')}>Void</button>
+        <button type="button" className="table-action" onClick={onClear}>Clear</button>
+      </div>
+      {action ? (
+        <form className="bulk-action-form" onSubmit={submit}>
+          {action === 'reserve' ? (
+            <>
+              <input placeholder="Reserved for" value={form.reservedFor} onChange={(event) => updateField('reservedFor', event.target.value)} />
+              <input type="date" value={form.reservedUntil} onChange={(event) => updateField('reservedUntil', event.target.value)} />
+              <input placeholder="Reservation notes" value={form.reservedNotes} onChange={(event) => updateField('reservedNotes', event.target.value)} />
+            </>
+          ) : null}
+          {action === 'use' ? (
+            <>
+              <input placeholder="Merchant" value={form.merchant} onChange={(event) => updateField('merchant', event.target.value)} />
+              <input placeholder="Description" value={form.description} onChange={(event) => updateField('description', event.target.value)} />
+            </>
+          ) : null}
+          {action === 'sell' ? (
+            <>
+              <input placeholder="Buyer" value={form.buyerName} onChange={(event) => updateField('buyerName', event.target.value)} />
+              <select value={form.buyerType} onChange={(event) => updateField('buyerType', event.target.value)}>
+                <option value="">Buyer type</option>
+                <option value="dealer">Dealer</option>
+                <option value="group_chat">Group chat</option>
+                <option value="friend">Friend</option>
+                <option value="self">Self</option>
+                <option value="other">Other</option>
+              </select>
+              <input placeholder="Platform" value={form.platform} onChange={(event) => updateField('platform', event.target.value)} />
+              <input placeholder="Notes" value={form.notes} onChange={(event) => updateField('notes', event.target.value)} />
+            </>
+          ) : null}
+          {action === 'void' ? (
+            <input placeholder="Void reason" value={form.reason} onChange={(event) => updateField('reason', event.target.value)} />
+          ) : null}
+          <button type="submit" className="primary-action compact" disabled={submitting}>
+            {submitting ? 'Applying...' : `Apply ${action}`}
+          </button>
+        </form>
+      ) : null}
+      <FieldError message={error} />
+      {message ? <p className="success-copy">{message}</p> : null}
+    </div>
+  );
+}
+
 export function WorkSurface({
   auth,
   cards,
   cardsPage,
+  cardCriteria,
   deals,
   auditEvents,
   auditLoading,
@@ -172,7 +302,6 @@ export function WorkSurface({
   const [showBulkImport, setShowBulkImport] = useState(false);
   const [editDeal, setEditDeal] = useState<Deal | null>(null);
   const [usageCard, setUsageCard] = useState<Card | null>(null);
-  const [editCard, setEditCard] = useState<Card | null>(null);
   const [deleteCard, setDeleteCard] = useState<Card | null>(null);
   const [reserveCard, setReserveCard] = useState<Card | null>(null);
   const [saleCard, setSaleCard] = useState<Card | null>(null);
@@ -182,6 +311,11 @@ export function WorkSurface({
   const [dealDetailState, setDealDetailState] = useState<DealDetailState | null>(null);
   const [showArchivedDeals, setShowArchivedDeals] = useState(false);
   const [cardCredentialsVisible, setCardCredentialsVisible] = useState(false);
+  const [selectedCardIds, setSelectedCardIds] = useState<Set<string>>(new Set());
+  const [bulkAction, setBulkAction] = useState<'reserve' | 'use' | 'sell' | 'void' | null>(null);
+  const [bulkMessage, setBulkMessage] = useState('');
+  const [bulkError, setBulkError] = useState('');
+  const [bulkSubmitting, setBulkSubmitting] = useState(false);
   const [revealedCardCredentials, setRevealedCardCredentials] = useState<Record<string, RevealedCredentials>>({});
   const [revealingCardCredentials, setRevealingCardCredentials] = useState(false);
   const [cardCredentialError, setCardCredentialError] = useState('');
@@ -211,38 +345,30 @@ export function WorkSurface({
   const realizedProfit = soldProceeds - soldCostBasis;
   const expiringSoonCards = activeCards.filter((card) => isWithinNextDays(card.expirationDate, 30));
   const expiringSoonRemaining = expiringSoonCards.reduce((sum, card) => sum + card.remainingBalanceCents, 0);
+  const prepaidCards = activeCards.filter((card) => card.cardType === 'prepaid');
+  const prepaidRemaining = prepaidCards.reduce((sum, card) => sum + card.remainingBalanceCents, 0);
   const staleReservationCount = cards.filter(
     (card) => card.status === 'reserved' && isBeforeToday(card.reservedUntil),
   ).length;
+  const selectedCards = cards.filter((card) => selectedCardIds.has(String(card.id)));
 
-  const summaryCards = useMemo(
-    () => [
-      { label: 'Active remaining', value: formatMoney(activeRemaining), icon: CircleDollarSign },
-      { label: 'Active cost basis', value: formatMoney(activeCostBasis), icon: Tag },
-      { label: 'Active gross margin', value: formatMoney(activeGrossMargin), icon: CircleDollarSign },
-      { label: 'Sold proceeds', value: formatMoney(soldProceeds), icon: CircleDollarSign },
-      { label: 'Realized P&L', value: formatMoney(realizedProfit), icon: CircleDollarSign },
-      { label: 'Available face', value: formatMoney(availableFace), icon: PackageCheck },
-      { label: 'Reserved remaining', value: formatMoney(reservedRemaining), icon: PackageCheck },
-      { label: 'In-use remaining', value: formatMoney(inUseRemaining), icon: CreditCard },
-      { label: 'Expiring 30d', value: formatMoney(expiringSoonRemaining), icon: CreditCard },
-      { label: 'Stale reservations', value: String(staleReservationCount), icon: PackageCheck },
-      { label: 'Tracked cards', value: String(cards.length), icon: CreditCard },
-    ],
-    [
-      activeRemaining,
-      activeCostBasis,
-      activeGrossMargin,
-      soldProceeds,
-      realizedProfit,
-      availableFace,
-      reservedRemaining,
-      inUseRemaining,
-      expiringSoonRemaining,
-      staleReservationCount,
-      cards.length,
-    ],
-  );
+  const primaryMetrics = [
+    { label: 'Expiring 30d', value: formatMoney(expiringSoonRemaining), icon: AlertTriangle, onClick: () => void goToCards({ activeOnly: true, expiresBefore: dateInDays(30), sortBy: 'expirationDate', sortDir: 'asc' }) },
+    { label: 'Active remaining', value: formatMoney(activeRemaining), icon: CircleDollarSign, onClick: () => void goToCards({ activeOnly: true, sortBy: 'remainingBalanceCents', sortDir: 'desc' }) },
+    { label: 'Prepaid cash', value: formatMoney(prepaidRemaining), icon: CreditCard, onClick: () => void goToCards({ activeOnly: true, cardType: 'prepaid', sortBy: 'expirationDate', sortDir: 'asc' }) },
+    { label: 'Reserved', value: formatMoney(reservedRemaining), icon: PackageCheck, onClick: () => void goToCards({ status: 'reserved', sortBy: 'updatedAt', sortDir: 'desc' }) },
+  ];
+
+  const secondaryMetrics = [
+    { label: 'Active cost basis', value: formatMoney(activeCostBasis), icon: Tag },
+    { label: 'Active gross margin', value: formatMoney(activeGrossMargin), icon: CircleDollarSign },
+    { label: 'Sold proceeds', value: formatMoney(soldProceeds), icon: CircleDollarSign },
+    { label: 'Realized P&L', value: formatMoney(realizedProfit), icon: CircleDollarSign },
+    { label: 'Available face', value: formatMoney(availableFace), icon: PackageCheck },
+    { label: 'In-use remaining', value: formatMoney(inUseRemaining), icon: CreditCard },
+    { label: 'Stale reservations', value: String(staleReservationCount), icon: PackageCheck },
+    { label: 'Tracked cards', value: String(cards.length), icon: CreditCard },
+  ];
 
   async function activateView(view: ViewId) {
     setActiveView(view);
@@ -333,7 +459,78 @@ export function WorkSurface({
   async function searchCardsAndHideCredentials(criteria: CardSearchCriteria = {}) {
     setCardCredentialsVisible(false);
     setCardCredentialError('');
+    setSelectedCardIds(new Set());
     await onSearchCards(criteria);
+  }
+
+  async function goToCards(criteria: CardSearchCriteria = {}) {
+    setActiveView('cards');
+    await searchCardsAndHideCredentials(criteria);
+  }
+
+  function toggleCardSelected(cardId: string, checked: boolean) {
+    setSelectedCardIds((current) => {
+      const next = new Set(current);
+      if (checked) {
+        next.add(cardId);
+      } else {
+        next.delete(cardId);
+      }
+      return next;
+    });
+  }
+
+  function toggleAllCardsSelected(checked: boolean) {
+    setSelectedCardIds(checked ? new Set(cards.map((card) => String(card.id))) : new Set());
+  }
+
+  async function submitBulkAction(payload: Record<string, unknown> = {}) {
+    if (!bulkAction || selectedCards.length === 0) {
+      return;
+    }
+    setBulkError('');
+    setBulkMessage('');
+    setBulkSubmitting(true);
+    try {
+      const eligibleCards = selectedCards.filter((card) => {
+        if (bulkAction === 'reserve') return card.status === 'available';
+        if (bulkAction === 'use') return ['available', 'in_use'].includes(card.status) && card.remainingBalanceCents > 0;
+        if (bulkAction === 'sell' || bulkAction === 'void') return ['available', 'reserved', 'in_use'].includes(card.status);
+        return false;
+      });
+      if (eligibleCards.length === 0) {
+        setBulkError('No selected cards are eligible for this action.');
+        return;
+      }
+      for (const card of eligibleCards) {
+        if (bulkAction === 'reserve') {
+          await onReserveCard(card.id, payload);
+        } else if (bulkAction === 'use') {
+          await onUseCard(card.id, {
+            amountCents: card.remainingBalanceCents,
+            merchant: payload.merchant || null,
+            description: payload.description || 'Bulk use remaining balance',
+          });
+        } else if (bulkAction === 'sell') {
+          await onSellCard(card.id, {
+            salePriceCents: card.remainingBalanceCents,
+            buyerName: payload.buyerName || null,
+            buyerType: payload.buyerType || null,
+            platform: payload.platform || null,
+            notes: payload.notes || 'Bulk sale at remaining balance',
+          });
+        } else if (bulkAction === 'void') {
+          await onVoidCard(card.id, { reason: payload.reason || 'Bulk void' });
+        }
+      }
+      setBulkMessage(`${eligibleCards.length} card${eligibleCards.length === 1 ? '' : 's'} updated.`);
+      setSelectedCardIds(new Set());
+      setBulkAction(null);
+    } catch (caught) {
+      setBulkError(errorMessage(caught));
+    } finally {
+      setBulkSubmitting(false);
+    }
   }
 
   async function toggleCardCredentialVisibility() {
@@ -461,47 +658,72 @@ export function WorkSurface({
 
         {activeView === 'dashboard' ? (
           <>
-            <section className="metrics-grid" aria-label="Inventory summary">
-              {summaryCards.map((metric) => (
+            <section className="metrics-grid metrics-grid-primary" aria-label="Priority inventory summary">
+              {primaryMetrics.map((metric) => (
+                <Metric key={metric.label} {...metric} />
+              ))}
+            </section>
+            <section className="metrics-grid metrics-grid-secondary" aria-label="Secondary inventory summary">
+              {secondaryMetrics.map((metric) => (
                 <Metric key={metric.label} {...metric} />
               ))}
             </section>
             <section className="content-section">
               <div className="section-heading">
-                <h2>Cards</h2>
-                <button type="button" onClick={() => setActiveView('cards')}>
-                  View all
+                <h2>Alerts</h2>
+                <button type="button" onClick={() => void goToCards({ activeOnly: true, expiresBefore: dateInDays(30), sortBy: 'expirationDate', sortDir: 'asc' })}>
+                  View expiring
+                  <ArrowUpRight aria-hidden="true" size={15} />
                 </button>
               </div>
-              <CardsTable
-                cards={cards.slice(0, 6)}
-                canManage={userCanManageInventory}
-                onUseCard={setUsageCard}
-                onViewCard={openCardDetail}
-                onEditCard={setEditCard}
-                onDeleteCard={setDeleteCard}
-                onSellCard={setSaleCard}
-                onUndoSale={setUndoSaleCard}
-                onVoidCard={setVoidCard}
-                onReserveCard={setReserveCard}
-                onUnreserveCard={onUnreserveCard}
-              />
+              <div className="dashboard-feed">
+                {expiringSoonCards.slice(0, 5).map((card) => (
+                  <button
+                    type="button"
+                    className="feed-item alert-feed-item"
+                    key={card.id}
+                    aria-label={`Open ${card.brand} details`}
+                    onClick={() => openCardDetail(card)}
+                  >
+                    <AlertTriangle aria-hidden="true" size={17} />
+                    <span>
+                      <strong>{card.brand}</strong>
+                      <small>{formatMoney(card.remainingBalanceCents)} expires {card.expirationDate}</small>
+                    </span>
+                  </button>
+                ))}
+                {expiringSoonCards.length === 0 ? <p className="muted-text">No active cards expiring in the next 30 days.</p> : null}
+              </div>
             </section>
             <section className="content-section">
               <div className="section-heading">
-                <h2>Deals</h2>
-                <button type="button" onClick={() => setActiveView('deals')}>
-                  View all
+                <h2>Recent Activity</h2>
+                <button type="button" aria-label="Open audit log" onClick={() => void activateView('audit')}>
+                  Audit log
+                  <ArrowUpRight aria-hidden="true" size={15} />
                 </button>
               </div>
-              <DealsTable
-                deals={deals.slice(0, 6)}
-                canManage={userCanManageInventory}
-                onViewDeal={openDealDetail}
-                onEditDeal={setEditDeal}
-                onArchiveDeal={archiveDeal}
-                onUnarchiveDeal={unarchiveDeal}
-              />
+              <div className="dashboard-feed">
+                {[...cards]
+                  .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
+                  .slice(0, 6)
+                  .map((card) => (
+                    <button
+                      type="button"
+                      className="feed-item"
+                      key={card.id}
+                      aria-label={`Open ${card.brand} details`}
+                      onClick={() => openCardDetail(card)}
+                    >
+                      <Bell aria-hidden="true" size={17} />
+                      <span>
+                        <strong>{card.brand}</strong>
+                        <small>{statusText(card.status)} · {formatMoney(card.remainingBalanceCents)} remaining</small>
+                      </span>
+                    </button>
+                  ))}
+                {cards.length === 0 ? <p className="muted-text">No card activity yet.</p> : null}
+              </div>
             </section>
           </>
         ) : null}
@@ -527,15 +749,54 @@ export function WorkSurface({
               </div>
             </div>
             {cardCredentialError ? <FieldError message={cardCredentialError} /> : null}
-            <CardSearchForm deals={deals} onSearchCards={searchCardsAndHideCredentials} />
+            <CardSearchForm
+              key={JSON.stringify(cardCriteria)}
+              deals={deals}
+              onSearchCards={searchCardsAndHideCredentials}
+              initialCriteria={cardCriteria}
+            />
+            {prepaidCards.length > 0 ? (
+              <section className="prepaid-focus">
+                <div className="section-heading">
+                  <h3>Prepaid cash cards</h3>
+                  <button type="button" onClick={() => void goToCards({ activeOnly: true, cardType: 'prepaid', sortBy: 'expirationDate', sortDir: 'asc' })}>
+                    View prepaid only
+                    <ArrowUpRight aria-hidden="true" size={15} />
+                  </button>
+                </div>
+                <p>{prepaidCards.length} active prepaid cards · {formatMoney(prepaidRemaining)} remaining</p>
+              </section>
+            ) : null}
+            {userCanManageInventory ? (
+              <BulkCardActionPanel
+                action={bulkAction}
+                selectedCount={selectedCards.length}
+                submitting={bulkSubmitting}
+                error={bulkError}
+                message={bulkMessage}
+                onSelectAction={setBulkAction}
+                onSubmit={submitBulkAction}
+                onClear={() => {
+                  setSelectedCardIds(new Set());
+                  setBulkAction(null);
+                  setBulkError('');
+                }}
+              />
+            ) : null}
             <CardsTable
               cards={cards}
               canManage={userCanManageInventory}
               credentialsVisible={cardCredentialsVisible}
               revealedCredentialsByCardId={revealedCardCredentials}
+              {...(userCanManageInventory
+                ? {
+                    selectedCardIds,
+                    onToggleCardSelected: toggleCardSelected,
+                    onToggleAllCardsSelected: toggleAllCardsSelected,
+                  }
+                : {})}
               onUseCard={setUsageCard}
               onViewCard={openCardDetail}
-              onEditCard={setEditCard}
               onDeleteCard={setDeleteCard}
               onSellCard={setSaleCard}
               onUndoSale={setUndoSaleCard}
@@ -772,13 +1033,6 @@ export function WorkSurface({
           onUseCard={onUseCard}
         />
       ) : null}
-      {editCard ? (
-        <EditCardPanel
-          card={editCard}
-          onClose={() => setEditCard(null)}
-          onEditCard={onEditCard}
-        />
-      ) : null}
       {deleteCard ? (
         <DeleteCardPanel
           card={deleteCard}
@@ -816,10 +1070,12 @@ export function WorkSurface({
       ) : null}
       {detailState ? (
         <CardDetailPanel
+          key={detailState.card.id}
           detailState={detailState}
           canManage={userCanManageInventory}
           onClose={() => setDetailState(null)}
           onLogout={onLogout}
+          onEditCard={onEditCard}
           onUndoUsage={undoUsageFromDetail}
           onRevealCredentials={onRevealCardCredentials}
         />

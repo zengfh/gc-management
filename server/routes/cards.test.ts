@@ -95,6 +95,43 @@ describe('card routes', () => {
     });
   }, 45_000);
 
+  it('derives list expiration date from network prepaid month and year fields', async () => {
+    const csrfToken = await setupOwner();
+
+    const createResponse = await postWithCsrf('/api/cards', csrfToken).send({
+      cards: [
+        sampleCard({
+          brand: 'Mastercard',
+          cardType: 'prepaid',
+          credentialProfile: 'network_prepaid',
+          network: 'mastercard',
+          cardNumber: '5274 8000 0000 1425',
+          expirationDate: null,
+          expirationMonth: '11',
+          expirationYear: '2026',
+        }),
+      ],
+    });
+
+    expect(createResponse.status).toBe(201);
+    expect(createResponse.body.data[0]).toMatchObject({
+      brand: 'Mastercard',
+      cardType: 'prepaid',
+      credentialProfile: 'network_prepaid',
+      expirationDate: '2026-11-01',
+    });
+
+    const listResponse = await agent.get('/api/cards').query({ cardType: 'prepaid' });
+    expect(listResponse.status).toBe(200);
+    expect(listResponse.body.data).toEqual([
+      expect.objectContaining({
+        brand: 'Mastercard',
+        cardType: 'prepaid',
+        expirationDate: '2026-11-01',
+      }),
+    ]);
+  }, 45_000);
+
   it('blocks active duplicate cards by normalized number and brand', async () => {
     const csrfToken = await setupOwner();
 
@@ -687,17 +724,43 @@ describe('card routes', () => {
       .send({
         rowVersion: card.rowVersion,
         brand: 'Amazon',
+        cardType: 'prepaid',
+        network: 'visa',
+        faceValueCents: 6_000,
+        remainingBalanceCents: 5_500,
+        purchaseCostCents: 4_900,
         expirationDate: '2028-01-31',
+        format: 'physical',
+        source: 'CardCash',
         notes: 'Updated notes',
       });
     expect(updateResponse.status).toBe(200);
     expect(updateResponse.body.data).toMatchObject({
       id: card.id,
       brand: 'Amazon',
+      cardType: 'prepaid',
+      network: 'visa',
+      faceValueCents: 6_000,
+      remainingBalanceCents: 5_500,
+      purchaseCostCents: 4_900,
       expirationDate: '2028-01-31',
+      format: 'physical',
+      source: 'CardCash',
       notes: 'Updated notes',
       rowVersion: 2,
     });
+
+    const excessiveBalanceUpdate = await agent
+      .put(`/api/cards/${card.id}`)
+      .set('Origin', appOrigin)
+      .set('X-CSRF-Token', csrfToken)
+      .send({
+        rowVersion: updateResponse.body.data.rowVersion,
+        faceValueCents: 6_000,
+        remainingBalanceCents: 6_001,
+      });
+    expect(excessiveBalanceUpdate.status).toBe(400);
+    expect(excessiveBalanceUpdate.body.error.code).toBe('REMAINING_BALANCE_EXCEEDS_FACE_VALUE');
 
     const staleUpdate = await agent
       .put(`/api/cards/${card.id}`)

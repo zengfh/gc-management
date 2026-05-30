@@ -212,6 +212,7 @@ export default function App() {
       auth={auth}
       cards={inventory.cards}
       cardsPage={inventory.cardsPage}
+      cardCriteria={inventory.cardCriteria}
       deals={inventory.deals}
       auditEvents={audit.auditEvents}
       auditLoading={audit.auditLoading}

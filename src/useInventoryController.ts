@@ -245,6 +245,7 @@ export function useInventoryController({ csrfToken }: InventoryControllerOptions
   return {
     cards,
     cardsPage,
+    cardCriteria,
     deals,
     loading,
     loadInventory,

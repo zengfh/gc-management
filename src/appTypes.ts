@@ -159,6 +159,7 @@ export interface WorkSurfaceProps {
   auth: AuthState;
   cards: Card[];
   cardsPage: Page;
+  cardCriteria: CardSearchCriteria;
   deals: Deal[];
   auditEvents: AuditEvent[];
   auditLoading: boolean;
@@ -222,7 +223,7 @@ export interface WorkSurfaceProps {
   onRevealCardCredentials: (cardId: string) => Promise<ApiResponse<RevealedCredentials>>;
   onUseCard: (cardId: string, payload: ApiPayload) => Promise<unknown>;
   onUndoUsage: (cardId: string, payload: ApiPayload) => Promise<ApiResponse<CardMutationResult>>;
-  onEditCard: (cardId: string, payload: ApiPayload) => Promise<unknown>;
+  onEditCard: (cardId: string, payload: ApiPayload) => Promise<ApiResponse<Card>>;
   onDeleteCard: (cardId: string) => Promise<unknown>;
   onSellCard: (cardId: string, payload: CardSalePayload) => Promise<unknown>;
   onUndoSale: (cardId: string, payload: ApiPayload) => Promise<unknown>;

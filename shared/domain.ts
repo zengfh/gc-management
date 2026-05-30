@@ -164,6 +164,7 @@ export interface Card {
   brand: string;
   status: CardStatus;
   cardType: CardType | string;
+  network?: string | null;
   credentialProfile?: CredentialProfile | string | null;
   credentialSummary?: CredentialSummary | null;
   cardNumberLast4?: string | null;
@@ -229,6 +230,8 @@ export interface ReferenceReviewItem {
 export interface CardSearchCriteria {
   cardNumber?: string;
   status?: string;
+  cardType?: string;
+  activeOnly?: string | boolean;
   brand?: string;
   source?: string;
   dealId?: string;

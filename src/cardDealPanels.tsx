@@ -67,6 +67,13 @@ function mergeRevealedCredentialFields(credentials: RevealedCredentials): Creden
   return fields.filter((field) => field.value);
 }
 
+function centsToInput(cents: number | null | undefined): string {
+  if (cents == null) {
+    return '';
+  }
+  return (cents / 100).toFixed(2);
+}
+
 function HistoryList<T extends { id: string | number }>({
   title,
   items,
@@ -102,6 +109,7 @@ export function CardDetailPanel({
   canManage,
   onClose,
   onLogout,
+  onEditCard,
   onUndoUsage,
   onRevealCredentials,
 }: {
@@ -109,20 +117,38 @@ export function CardDetailPanel({
   canManage: boolean;
   onClose: VoidHandler;
   onLogout: VoidHandler;
+  onEditCard: (cardId: string, payload: ApiPayload) => Promise<ApiResponse<Card>>;
   onUndoUsage: (usageId: string, reason: string) => Promise<unknown>;
   onRevealCredentials: (cardId: string) => Promise<ApiResponse<RevealedCredentials>>;
 }) {
   const { card, data, error, loading } = detailState;
-  const detailCard = data?.card || card;
+  const [editedCard, setEditedCard] = useState<Card | null>(null);
+  const detailCard = editedCard || data?.card || card;
   const [undoUsage, setUndoUsage] = useState<Usage | null>(null);
   const [undoReason, setUndoReason] = useState('');
   const [undoError, setUndoError] = useState('');
   const [submittingUndo, setSubmittingUndo] = useState(false);
+  const [editForm, setEditForm] = useState({
+    brand: detailCard.brand || '',
+    cardType: detailCard.cardType || 'merchant',
+    network: detailCard.network || '',
+    faceValue: centsToInput(detailCard.faceValueCents),
+    remainingBalance: centsToInput(detailCard.remainingBalanceCents),
+    purchaseCost: centsToInput(detailCard.purchaseCostCents),
+    expirationDate: detailCard.expirationDate || '',
+    format: detailCard.format || '',
+    source: detailCard.source || '',
+    notes: detailCard.notes || '',
+  });
+  const [editError, setEditError] = useState('');
+  const [editMessage, setEditMessage] = useState('');
+  const [submittingEdit, setSubmittingEdit] = useState(false);
   const [credentials, setCredentials] = useState<RevealedCredentials | null>(null);
   const [credentialError, setCredentialError] = useState('');
   const [credentialMessage, setCredentialMessage] = useState('');
   const [revealing, setRevealing] = useState(false);
   const dialogRef = useDialogFocus(onClose);
+  const terminal = isTerminalCard(detailCard);
 
   useEffect(() => {
     if (!credentials) {
@@ -177,6 +203,71 @@ export function CardDetailPanel({
       setUndoError(errorMessage(caught));
     } finally {
       setSubmittingUndo(false);
+    }
+  }
+
+  function updateEditField(field: keyof typeof editForm, value: string) {
+    setEditForm((current) => ({ ...current, [field]: value }));
+  }
+
+  async function submitCardEdit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setEditError('');
+    setEditMessage('');
+
+    const notes = editForm.notes.trim();
+    const payload: ApiPayload = {
+      rowVersion: detailCard.rowVersion,
+      notes: notes || null,
+    };
+
+    if (!terminal) {
+      const brand = editForm.brand.trim();
+      const faceValueCents = dollarsToCents(editForm.faceValue);
+      const remainingBalanceCents = dollarsToCents(editForm.remainingBalance);
+      const purchaseCostCents = dollarsToCents(editForm.purchaseCost);
+
+      if (!brand) {
+        setEditError('Brand is required.');
+        return;
+      }
+      if (!faceValueCents || faceValueCents <= 0) {
+        setEditError('Face value must be greater than $0.00.');
+        return;
+      }
+      if (remainingBalanceCents == null || remainingBalanceCents < 0) {
+        setEditError('Remaining balance must be $0.00 or more.');
+        return;
+      }
+      if (remainingBalanceCents > faceValueCents) {
+        setEditError('Remaining balance cannot exceed face value.');
+        return;
+      }
+      if (purchaseCostCents == null || purchaseCostCents < 0) {
+        setEditError('Purchase cost must be $0.00 or more.');
+        return;
+      }
+
+      payload.brand = brand;
+      payload.cardType = editForm.cardType === 'prepaid' ? 'prepaid' : 'merchant';
+      payload.network = editForm.network || null;
+      payload.faceValueCents = faceValueCents;
+      payload.remainingBalanceCents = remainingBalanceCents;
+      payload.purchaseCostCents = purchaseCostCents;
+      payload.expirationDate = editForm.expirationDate || null;
+      payload.format = editForm.format || null;
+      payload.source = editForm.source.trim() || null;
+    }
+
+    setSubmittingEdit(true);
+    try {
+      const response = await onEditCard(detailCard.id, payload);
+      setEditedCard(response.data);
+      setEditMessage('Card updated.');
+    } catch (caught) {
+      setEditError(errorMessage(caught));
+    } finally {
+      setSubmittingEdit(false);
     }
   }
 
@@ -310,6 +401,122 @@ export function CardDetailPanel({
               <strong>{detailCard.reservedNotes || 'Not recorded'}</strong>
             </div>
           </div>
+          {canManage ? (
+            <section className="detail-section">
+              <div className="credential-heading">
+                <h3>Edit card</h3>
+                {terminal ? (
+                  <span className="detail-pill">{statusText(detailCard.status)} cards allow notes only</span>
+                ) : null}
+              </div>
+              <form className="inline-detail-form detail-edit-form" onSubmit={submitCardEdit}>
+                <div className="detail-edit-grid">
+                  <label>
+                    <span>Brand</span>
+                    <input
+                      value={editForm.brand}
+                      disabled={terminal}
+                      required={!terminal}
+                      onChange={(event) => updateEditField('brand', event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    <span>Card type</span>
+                    <select
+                      value={editForm.cardType}
+                      disabled={terminal}
+                      onChange={(event) => updateEditField('cardType', event.target.value)}
+                    >
+                      <option value="merchant">Merchant gift card</option>
+                      <option value="prepaid">Prepaid cash card</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>Network</span>
+                    <select
+                      value={editForm.network}
+                      disabled={terminal}
+                      onChange={(event) => updateEditField('network', event.target.value)}
+                    >
+                      <option value="">None</option>
+                      <option value="visa">Visa</option>
+                      <option value="mastercard">Mastercard</option>
+                      <option value="amex">Amex</option>
+                      <option value="discover">Discover</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>Face value</span>
+                    <input
+                      inputMode="decimal"
+                      value={editForm.faceValue}
+                      disabled={terminal}
+                      onChange={(event) => updateEditField('faceValue', event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    <span>Remaining</span>
+                    <input
+                      inputMode="decimal"
+                      value={editForm.remainingBalance}
+                      disabled={terminal}
+                      onChange={(event) => updateEditField('remainingBalance', event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    <span>Cost</span>
+                    <input
+                      inputMode="decimal"
+                      value={editForm.purchaseCost}
+                      disabled={terminal}
+                      onChange={(event) => updateEditField('purchaseCost', event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    <span>Expiration date</span>
+                    <input
+                      type="date"
+                      value={editForm.expirationDate}
+                      disabled={terminal}
+                      onChange={(event) => updateEditField('expirationDate', event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    <span>Format</span>
+                    <select
+                      value={editForm.format}
+                      disabled={terminal}
+                      onChange={(event) => updateEditField('format', event.target.value)}
+                    >
+                      <option value="">Not recorded</option>
+                      <option value="digital">Digital</option>
+                      <option value="physical">Physical</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>Source</span>
+                    <input
+                      value={editForm.source}
+                      disabled={terminal}
+                      onChange={(event) => updateEditField('source', event.target.value)}
+                    />
+                  </label>
+                  <label className="detail-edit-notes">
+                    <span>Notes</span>
+                    <textarea value={editForm.notes} rows={4} onChange={(event) => updateEditField('notes', event.target.value)} />
+                  </label>
+                </div>
+                <FieldError message={editError} />
+                {editMessage ? <p className="success-copy">{editMessage}</p> : null}
+                <div className="inline-form-actions">
+                  <button type="submit" className="primary-action compact" disabled={submittingEdit}>
+                    {submittingEdit ? 'Saving...' : 'Save card'}
+                  </button>
+                </div>
+              </form>
+            </section>
+          ) : null}
           <section className="detail-section credential-section">
             <div className="credential-heading">
               <h3>Credentials</h3>
