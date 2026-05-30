@@ -241,6 +241,37 @@ describe('admin operations routes', () => {
     }
   }, 45_000);
 
+  it('sends expiration notification test emails to the owner/admin email address', async () => {
+    const outbox = path.join(os.tmpdir(), `gc-expiration-test-outbox-${Date.now()}-${Math.random()}.jsonl`);
+    process.env.GC_NOTIFICATION_OUTBOX_PATH = outbox;
+    try {
+      const csrfToken = await setupOwner();
+
+      const response = await withCsrf(agent.post('/api/admin/notifications/expiration/test'), csrfToken).send({});
+
+      expect(response.status).toBe(200);
+      expect(response.body.data).toMatchObject({
+        recipients: 1,
+        sentEmails: 1,
+        skipped: [],
+      });
+      const outboxRows = fs.readFileSync(outbox, 'utf8').trim().split('\n').map((line) => JSON.parse(line));
+      expect(outboxRows).toHaveLength(1);
+      expect(outboxRows[0]).toMatchObject({
+        to: ['owner@example.com'],
+        subject: 'Gift Card Manager expiration notification test',
+      });
+      expect(
+        db.prepare("SELECT COUNT(*) AS count FROM audit_log WHERE action = 'notification.expiration_test_email_sent'").get().count,
+      ).toBe(1);
+    } finally {
+      if (fs.existsSync(outbox)) {
+        fs.unlinkSync(outbox);
+      }
+      delete process.env.GC_NOTIFICATION_OUTBOX_PATH;
+    }
+  }, 45_000);
+
   it('deletes inventory data while preserving users and a deletion audit event', async () => {
     const csrfToken = await setupOwner();
     const createCard = await withCsrf(agent.post('/api/cards'), csrfToken).send({

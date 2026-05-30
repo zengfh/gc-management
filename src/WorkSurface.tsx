@@ -134,6 +134,7 @@ export function WorkSurface({
   onUpdateDataPolicy,
   onExportAccountData,
   onRunRetention,
+  onSendExpirationNotificationTest,
   onDeleteAccountData,
   onUpdateBackupSettings,
   onExportPlaintext,
@@ -717,6 +718,7 @@ export function WorkSurface({
                 <DataOperationsPanel
                   onExportAccountData={onExportAccountData}
                   onRunRetention={onRunRetention}
+                  onSendExpirationNotificationTest={onSendExpirationNotificationTest}
                   onDeleteAccountData={onDeleteAccountData}
                 />
               </section>

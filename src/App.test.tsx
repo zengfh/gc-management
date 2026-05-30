@@ -1552,7 +1552,15 @@ describe('App', () => {
           sessionRetentionDays: 3,
           loginAttemptRetentionDays: 30,
         }),
-      );
+      )
+      .mockResolvedValueOnce(jsonResponse({
+        data: {
+          checkedAt: '2026-05-30T07:00:00.000Z',
+          recipients: 1,
+          sentEmails: 1,
+          skipped: [],
+        },
+      }));
 
     const user = userEvent.setup();
     render(<App />);
@@ -1606,6 +1614,20 @@ describe('App', () => {
           sessionRetentionDays: 3,
           loginAttemptRetentionDays: 30,
         }),
+        headers: expect.objectContaining({
+          'X-CSRF-Token': 'csrf_ready',
+        }),
+      }),
+    );
+
+    await user.click(screen.getByRole('button', { name: /^send expiration email test$/i }));
+
+    expect(await screen.findByText(/sent 1 expiration notification test email/i)).toBeInTheDocument();
+    expect(globalThis.fetch).toHaveBeenLastCalledWith(
+      '/api/admin/notifications/expiration/test',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({}),
         headers: expect.objectContaining({
           'X-CSRF-Token': 'csrf_ready',
         }),

@@ -1,7 +1,7 @@
 import { useState, type ChangeEvent, type FormEvent } from 'react';
-import { AlertTriangle, Download, Lock, RefreshCw, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, Bell, Download, Lock, RefreshCw, ShieldCheck } from 'lucide-react';
 import type { ApiResponse, AuthUser, DataPolicy, SupportPolicy, UserInvite } from '../shared/domain';
-import type { ApiPayload, AsyncApiHandler, CountSummary, PortableExportPayload } from './appTypes';
+import type { ApiPayload, AsyncApiHandler, CountSummary, NotificationTestSummary, PortableExportPayload } from './appTypes';
 import { errorMessage, formatDateTime, formatDisplayValue } from './display';
 import { downloadJsonFile } from './fileHelpers';
 import { FieldError } from './formUi';
@@ -503,10 +503,12 @@ export function DataPolicyForm({
 export function DataOperationsPanel({
   onExportAccountData,
   onRunRetention,
+  onSendExpirationNotificationTest,
   onDeleteAccountData,
 }: {
   onExportAccountData: AsyncApiHandler<ApiPayload, ApiResponse<PortableExportPayload>>;
   onRunRetention: AsyncApiHandler<ApiPayload, ApiResponse<{ counts?: CountSummary }>>;
+  onSendExpirationNotificationTest: AsyncApiHandler<ApiPayload, ApiResponse<NotificationTestSummary>>;
   onDeleteAccountData: AsyncApiHandler<ApiPayload, ApiResponse<{ counts?: CountSummary }>>;
 }) {
   const [exportUnlockSecret, setExportUnlockSecret] = useState('');
@@ -519,6 +521,9 @@ export function DataOperationsPanel({
   const [retentionError, setRetentionError] = useState('');
   const [retentionSuccess, setRetentionSuccess] = useState('');
   const [retentionRunning, setRetentionRunning] = useState(false);
+  const [notificationError, setNotificationError] = useState('');
+  const [notificationSuccess, setNotificationSuccess] = useState('');
+  const [notificationSending, setNotificationSending] = useState(false);
   const [deleteUnlockSecret, setDeleteUnlockSecret] = useState('');
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
   const [deleteError, setDeleteError] = useState('');
@@ -590,6 +595,23 @@ export function DataOperationsPanel({
     }
   }
 
+  async function sendNotificationTest() {
+    setNotificationError('');
+    setNotificationSuccess('');
+    setNotificationSending(true);
+    try {
+      const response = await onSendExpirationNotificationTest({});
+      const summary = response.data || {};
+      const sent = summary.sentEmails || 0;
+      const skipped = summary.skipped?.length ? ` ${summary.skipped.join(' ')}` : '';
+      setNotificationSuccess(`Sent ${sent} expiration notification test email${sent === 1 ? '' : 's'}.${skipped}`);
+    } catch (caught) {
+      setNotificationError(errorMessage(caught));
+    } finally {
+      setNotificationSending(false);
+    }
+  }
+
   return (
     <div className="data-operations-grid">
       <form className="settings-form" onSubmit={submitExport}>
@@ -647,6 +669,17 @@ export function DataOperationsPanel({
         <FieldError message={retentionError} />
         {retentionSuccess ? <p className="success-copy">{retentionSuccess}</p> : null}
       </form>
+
+      <div className="settings-form">
+        <div className="backup-actions">
+          <button type="button" className="primary-action" disabled={notificationSending} onClick={sendNotificationTest}>
+            <Bell aria-hidden="true" size={17} />
+            {notificationSending ? 'Sending...' : 'Send expiration email test'}
+          </button>
+        </div>
+        <FieldError message={notificationError} />
+        {notificationSuccess ? <p className="success-copy">{notificationSuccess}</p> : null}
+      </div>
 
       <form className="settings-form" onSubmit={submitDelete}>
         <div className="warning-copy danger-warning">

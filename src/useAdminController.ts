@@ -3,6 +3,7 @@ import { apiFetch } from './api';
 import type {
   ApiPayload,
   CountSummary,
+  NotificationTestSummary,
   PortableExportPayload,
 } from './appTypes';
 import {
@@ -171,6 +172,14 @@ export function useAdminController({ csrfToken, onDataDeleted }: AdminController
     });
   }
 
+  async function sendExpirationNotificationTest(payload: ApiPayload = {}) {
+    return apiFetch<ApiResponse<NotificationTestSummary>>('/api/admin/notifications/expiration/test', {
+      method: 'POST',
+      body: payload,
+      csrfToken: csrfToken(),
+    });
+  }
+
   async function deleteAccountData(payload: ApiPayload) {
     const response = await apiFetch<ApiResponse<{ counts?: CountSummary }>>('/api/admin/data-delete', {
       method: 'POST',
@@ -206,6 +215,7 @@ export function useAdminController({ csrfToken, onDataDeleted }: AdminController
     updateDataPolicy,
     exportAccountData,
     runRetention,
+    sendExpirationNotificationTest,
     deleteAccountData,
   };
 }

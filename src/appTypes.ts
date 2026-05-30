@@ -45,6 +45,13 @@ export interface CountSummary {
   idempotencyKeys?: number;
 }
 
+export interface NotificationTestSummary {
+  checkedAt?: string;
+  recipients?: number;
+  sentEmails?: number;
+  skipped?: string[];
+}
+
 export interface PortableExportPayload {
   exportedAt?: string;
   cards?: Card[];
@@ -190,6 +197,7 @@ export interface WorkSurfaceProps {
   onUpdateDataPolicy: AsyncApiHandler<ApiPayload, ApiResponse<DataPolicy>>;
   onExportAccountData: AsyncApiHandler<ApiPayload, ApiResponse<PortableExportPayload>>;
   onRunRetention: AsyncApiHandler<ApiPayload, ApiResponse<{ counts?: CountSummary }>>;
+  onSendExpirationNotificationTest: AsyncApiHandler<ApiPayload, ApiResponse<NotificationTestSummary>>;
   onDeleteAccountData: AsyncApiHandler<ApiPayload, ApiResponse<{ counts?: CountSummary }>>;
   onUpdateBackupSettings: AsyncApiHandler<ApiPayload, ApiResponse<BackupSettings>>;
   onExportPlaintext: AsyncApiHandler<ApiPayload, ApiResponse<PortableExportPayload>>;

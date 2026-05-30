@@ -43,6 +43,13 @@ export interface ExpirationNotificationSummary {
   skipped: string[];
 }
 
+export interface ExpirationNotificationTestSummary {
+  checkedAt: string;
+  recipients: number;
+  sentEmails: number;
+  skipped: string[];
+}
+
 function utcDateOnly(value: Date): Date {
   return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
 }
@@ -361,6 +368,74 @@ export async function sendExpirationNotifications({
     recipients: Array.from(byAccount.keys()).reduce((count, id) => count + recipientRows(db, id).length, 0),
     sentEmails,
     sentDeliveries,
+    skipped,
+  };
+}
+
+export async function sendExpirationNotificationTest({
+  db,
+  now = new Date(),
+  accountId,
+  transport,
+  logger = console,
+}: {
+  db: Database.Database;
+  now?: Date;
+  accountId: number;
+  transport?: EmailTransport;
+  logger?: Pick<Console, 'warn'>;
+}): Promise<ExpirationNotificationTestSummary> {
+  const timestamp = now.toISOString();
+  const recipients = recipientRows(db, accountId);
+  const skipped: string[] = [];
+  let sentEmails = 0;
+
+  if (recipients.length === 0) {
+    return {
+      checkedAt: timestamp,
+      recipients: 0,
+      sentEmails: 0,
+      skipped: [`account:${accountId}:no_admin_email`],
+    };
+  }
+
+  for (const recipient of recipients) {
+    try {
+      const activeTransport = transport || createEmailTransport();
+      await activeTransport.send({
+        to: [recipient.email],
+        subject: 'Gift Card Manager expiration notification test',
+        text: [
+          'This is a test email from Gift Card Manager expiration notifications.',
+          '',
+          'If you received this, SMTP delivery is configured for expiration reminders.',
+        ].join('\n'),
+      });
+      sentEmails += 1;
+    } catch (caught) {
+      const reason = caught instanceof EmailNotConfiguredError ? 'email_not_configured' : 'email_send_failed';
+      skipped.push(`account:${accountId}:${recipient.email}:${reason}`);
+      logger.warn(`Expiration notification test skipped for account ${accountId}: ${reason}`);
+    }
+  }
+
+  if (sentEmails > 0) {
+    insertAuditEvent(db, {
+      accountId,
+      entityType: 'system',
+      action: 'notification.expiration_test_email_sent',
+      metadata: {
+        sentEmails,
+        recipients: recipients.map((recipient) => recipient.email),
+      },
+      timestamp,
+    });
+  }
+
+  return {
+    checkedAt: timestamp,
+    recipients: recipients.length,
+    sentEmails,
     skipped,
   };
 }

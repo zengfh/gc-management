@@ -250,6 +250,7 @@ export default function App() {
       onUpdateDataPolicy={admin.updateDataPolicy}
       onExportAccountData={admin.exportAccountData}
       onRunRetention={admin.runRetention}
+      onSendExpirationNotificationTest={admin.sendExpirationNotificationTest}
       onDeleteAccountData={admin.deleteAccountData}
       onUpdateBackupSettings={backup.updateBackupSettings}
       onExportPlaintext={backup.exportPlaintext}

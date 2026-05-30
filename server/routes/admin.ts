@@ -8,7 +8,10 @@ import { verifyFreshUnlockSecret } from '../auth/verifyUnlockSecret.js';
 import { parseCredentialSummary } from '../cards/credentials.js';
 import { asyncHandler, badRequest } from '../http/errors.js';
 import { objectResponse } from '../http/response.js';
-import { sendExpirationNotifications } from '../notifications/expiration.js';
+import {
+  sendExpirationNotifications,
+  sendExpirationNotificationTest,
+} from '../notifications/expiration.js';
 import {
   readDataPolicy,
   readSupportPolicy,
@@ -465,6 +468,18 @@ export function createAdminRouter({ db }: { db: Database.Database }) {
       const summary = await sendExpirationNotifications({
         db,
         now,
+        accountId: req.auth.accountId,
+      });
+
+      res.json(objectResponse(summary));
+    }),
+  );
+
+  router.post(
+    '/notifications/expiration/test',
+    asyncHandler(async (req, res) => {
+      const summary = await sendExpirationNotificationTest({
+        db,
         accountId: req.auth.accountId,
       });
 

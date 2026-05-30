@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { openDatabase } from '../db/index.js';
 import {
   expirationDateForCard,
+  sendExpirationNotificationTest,
   sendExpirationNotifications,
   type ExpirationNotificationSummary,
 } from './expiration.js';
@@ -157,5 +158,29 @@ describe('expiration notifications', () => {
       sentDeliveries: 0,
       skipped: ['account:1:no_admin_email'],
     });
+  });
+
+  it('sends a test expiration email without requiring a due card', async () => {
+    const transport = new MemoryEmailTransport();
+
+    const summary = await sendExpirationNotificationTest({
+      db,
+      accountId: 1,
+      now: new Date('2026-05-30T07:00:00.000Z'),
+      transport,
+    });
+
+    expect(summary).toEqual({
+      checkedAt: '2026-05-30T07:00:00.000Z',
+      recipients: 1,
+      sentEmails: 1,
+      skipped: [],
+    });
+    expect(transport.messages).toHaveLength(1);
+    expect(transport.messages[0]).toMatchObject({
+      to: ['admin@example.com'],
+      subject: 'Gift Card Manager expiration notification test',
+    });
+    expect(db.prepare("SELECT COUNT(*) AS count FROM audit_log WHERE action = 'notification.expiration_test_email_sent'").get().count).toBe(1);
   });
 });

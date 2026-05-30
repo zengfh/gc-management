@@ -247,6 +247,7 @@ Example:
 | NOT-001 | Unit | Expiration date calculation | Network prepaid month/year expiration like 11/2026 is treated as 2026-11-01; blank expiration produces no notification candidate |
 | NOT-002 | Integration | Expiration email delivery | Active cards with remaining balance send owner/admin email notifications at 28, 21, 14, 7, 5, 4, 3, 2, and 1 days before expiration, without exposing full card credentials |
 | NOT-003 | Integration | Expiration notification dedupe | Re-running the notification job on the same day does not resend the same card/threshold/recipient delivery |
+| NOT-004 | UI/API | Expiration notification test email | Admin Settings includes a Send expiration email test action that calls the test endpoint and confirms delivery summary without requiring a due card |
 | EXP-001 | E2E | Plaintext export happy path | Fresh secret + type EXPORT; file returned; no-store; audit |
 | EXP-002 | Integration | Plaintext export wrong secret | Rejected; no file |
 | EXP-003 | Integration | Raw DB export | Fresh secret required; no-store; audit |

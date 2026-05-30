@@ -81,6 +81,8 @@ GC_NOTIFICATION_RECIPIENT_EMAIL=admin@example.com
 
 Expiration notifications are sent to active owner/admin users with email addresses. `GC_NOTIFICATION_RECIPIENT_EMAIL` can override recipients for a private single-user deployment where the existing owner record has no email. Month/year expirations such as `11/2026` are treated as `2026-11-01`; cards without expiration are ignored. The app sends at 28, 21, 14, 7, 5, 4, 3, 2, and 1 days before expiration and records a delivery row so each card/threshold/recipient is sent once.
 
+After SMTP is configured, use Settings -> Data Operations -> Send expiration email test to verify delivery from the browser. The test sends through the same configured mail transport but does not require a card to be near expiration.
+
 Temporary SSH-tunnel testing without TLS can set `GC_SESSION_COOKIE_SECURE=false` and use an `APP_ORIGIN` such as `http://localhost:5180,http://127.0.0.1:5180`. Do not use that setting for a public HTTPS deployment.
 
 ## Deployment Layout
