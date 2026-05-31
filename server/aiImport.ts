@@ -12,7 +12,7 @@ interface AiModelSelection {
 interface AiParsedCard {
   brand: string;
   faceValue: string;
-  credentialProfile: 'claim_code' | 'merchant_number_pin' | 'barcode' | 'network_prepaid' | 'custom';
+  credentialProfile: 'claim_code' | 'claim_link' | 'merchant_number_pin' | 'barcode' | 'network_prepaid' | 'custom';
   primaryCode: string;
   secondaryCode?: string;
   expirationMonth?: string;
@@ -153,7 +153,7 @@ const aiCardSchema = z.object({
   value: looseString,
   amount: looseString,
   balance: looseString,
-  credentialProfile: z.enum(['claim_code', 'merchant_number_pin', 'barcode', 'network_prepaid', 'custom']).optional().default('claim_code'),
+  credentialProfile: z.enum(['claim_code', 'claim_link', 'merchant_number_pin', 'barcode', 'network_prepaid', 'custom']).optional().default('claim_code'),
   primaryCode: looseString,
   code: looseString,
   cardNumber: looseString,
@@ -433,12 +433,13 @@ function safePreviousRows(previousRows: unknown[] | undefined): unknown[] {
 function aiPrompt(text: string, options: AiImportPromptOptions = {}): string {
   const lines = [
     'Extract gift card inventory from the user text.',
-    'Return ONLY strict JSON with this shape: {"cards":[{"brand":"","faceValue":"","credentialProfile":"claim_code|merchant_number_pin|barcode|network_prepaid|custom","primaryCode":"","secondaryCode":"","notes":"","source":"","rawLine":"","confidence":0.0}]}',
+    'Return ONLY strict JSON with this shape: {"cards":[{"brand":"","faceValue":"","credentialProfile":"claim_code|claim_link|merchant_number_pin|barcode|network_prepaid|custom","primaryCode":"","secondaryCode":"","notes":"","source":"","rawLine":"","confidence":0.0}]}',
     'Rules:',
     '- Do not invent missing values. Leave uncertain optional fields empty and mention uncertainty in notes.',
     '- If the merchant/brand is missing but the card is clearly network prepaid, infer only the card network when obvious from the number: Visa starts with 4, Mastercard commonly starts with 51-55 or 2221-2720, Amex starts with 34 or 37, Discover commonly starts with 6011/65/644-649.',
     '- Ignore table header rows, separator rows, blank rows, labels, and other non-gift-card text. Do not return them as cards.',
     '- For one-code cards such as Uber, DoorDash, Instacart, Amazon, and Apple, use credentialProfile "claim_code", primaryCode as the redeemable code, and no secondaryCode.',
+    '- For claim-link cards, use credentialProfile "claim_link" and put the full HTTP/HTTPS URL exactly as written in primaryCode. Never alter URL casing.',
     '- For merchant cards with a number plus a secondary PIN, use credentialProfile "merchant_number_pin", primaryCode as card number, secondaryCode as PIN.',
     '- Treat issuer terms such as access number, passcode, or password as PIN and put them in secondaryCode.',
     '- If a brand and value header applies to multiple following code-only rows, inherit that brand and value for each row until a new brand/value row or table header appears.',
@@ -447,7 +448,7 @@ function aiPrompt(text: string, options: AiImportPromptOptions = {}): string {
     '- For rows with labels like Number, Card Number, Balance, Exp, CVV, CVC, or Security Code, map Number/Card Number to primaryCode, Balance to faceValue, Exp to expirationMonth/expirationYear, and set credentialProfile to network_prepaid.',
     '- Do not put CVV/CVC/CID/security-code values in notes, source, rawLine, primaryCode, or secondaryCode. Put the value only in networkSecurityCode.',
     '- Face values should be numeric strings without a dollar sign.',
-    '- Preserve human-readable code grouping such as spaces or hyphens in primaryCode.',
+    '- Preserve human-readable code grouping such as spaces or hyphens in primaryCode. Preserve letter casing exactly; do not uppercase codes.',
     '- Preserve each extracted card as one item. The database write will happen only after human review.',
     '',
     'Continuation example:',
@@ -520,7 +521,20 @@ function compactText(value: string): string {
 }
 
 function normalizePrimaryCode(value: string): string {
-  return value.trim().replace(/\s+/g, ' ').toUpperCase();
+  return value.trim().replace(/\s+/g, ' ');
+}
+
+function looksLikeClaimLink(value: string): boolean {
+  try {
+    const parsed = new URL(value.trim());
+    return parsed.protocol === 'https:' || parsed.protocol === 'http:';
+  } catch {
+    return false;
+  }
+}
+
+function hasMixedLetterCase(value: string): boolean {
+  return /[a-z]/.test(value) && /[A-Z]/.test(value);
 }
 
 function inferNetworkBrandFromNumber(value: string): string {
@@ -583,6 +597,10 @@ function normalizeAiCard(card: AiParsedCard): AiParsedCard | null {
     secondaryCode: card.secondaryCode?.trim() || '',
   };
 
+  if (looksLikeClaimLink(next.primaryCode)) {
+    next.credentialProfile = 'claim_link';
+  }
+
   if (looksLikeNetworkPrepaid(next)) {
     next.credentialProfile = 'network_prepaid';
     if (!next.brand.trim()) {
@@ -590,7 +608,7 @@ function normalizeAiCard(card: AiParsedCard): AiParsedCard | null {
     }
   }
 
-  if (oneCodeBrandPattern.test(next.brand)) {
+  if (next.credentialProfile !== 'claim_link' && oneCodeBrandPattern.test(next.brand)) {
     const removedPin = next.secondaryCode;
     next.credentialProfile = 'claim_code';
     next.secondaryCode = '';
@@ -738,6 +756,9 @@ function toRows(cards: AiParsedCard[], provider: AiProviderName, model: string, 
     warnings: [
       `AI parsed with ${provider}/${model}; verify before import.`,
       ...(card.securityCodePresent ? ['Security code was parsed for local encrypted storage. Verify before import.'] : []),
+      ...(hasMixedLetterCase(card.primaryCode) && !looksLikeClaimLink(card.primaryCode)
+        ? ['Code contains mixed uppercase/lowercase characters and was preserved as entered. Verify casing before import.']
+        : []),
       ...(typeof card.confidence === 'number' && card.confidence < 0.8 ? ['Low AI confidence.'] : []),
     ],
   }));

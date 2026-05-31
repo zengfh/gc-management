@@ -185,6 +185,41 @@ describe('bulk gift-card import parser', () => {
     });
   });
 
+  it('parses claim-link CSV rows and keeps URL casing untouched', () => {
+    const claimLink = 'https://claims.example.com/Claim/AbCdEf?token=xYz-123';
+    const row = firstRow(`brand,value,profile,claim_link\nExample Store,50,claim_link,${claimLink}`);
+    const payload = bulkImportRowToDealPayload(row);
+
+    expect(row).toMatchObject({
+      brand: 'Example Store',
+      faceValue: '50',
+      credentialProfile: 'claim_link',
+      primaryCode: claimLink,
+    });
+    expect(bulkImportMissingFields(row)).toEqual([]);
+    expect(payload).toMatchObject({
+      cards: [
+        {
+          brand: 'Example Store',
+          credentialProfile: 'claim_link',
+          primaryCode: claimLink,
+          claimLink,
+          credentials: {
+            profile: 'claim_link',
+            fields: [
+              expect.objectContaining({
+                fieldKey: 'claim_link',
+                label: 'Claim link',
+                fieldKind: 'primary_code',
+                value: claimLink,
+              }),
+            ],
+          },
+        },
+      ],
+    });
+  });
+
   it('parses network prepaid CSV rows with expiration, security code, and billing ZIP', () => {
     const payload = bulkImportRowToDealPayload(firstRow(
       'brand,value,profile,card_number,exp_month,exp_year,cvv,zip\nVisa,100,network_prepaid,4111111111111111,08,2028,123,94105',

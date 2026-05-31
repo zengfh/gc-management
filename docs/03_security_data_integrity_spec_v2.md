@@ -53,11 +53,11 @@ Critical assets:
 
 ## 3. Credential Classification
 
-Release 5 should use credential profiles rather than assuming every card has a card number. See `docs/12_credential_profiles_research_and_design.md` for code-only, number-plus-PIN, barcode, network prepaid, and custom field handling.
+Release 5 should use credential profiles rather than assuming every card has a card number. See `docs/12_credential_profiles_research_and_design.md` for code-only, claim-link URL, number-plus-PIN, barcode, network prepaid, and custom field handling.
 
 | Field | Storage Policy | Notes |
 |---|---|---|
-| primary credential code/number/barcode | Encrypted + blind index where searchable | Normalize by field kind before encrypt/hash/search/redact |
+| primary credential code/link/number/barcode | Encrypted + blind index where searchable | Preserve code/link text before encryption; normalize only for non-URL search hashes and field-specific validation |
 | merchant gift-card PIN | Encrypted | This is different from payment-card CVV |
 | network-branded card CVV/CID | Do not persist in product mode | If collected, use transiently only and never export/log/store |
 | billing ZIP/address | Encrypted if stored | Needed for some network prepaid online use |

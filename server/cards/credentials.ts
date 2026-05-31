@@ -10,6 +10,7 @@ import {
 
 export const credentialProfiles = [
   'claim_code',
+  'claim_link',
   'merchant_number_pin',
   'barcode',
   'network_prepaid',
@@ -65,6 +66,8 @@ const kindSensitivity: Record<CredentialFieldKind, string> = {
 
 const labelByFieldKey: Record<string, string> = {
   primary_code: 'Redemption code',
+  claim_link: 'Claim link',
+  claim_url: 'Claim link',
   claim_code: 'Claim code',
   redemption_code: 'Redemption code',
   gift_code: 'Gift code',
@@ -84,6 +87,10 @@ const labelByFieldKey: Record<string, string> = {
 
 const kindByFieldKey: Record<string, CredentialFieldKind> = {
   primary_code: 'primary_code',
+  claim_link: 'primary_code',
+  claim_url: 'primary_code',
+  url: 'primary_code',
+  link: 'primary_code',
   claim_code: 'primary_code',
   redemption_code: 'primary_code',
   gift_code: 'primary_code',
@@ -118,6 +125,11 @@ const profileSortOrder: Record<CredentialProfile, Partial<Record<CredentialField
     pin: 20,
     access_code: 30,
     barcode_value: 40,
+  },
+  claim_link: {
+    primary_code: 10,
+    pin: 20,
+    metadata: 30,
   },
   merchant_number_pin: {
     card_number: 10,
@@ -169,6 +181,8 @@ export interface CredentialInput {
   claimCode?: string | null | undefined;
   redemptionCode?: string | null | undefined;
   giftCode?: string | null | undefined;
+  claimLink?: string | null | undefined;
+  claimUrl?: string | null | undefined;
   cardType?: string | null | undefined;
   network?: string | null | undefined;
   pin?: string | null | undefined;
@@ -239,6 +253,15 @@ function validationError(field: string, code: string, message: string) {
   return { field, code, message };
 }
 
+function looksLikeClaimLink(value: string): boolean {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === 'https:' || parsed.protocol === 'http:';
+  } catch {
+    return false;
+  }
+}
+
 function canonicalFieldKey(value: unknown, fallback: string): string {
   const normalized = String(value || '')
     .trim()
@@ -305,13 +328,23 @@ export function normalizeCredentialValue(kind: CredentialFieldKind, value: unkno
     return normalizeExpirationYear(value);
   }
   if (kind === 'primary_code' || kind === 'barcode_value') {
-    return String(value).trim().replace(/[\s-]+/g, '').toUpperCase();
+    return String(value).trim();
   }
   return String(value).trim();
 }
 
-function genericCredentialHash(kind: CredentialFieldKind, value: unknown, hmacKey: Buffer): string | null {
-  const normalized = normalizeCredentialValue(kind, value);
+function normalizeCredentialIndexValue(kind: CredentialFieldKind, value: unknown, profile?: CredentialProfile): string {
+  if (kind === 'primary_code' && profile === 'claim_link') {
+    return String(value || '').trim();
+  }
+  if (kind === 'primary_code' || kind === 'barcode_value') {
+    return String(value || '').trim().replace(/[\s-]+/g, '').toUpperCase();
+  }
+  return normalizeCredentialValue(kind, value);
+}
+
+function genericCredentialHash(kind: CredentialFieldKind, value: unknown, hmacKey: Buffer, profile?: CredentialProfile): string | null {
+  const normalized = normalizeCredentialIndexValue(kind, value, profile);
   if (!normalized) {
     return null;
   }
@@ -321,14 +354,14 @@ function genericCredentialHash(kind: CredentialFieldKind, value: unknown, hmacKe
     .digest('hex');
 }
 
-export function credentialBlindIndex(kind: CredentialFieldKind, value: unknown, hmacKey: Buffer): string | null {
+export function credentialBlindIndex(kind: CredentialFieldKind, value: unknown, hmacKey: Buffer, profile?: CredentialProfile): string | null {
   if (!indexedKinds.has(kind)) {
     return null;
   }
   if (kind === 'card_number') {
     return cardNumberHash(value, hmacKey);
   }
-  return genericCredentialHash(kind, value, hmacKey);
+  return genericCredentialHash(kind, value, hmacKey, profile);
 }
 
 export function credentialSearchBlindIndexes(rawValue: unknown, hmacKey: Buffer): string[] {
@@ -342,6 +375,10 @@ export function credentialSearchBlindIndexes(rawValue: unknown, hmacKey: Buffer)
     const hash = genericCredentialHash(kind, rawValue, hmacKey);
     if (hash) {
       hashes.add(hash);
+    }
+    const exactHash = genericCredentialHash(kind, rawValue, hmacKey, 'claim_link');
+    if (exactHash) {
+      hashes.add(exactHash);
     }
   }
 
@@ -387,6 +424,9 @@ function inferProfile(input: CredentialInput): CredentialProfile {
   if ((input.barcodeValue || input.barcode) && !input.cardNumber) {
     return 'barcode';
   }
+  if ((input.claimLink || input.claimUrl) && !input.cardNumber) {
+    return 'claim_link';
+  }
   if (
     (input.primaryCode || input.claimCode || input.redemptionCode || input.giftCode)
     && !input.cardNumber
@@ -416,6 +456,8 @@ function legacyFieldsFromInput(input: CredentialInput, profile: CredentialProfil
   };
 
   const primaryCode =
+    input.claimLink ??
+    input.claimUrl ??
     input.primaryCode ??
     input.claimCode ??
     input.redemptionCode ??
@@ -424,6 +466,12 @@ function legacyFieldsFromInput(input: CredentialInput, profile: CredentialProfil
 
   if (profile === 'claim_code') {
     push('primary_code', 'primary_code', primaryCode ?? input.cardNumber, 'Redemption code', 10);
+    push('pin', 'pin', input.pin, 'PIN', 20);
+    return fields;
+  }
+
+  if (profile === 'claim_link') {
+    push('claim_link', 'primary_code', primaryCode ?? input.cardNumber, 'Claim link', 10);
     push('pin', 'pin', input.pin, 'PIN', 20);
     return fields;
   }
@@ -473,6 +521,11 @@ function prepareCredentialField(
   if (!value) {
     return null;
   }
+  if (profile === 'claim_link' && fieldKind === 'primary_code' && !looksLikeClaimLink(value)) {
+    throw new CredentialValidationError('Credential validation failed.', [
+      validationError('credentials.fields', 'invalid_claim_link', 'Claim link must be an HTTP or HTTPS URL.'),
+    ]);
+  }
 
   const profileOrder = profileSortOrder[profile] || {};
   const label = fieldKind === 'pin' && fieldKey === 'access_code'
@@ -485,7 +538,7 @@ function prepareCredentialField(
     fieldKind,
     sensitivityClass: kindSensitivity[fieldKind] || 'display_metadata',
     encryptedValue: encryptString(value, auth.dek),
-    blindIndex: credentialBlindIndex(fieldKind, value, auth.blindIndexKey),
+    blindIndex: credentialBlindIndex(fieldKind, value, auth.blindIndexKey, profile),
     displayHint: displayHintFor(fieldKind, value),
     displayLast4: displayLastFour,
     valueLength: value.length,
@@ -567,6 +620,10 @@ export function buildCredentialModel(
     seenKeys.add(field.fieldKey);
     fields.push(field);
   });
+
+  if (profile === 'claim_link' && !fields.some((field) => field.fieldKind === 'primary_code')) {
+    errors.push(validationError('credentials.fields', 'required', 'Claim link is required.'));
+  }
 
   if (errors.length > 0) {
     throw new CredentialValidationError('Credential validation failed.', errors);

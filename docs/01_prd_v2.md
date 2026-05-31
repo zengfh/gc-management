@@ -96,7 +96,7 @@ MVP implementation should not claim Mode 3 readiness, but it should avoid decisi
 
 ### Card
 
-A gift card or prepaid card tracked by the system. Cards have face value, remaining inventory balance, purchase cost, brand, type, status, credential profile, optional expiration date, and audit history. Credential profiles cover code-only, number-plus-PIN, barcode, network prepaid, and custom issuer formats.
+A gift card or prepaid card tracked by the system. Cards have face value, remaining inventory balance, purchase cost, brand, type, status, credential profile, optional expiration date, and audit history. Credential profiles cover code-only, claim-link URL, number-plus-PIN, barcode, network prepaid, and custom issuer formats.
 
 ### Deal
 

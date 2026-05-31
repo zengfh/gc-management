@@ -235,6 +235,8 @@ const cardInputSchema = z
     billingZip: z.string().trim().nullable().optional(),
     primaryCode: z.string().trim().nullable().optional(),
     claimCode: z.string().trim().nullable().optional(),
+    claimLink: z.string().trim().nullable().optional(),
+    claimUrl: z.string().trim().nullable().optional(),
     redemptionCode: z.string().trim().nullable().optional(),
     giftCode: z.string().trim().nullable().optional(),
     accessCode: z.string().trim().nullable().optional(),
@@ -346,7 +348,7 @@ const csvColumnAliases = {
     'account number',
     'code number',
   ],
-  primaryCode: ['primaryCode', 'primary code', 'claim code', 'redemption code', 'gift code'],
+  primaryCode: ['primaryCode', 'primary code', 'claim code', 'claim link', 'claim url', 'url', 'link', 'redemption code', 'gift code'],
   pin: ['pin'],
   accessCode: ['accessCode', 'access code'],
   barcodeValue: ['barcodeValue', 'barcode value', 'barcode'],
@@ -559,6 +561,9 @@ function normalizeCsvCredentialProfile(value: unknown) {
   if (['claim_code', 'redemption_code', 'gift_code', 'code'].includes(normalized)) {
     return 'claim_code';
   }
+  if (['claim_link', 'claim_url', 'url', 'link'].includes(normalized)) {
+    return 'claim_link';
+  }
   if (['number_pin', 'card_number_pin', 'merchant_number_pin', 'number'].includes(normalized)) {
     return 'merchant_number_pin';
   }
@@ -580,11 +585,13 @@ function maskedCredentialHint(fieldKind: CredentialFieldKind, value: string) {
 }
 
 function csvPrimaryCredentialPreview({
+  credentialProfile,
   normalizedCardNumber,
   primaryCode,
   barcodeValue,
   customFields,
 }: {
+  credentialProfile: string | null;
   normalizedCardNumber: string | null;
   primaryCode: string;
   barcodeValue: string;
@@ -598,7 +605,7 @@ function csvPrimaryCredentialPreview({
   }
   if (primaryCode) {
     return {
-      credentialLabel: 'Redemption code',
+      credentialLabel: credentialProfile === 'claim_link' ? 'Claim link' : 'Redemption code',
       credentialHint: maskedCredentialHint('primary_code', primaryCode),
     };
   }
@@ -703,6 +710,7 @@ function previewCsvRow(
   const expirationDate = csvValue(record, csvColumnAliases.expirationDate);
   const format = normalizeCsvFormat(csvValue(record, csvColumnAliases.format));
   const credentialPreview = csvPrimaryCredentialPreview({
+    credentialProfile,
     normalizedCardNumber,
     primaryCode,
     barcodeValue,
@@ -720,6 +728,9 @@ function previewCsvRow(
   }
   if (credentialProfile && !isCredentialProfile(credentialProfile)) {
     errors.push(rowError('credentialProfile', 'invalid_enum', 'Credential profile is not supported.'));
+  }
+  if (credentialProfile === 'claim_link' && !/^https?:\/\/\S+$/i.test(primaryCode)) {
+    errors.push(rowError('primaryCode', 'invalid_claim_link', 'Claim-link cards require an HTTP or HTTPS URL.'));
   }
   if (faceValue.error) {
     errors.push(faceValue.error);

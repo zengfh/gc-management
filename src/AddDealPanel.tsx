@@ -383,6 +383,11 @@ export function AddDealPanel({
       return fields;
     }
 
+    if (form.credentialProfile === 'claim_link') {
+      push('claim_link', 'Claim link', 'primary_code', form.redemptionCode);
+      return fields;
+    }
+
     if (form.credentialProfile === 'barcode') {
       push('barcode_value', 'Barcode', 'barcode_value', form.barcodeValue, {
         barcodeFormat: form.barcodeFormat,
@@ -446,6 +451,9 @@ export function AddDealPanel({
           ...(form.cardNumber.trim() && ['merchant_number_pin', 'network_prepaid'].includes(profile)
             ? { cardNumber: form.cardNumber.trim() }
             : {}),
+          ...(form.redemptionCode.trim() && profile === 'claim_link'
+            ? { primaryCode: form.redemptionCode.trim(), claimLink: form.redemptionCode.trim() }
+            : {}),
           ...(form.pin.trim() && form.credentialProfile === 'merchant_number_pin' ? { pin: form.pin.trim() } : {}),
           ...(form.billingZip.trim() && profile === 'network_prepaid' ? { billingZip: form.billingZip.trim() } : {}),
           faceValueCents,
@@ -468,6 +476,10 @@ export function AddDealPanel({
 
     if (!form.cardBrand.trim() || !faceValueCents) {
       setError('Card brand and face value are required.');
+      return;
+    }
+    if (form.credentialProfile === 'claim_link' && !form.redemptionCode.trim()) {
+      setError('Claim link is required for claim-link cards.');
       return;
     }
     const missingReferenceItems = referenceValueHintsEnabled
@@ -524,6 +536,30 @@ export function AddDealPanel({
           </label>
           <p className="muted-text">
             Use this for one-secret cards such as DoorDash, Uber, Amazon-style claim codes, or cards that call the only redeemable value a PIN.
+          </p>
+        </div>
+      );
+    }
+
+    if (form.credentialProfile === 'claim_link') {
+      return (
+        <div className="credential-mode-block">
+          <label>
+            <span className="label-with-help">
+              Claim link
+              <HelpHint text="Paste the full HTTP or HTTPS claim URL exactly as issued. URL casing is preserved and should not be corrected." />
+            </span>
+            <input
+              className="mono"
+              type="url"
+              autoComplete="off"
+              value={form.redemptionCode}
+              onChange={(event) => updateField('redemptionCode', event.target.value)}
+              required
+            />
+          </label>
+          <p className="muted-text">
+            Use this when the card is redeemed by opening a unique claim URL instead of entering a code.
           </p>
         </div>
       );
@@ -836,7 +872,7 @@ export function AddDealPanel({
           <label>
             <span className="label-with-help">
               Credential type
-              <HelpHint text="Choose the fields needed to redeem the card: single code, number plus PIN, barcode, prepaid, or custom." />
+              <HelpHint text="Choose the fields needed to redeem the card: single code, claim link, number plus PIN, barcode, prepaid, or custom." />
             </span>
             <select
               value={form.credentialProfile}

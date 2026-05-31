@@ -125,6 +125,8 @@ const dealCardInputSchema = z
     billingZip: z.string().trim().nullable().optional(),
     primaryCode: z.string().trim().nullable().optional(),
     claimCode: z.string().trim().nullable().optional(),
+    claimLink: z.string().trim().nullable().optional(),
+    claimUrl: z.string().trim().nullable().optional(),
     redemptionCode: z.string().trim().nullable().optional(),
     giftCode: z.string().trim().nullable().optional(),
     accessCode: z.string().trim().nullable().optional(),

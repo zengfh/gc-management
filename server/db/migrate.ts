@@ -39,17 +39,27 @@ export function runMigrations(db: Database.Database, options: MigrationOptions =
   );
 
   const files = listMigrationFiles(directory);
-  const applyMigration = db.transaction((file: string) => {
-    const sql = fs.readFileSync(path.join(directory, file), 'utf8');
+  const insertMigrationRecord = db.prepare(
+    'INSERT INTO schema_migrations (id, appliedAt) VALUES (?, ?)',
+  );
+  const applyMigration = db.transaction((file: string, sql: string) => {
     db.exec(sql);
-    db.prepare(
-      'INSERT INTO schema_migrations (id, appliedAt) VALUES (?, ?)',
-    ).run(file, new Date().toISOString());
+    insertMigrationRecord.run(file, new Date().toISOString());
   });
 
   for (const file of files) {
     if (!applied.has(file)) {
-      applyMigration(file);
+      const sql = fs.readFileSync(path.join(directory, file), 'utf8');
+      if (sql.includes('@disable-foreign-keys')) {
+        db.pragma('foreign_keys = OFF');
+        try {
+          applyMigration(file, sql);
+        } finally {
+          db.pragma('foreign_keys = ON');
+        }
+      } else {
+        applyMigration(file, sql);
+      }
     }
   }
 

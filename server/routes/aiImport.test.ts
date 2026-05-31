@@ -318,6 +318,64 @@ describe('AI import routes', () => {
     expect(JSON.stringify(auditRows)).not.toContain('987');
   });
 
+  it('preserves mixed-case AI codes and detects claim-link URLs', async () => {
+    process.env.GC_AI_GOOGLE_API_KEY = 'test-google-key';
+    process.env.GC_AI_GOOGLE_MODEL = 'gemini-2.5-flash';
+    delete process.env.GC_AI_OPENROUTER_API_KEY;
+    delete process.env.GC_AI_GROQ_API_KEY;
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response(JSON.stringify({
+      candidates: [
+        {
+          content: {
+            parts: [
+              {
+                text: JSON.stringify({
+                  cards: [
+                    {
+                      brand: 'Mixed Store',
+                      faceValue: '25',
+                      credentialProfile: 'claim_code',
+                      primaryCode: 'AbCd ef-12',
+                      confidence: 0.92,
+                    },
+                    {
+                      brand: 'Link Store',
+                      faceValue: '50',
+                      credentialProfile: 'claim_code',
+                      primaryCode: 'https://claims.example.com/Claim/AbCdEf?token=xYz',
+                      confidence: 0.92,
+                    },
+                  ],
+                }),
+              },
+            ],
+          },
+        },
+      ],
+    })));
+    const csrfToken = await setupOwner();
+
+    const response = await postWithCsrf('/api/ai-import/analyze', csrfToken).send({
+      text: 'Mixed Store 25 AbCd ef-12\nLink Store 50 https://claims.example.com/Claim/AbCdEf?token=xYz',
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.rows).toEqual([
+      expect.objectContaining({
+        brand: 'Mixed Store',
+        credentialProfile: 'claim_code',
+        primaryCode: 'AbCd ef-12',
+      }),
+      expect.objectContaining({
+        brand: 'Link Store',
+        credentialProfile: 'claim_link',
+        primaryCode: 'https://claims.example.com/Claim/AbCdEf?token=xYz',
+      }),
+    ]);
+    expect(response.body.data.rows[0].warnings.join(' ')).toMatch(/mixed uppercase\/lowercase/i);
+    expect(response.body.data.rows[1].warnings.join(' ')).not.toMatch(/mixed uppercase\/lowercase/i);
+  });
+
   it('returns safe provider failure details when every AI response is unusable', async () => {
     process.env.GC_AI_GOOGLE_API_KEY = 'test-google-key';
     process.env.GC_AI_GOOGLE_MODEL = 'gemini-2.5-flash';

@@ -2,6 +2,7 @@ import type { Card } from '../shared/domain';
 
 export const credentialProfileOptions = [
   { value: 'claim_code', label: 'Single code / PIN' },
+  { value: 'claim_link', label: 'Claim link / URL' },
   { value: 'merchant_number_pin', label: 'Card number + PIN' },
   { value: 'barcode', label: 'Barcode / QR' },
   { value: 'network_prepaid', label: 'Network prepaid card' },

@@ -1601,7 +1601,7 @@ components:
       enum: [merchant, prepaid]
     CredentialProfile:
       type: string
-      enum: [claim_code, merchant_number_pin, barcode, network_prepaid, custom]
+      enum: [claim_code, claim_link, merchant_number_pin, barcode, network_prepaid, custom]
     CredentialFieldKind:
       type: string
       enum:
@@ -1758,6 +1758,11 @@ components:
         billingZip:
           type: string
         primaryCode:
+          type: string
+          description: For claim_link cards this stores the claim URL exactly as issued.
+        claimLink:
+          type: string
+        claimUrl:
           type: string
         accessCode:
           type: string

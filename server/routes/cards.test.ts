@@ -204,6 +204,67 @@ describe('card routes', () => {
     ]);
   }, 45_000);
 
+  it('preserves mixed-case primary codes and claim-link URLs exactly after reveal', async () => {
+    const csrfToken = await setupOwner();
+    const mixedCode = 'AbCd ef-12';
+    const claimLink = 'https://claims.example.com/Claim/AbCdEf?token=xYz-123';
+
+    const createResponse = await postWithCsrf('/api/cards', csrfToken).send({
+      cards: [
+        {
+          brand: 'Mixed Case Store',
+          cardType: 'merchant',
+          credentialProfile: 'claim_code',
+          faceValueCents: 2_500,
+          credentials: {
+            profile: 'claim_code',
+            fields: [
+              {
+                fieldKey: 'primary_code',
+                label: 'Redemption code',
+                fieldKind: 'primary_code',
+                value: mixedCode,
+              },
+            ],
+          },
+        },
+        {
+          brand: 'Claim Link Store',
+          cardType: 'merchant',
+          credentialProfile: 'claim_link',
+          faceValueCents: 5_000,
+          primaryCode: claimLink,
+        },
+      ],
+    });
+
+    expect(createResponse.status).toBe(201);
+    expect(createResponse.body.data.map((card) => card.credentialProfile)).toEqual(['claim_code', 'claim_link']);
+
+    const mixedReveal = await postWithCsrf(`/api/cards/${createResponse.body.data[0].id}/reveal`, csrfToken).send({});
+    const linkReveal = await postWithCsrf(`/api/cards/${createResponse.body.data[1].id}/reveal`, csrfToken).send({});
+
+    expect(mixedReveal.status).toBe(200);
+    expect(linkReveal.status).toBe(200);
+    expect(mixedReveal.body.data.credentials.fields[0]).toMatchObject({
+      fieldKey: 'primary_code',
+      fieldKind: 'primary_code',
+      value: mixedCode,
+    });
+    expect(linkReveal.body.data.credentials.fields[0]).toMatchObject({
+      fieldKey: 'claim_link',
+      fieldKind: 'primary_code',
+      value: claimLink,
+    });
+
+    const codeSearchResponse = await agent.get('/api/cards').query({ credential: 'abcdEF12' });
+    const linkSearchResponse = await agent.get('/api/cards').query({ credential: claimLink });
+    expect(codeSearchResponse.status).toBe(200);
+    expect(codeSearchResponse.body.data.map((card) => card.id)).toEqual([createResponse.body.data[0].id]);
+    expect(linkSearchResponse.status).toBe(200);
+    expect(linkSearchResponse.body.data.map((card) => card.id)).toEqual([createResponse.body.data[1].id]);
+  }, 45_000);
+
   it('filters card inventory by source deal expiration text and whitelisted sort fields', async () => {
     const csrfToken = await setupOwner();
 

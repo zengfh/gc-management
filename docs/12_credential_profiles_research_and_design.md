@@ -53,11 +53,12 @@ Release 5 should replace the "card number only" mental model with explicit crede
 
 ## Product Decision
 
-Release 5 should support five credential profiles:
+Release 5 should support six credential profiles:
 
 | Profile | Purpose | Default fields |
 |---|---|---|
 | `claim_code` | One-code cards such as Apple/Uber/Amazon/DoorDash-style cards | one primary code, even if the issuer calls it a PIN |
+| `claim_link` | Cards redeemed by opening a unique claim URL | brand, face value, and full HTTP/HTTPS claim link; URL casing is preserved exactly |
 | `merchant_number_pin` | Retailer cards with printed number plus PIN | card number plus one secondary secret |
 | `barcode` | Cards redeemed mainly by scanner | barcode value, barcode format |
 | `network_prepaid` | Visa/Mastercard/Amex/Discover gift cards | PAN, expiration month/year, cardholder name, billing postal code/address; security code only per policy |
@@ -73,6 +74,7 @@ Initial template examples:
 | Apple | `claim_code` | 16-digit code |
 | Uber/Uber Eats | `claim_code` | PIN/gift code |
 | DoorDash | `claim_code` | Gift card PIN/code as the single primary secret |
+| Claim URL cards | `claim_link` | Full claim URL stored in the primary credential field without case correction |
 | Best Buy | `merchant_number_pin` | Gift card number, PIN |
 | Target | `merchant_number_pin` | Card number plus secondary PIN value. If Target calls it an Access Number, enter it in the PIN field. |
 | Walmart | `merchant_number_pin` | Card number, PIN |
@@ -101,7 +103,7 @@ Release 5 should implement:
 
 | Class | Examples | Storage |
 |---|---|---|
-| `spendable_secret` | claim code, card number, PIN, barcode value | encrypted; exact-search blind index where useful |
+| `spendable_secret` | claim code/link, card number, PIN, barcode value | encrypted; exact-search blind index where useful |
 | `payment_sad` | CVV/CVC/CID/CSC | not stored in product mode; optional local-only encrypted field if enabled |
 | `payment_chd` | PAN/card number, cardholder name, expiration | PAN encrypted + blind index; name/expiration encrypted for this app |
 | `billing_pii` | ZIP, address, phone | encrypted |
@@ -405,6 +407,7 @@ Common:
 By profile:
 
 - `claim_code`: require one primary code.
+- `claim_link`: require brand, face value, and a valid HTTP/HTTPS claim URL. Never auto-uppercase or otherwise rewrite the URL.
 - `merchant_number_pin`: require card number or code; PIN optional but recommended. UI should not show merchant PIN and billing ZIP as one combined merchant-card form.
 - `barcode`: require barcode value and format.
 - `network_prepaid`: require card number and expiration month/year; billing fields optional; security code follows policy.

@@ -68,6 +68,12 @@ const headerAliases: Record<string, keyof BulkImportDraft | 'profile' | 'code' |
   code: 'code',
   claimcode: 'code',
   claim_code: 'code',
+  claimlink: 'code',
+  claim_link: 'code',
+  claimurl: 'code',
+  claim_url: 'code',
+  url: 'code',
+  link: 'code',
   redemptioncode: 'code',
   redemption_code: 'code',
   barcode: 'code',
@@ -104,6 +110,7 @@ const headerAliases: Record<string, keyof BulkImportDraft | 'profile' | 'code' |
   network_security_code: 'networkSecurityCode',
   barcodeformat: 'barcodeFormat',
   barcode_format: 'barcodeFormat',
+  profile: 'profile',
   credentialtype: 'profile',
   credential_type: 'profile',
   credentialprofile: 'profile',
@@ -190,6 +197,9 @@ function canonicalProfile(value: string): BulkImportProfile | null {
   if (['claimcode', 'singlecode', 'codeonly', 'redemptioncode'].includes(normalized)) {
     return 'claim_code';
   }
+  if (['claimlink', 'claimurl', 'url', 'link'].includes(normalized)) {
+    return 'claim_link';
+  }
   if (['numberpin', 'cardnumberpin', 'merchantnumberpin'].includes(normalized)) {
     return 'merchant_number_pin';
   }
@@ -206,6 +216,19 @@ function canonicalProfile(value: string): BulkImportProfile | null {
     return 'custom';
   }
   return null;
+}
+
+function looksLikeClaimLink(value: string): boolean {
+  try {
+    const parsed = new URL(value.trim());
+    return parsed.protocol === 'https:' || parsed.protocol === 'http:';
+  } catch {
+    return false;
+  }
+}
+
+function hasMixedLetterCase(value: string): boolean {
+  return /[a-z]/.test(value) && /[A-Z]/.test(value);
 }
 
 function indexedBrandCandidates(referenceValues?: ReferenceValueState): Array<{ alias: string; brand: string }> {
@@ -436,7 +459,10 @@ export function bulkImportMissingFields(row: BulkImportDraft): string[] {
     missing.push('face value');
   }
   if (!row.primaryCode.trim()) {
-    missing.push('code/card number');
+    missing.push(row.credentialProfile === 'claim_link' ? 'claim link' : 'code/card number');
+  }
+  if (row.credentialProfile === 'claim_link' && row.primaryCode.trim() && !looksLikeClaimLink(row.primaryCode)) {
+    missing.push('valid claim link URL');
   }
   if (row.credentialProfile === 'merchant_number_pin' && !row.secondaryCode.trim()) {
     missing.push('PIN');
@@ -452,6 +478,12 @@ function withWarnings(draft: BulkImportDraft): BulkImportDraft {
   }
   if (draft.secondaryCode && draft.credentialProfile === 'claim_code') {
     warnings.push('Second credential was parsed but this row is set to single-code. Change credential type if it is a PIN.');
+  }
+  if (draft.primaryCode && hasMixedLetterCase(draft.primaryCode) && draft.credentialProfile !== 'claim_link') {
+    warnings.push('Code contains mixed uppercase/lowercase characters and will be preserved as entered. Verify casing before import.');
+  }
+  if (draft.credentialProfile === 'claim_link' && draft.primaryCode) {
+    warnings.push('Claim-link URL casing will be preserved exactly.');
   }
   return {
     ...draft,
@@ -554,6 +586,13 @@ function bulkImportRowToCardPayload(row: BulkImportDraft): ApiPayload {
       fieldKind: 'primary_code',
       value: row.primaryCode.trim(),
     });
+  } else if (row.credentialProfile === 'claim_link') {
+    credentialFields.push({
+      fieldKey: 'claim_link',
+      label: 'Claim link',
+      fieldKind: 'primary_code',
+      value: row.primaryCode.trim(),
+    });
   } else if (row.credentialProfile === 'barcode') {
     credentialFields.push({
       fieldKey: 'barcode_value',
@@ -625,8 +664,9 @@ function bulkImportRowToCardPayload(row: BulkImportDraft): ApiPayload {
     },
     ...(network ? { network } : {}),
     ...(profile === 'claim_code' ? { redemptionCode: row.primaryCode.trim() } : {}),
+    ...(profile === 'claim_link' ? { primaryCode: row.primaryCode.trim(), claimLink: row.primaryCode.trim() } : {}),
     ...(profile === 'barcode' ? { barcodeValue: row.primaryCode.trim(), barcodeFormat: row.barcodeFormat || 'code128' } : {}),
-    ...(profile !== 'claim_code' && profile !== 'barcode' ? { cardNumber: row.primaryCode.trim() } : {}),
+    ...(profile !== 'claim_code' && profile !== 'claim_link' && profile !== 'barcode' ? { cardNumber: row.primaryCode.trim() } : {}),
     ...(row.secondaryCode.trim() && profile === 'merchant_number_pin' ? { pin: row.secondaryCode.trim() } : {}),
     ...(row.billingZip.trim() && profile === 'network_prepaid' ? { billingZip: row.billingZip.trim() } : {}),
     ...((row.networkSecurityCode || '').trim() && profile === 'network_prepaid' ? { networkSecurityCode: (row.networkSecurityCode || '').trim() } : {}),

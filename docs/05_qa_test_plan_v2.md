@@ -163,7 +163,7 @@ Example:
 | ENC-006 | Integration | Audit create card | Audit shows masked card number and redacted PIN |
 | ENC-007 | Integration | Network-card CVV submitted in product mode | Rejected or not persisted according to policy |
 | ENC-008 | Integration | JSON export | Sensitive allowed fields plaintext by design; no network-card CVV |
-| ENC-009 | Integration | Create code-only, number-plus-PIN, barcode, network prepaid, and custom credential profiles | All credential values are encrypted and profile summaries contain no full secrets |
+| ENC-009 | Integration | Create code-only, claim-link, number-plus-PIN, barcode, network prepaid, and custom credential profiles | All credential values are encrypted and profile summaries contain no full secrets |
 | ENC-010 | Integration | Exact credential search | Finds matching cards by indexed claim code, card number, and barcode value without plaintext search columns |
 
 ### 7.4 Card Creation and Edit

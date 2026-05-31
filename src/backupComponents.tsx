@@ -60,6 +60,15 @@ const csvImportTemplates: [CsvImportTemplate, ...CsvImportTemplate[]] = [
     ].join('\n'),
   },
   {
+    id: 'claim-link',
+    label: 'Claim link',
+    filename: 'claim-link-import-template.csv',
+    csv: [
+      'brand,credentialProfile,faceValue,purchaseCost,claimLink,format,source,notes',
+      'Example Store,claim_link,50.00,45.00,https://example.com/Claim/AbCd123,digital,Email,Claim-link card',
+    ].join('\n'),
+  },
+  {
     id: 'barcode',
     label: 'Barcode',
     filename: 'barcode-import-template.csv',

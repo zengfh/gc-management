@@ -84,6 +84,7 @@ export type CardStatus = 'available' | 'reserved' | 'in_use' | 'sold' | 'used_up
 export type CardType = 'merchant' | 'prepaid' | 'custom';
 export type CredentialProfile =
   | 'claim_code'
+  | 'claim_link'
   | 'merchant_number_pin'
   | 'barcode'
   | 'network_prepaid'
