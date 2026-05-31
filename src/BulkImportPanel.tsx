@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
-import { FilePlus2, Upload, X } from 'lucide-react';
+import { CaseUpper, FilePlus2, Upload, X } from 'lucide-react';
 import type { FeatureFlags, ReferenceValue, ReferenceValueState } from '../shared/domain';
 import type { AiImportAnalyzePayload, AiImportAnalyzeResult, ApiPayload, AsyncApiHandler, VoidHandler } from './appTypes';
 import { aiImportErrorMessage, formatElapsedTime } from './aiImportUi';
@@ -9,6 +9,7 @@ import {
   bulkImportExpirationPatch,
   bulkImportMissingFields,
   bulkImportRowsToDealPayload,
+  canUppercaseBulkImportPrimaryCode,
   refreshBulkImportWarnings,
   type BulkImportDraft,
   type BulkImportProfile,
@@ -79,6 +80,10 @@ function BulkImportReviewModal({
 
   function removeRow(rowId: string) {
     onRowsChange(rows.filter((row) => row.id !== rowId));
+  }
+
+  function uppercaseRowCode(row: BulkImportDraft) {
+    updateRow(row.id, { primaryCode: row.primaryCode.toUpperCase() });
   }
 
   const isAiAnalysis = analysisSource.startsWith('AI:');
@@ -226,13 +231,27 @@ function BulkImportReviewModal({
                         />
                       </td>
                       <td data-label="Code / number">
-                        <input
-                          className="mono"
-                          autoComplete="off"
-                          value={row.primaryCode}
-                          aria-label={`Line ${row.lineNumber} code or card number`}
-                          onChange={(event) => updateRow(row.id, { primaryCode: event.target.value })}
-                        />
+                        <div className="bulk-code-editor">
+                          <input
+                            className="mono"
+                            autoComplete="off"
+                            value={row.primaryCode}
+                            aria-label={`Line ${row.lineNumber} code or card number`}
+                            onChange={(event) => updateRow(row.id, { primaryCode: event.target.value })}
+                          />
+                          {canUppercaseBulkImportPrimaryCode(row) ? (
+                            <button
+                              type="button"
+                              className="table-action bulk-code-action"
+                              aria-label={`Uppercase line ${row.lineNumber} code`}
+                              title="Convert this code to uppercase. Claim-link URLs are never changed."
+                              onClick={() => uppercaseRowCode(row)}
+                            >
+                              <CaseUpper aria-hidden="true" size={14} />
+                              Uppercase
+                            </button>
+                          ) : null}
+                        </div>
                       </td>
                       <td data-label="PIN">
                         <input

@@ -4,6 +4,7 @@ import {
   bulkImportMissingFields,
   bulkImportRowsToDealPayload,
   bulkImportRowToDealPayload,
+  canUppercaseBulkImportPrimaryCode,
 } from './bulkImport';
 import { defaultReferenceValues } from './referenceValues';
 import {
@@ -218,6 +219,14 @@ describe('bulk gift-card import parser', () => {
         },
       ],
     });
+  });
+
+  it('offers uppercase correction only for mixed-case non-URL codes', () => {
+    expect(canUppercaseBulkImportPrimaryCode(firstRow('Doordash 50 AbCd-12'))).toBe(true);
+    expect(canUppercaseBulkImportPrimaryCode(firstRow('Doordash 50 ABCD-12'))).toBe(false);
+
+    const claimLink = firstRow('brand,value,profile,claim_link\nExample Store,50,https://claims.example.com/Claim/AbCd');
+    expect(canUppercaseBulkImportPrimaryCode(claimLink)).toBe(false);
   });
 
   it('parses network prepaid CSV rows with expiration, security code, and billing ZIP', () => {

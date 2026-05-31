@@ -1441,7 +1441,23 @@ tbody tr:hover td {
 }
 
 .bulk-col-code {
-  width: 230px;
+  width: 250px;
+}
+
+.bulk-code-editor {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.bulk-code-action {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 0 8px;
+  font-size: 0.76rem;
 }
 
 .bulk-col-pin {

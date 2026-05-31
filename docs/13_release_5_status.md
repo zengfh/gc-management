@@ -22,6 +22,7 @@ Status: Release 5 complete
 - Added a synthetic Release 5 acceptance CSV and automated import/search/reveal test covering claim-code, number-plus-PIN, barcode, network-prepaid, and custom credential profiles.
 - Fixed CSV barcode imports so the requested `barcodeFormat` is persisted and used by reveal/render flows.
 - Preserved mixed-case code/PIN values exactly on AI import, manual entry, CSV import, encrypted storage, reveal, and copy. Added `claim_link` cards for URL-based claims with exact URL casing.
+- Added explicit per-row uppercase correction in AI Import and Bulk Import review for mixed-case non-URL codes; claim-link URLs remain protected from case correction.
 - Added a browser-level Release 5 acceptance test that imports the synthetic CSV through the UI, verifies exact credential search, reveals a scannable barcode, confirms network-prepaid security codes are omitted by default, exports an encrypted backup, and restores it through replace import.
 - Updated CSV import preview to show a profile-aware masked credential summary and PIN status instead of implying code-only credentials have a PIN.
 - Made Playwright ports configurable so browser tests can run on alternate ports without disturbing a local dev server.

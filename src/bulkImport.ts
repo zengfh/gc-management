@@ -535,6 +535,14 @@ export function refreshBulkImportWarnings(row: BulkImportDraft): BulkImportDraft
   return withWarnings({ ...row, warnings: [] });
 }
 
+export function canUppercaseBulkImportPrimaryCode(row: Pick<BulkImportDraft, 'credentialProfile' | 'primaryCode'>): boolean {
+  const value = row.primaryCode.trim();
+  return row.credentialProfile !== 'claim_link'
+    && /[a-z]/.test(value)
+    && /[A-Z]/.test(value)
+    && value.toUpperCase() !== value;
+}
+
 export function bulkImportExpirationDate(row: Pick<BulkImportDraft, 'expirationMonth' | 'expirationYear'>): string {
   if (!row.expirationMonth.trim() && !row.expirationYear.trim()) {
     return '';

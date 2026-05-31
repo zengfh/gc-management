@@ -2107,12 +2107,15 @@ describe('App', () => {
 
     await screen.findByRole('heading', { name: /dashboard/i });
     await user.click(screen.getByRole('button', { name: /^bulk import$/i }));
-    await user.type(screen.getByLabelText(/^gift-card lines$/i), 'Doordash 50 DD-CODE\nBestbuy $50 BB-CARD BB-PIN');
+    await user.type(screen.getByLabelText(/^gift-card lines$/i), 'Doordash 50 Dd-Code\nBestbuy $50 BB-CARD BB-PIN');
     await user.click(screen.getByRole('button', { name: /^fast parse \(rules\)$/i }));
 
     const review = await screen.findByRole('dialog', { name: /^review parsed cards$/i });
     expect(within(review).getByText(/fast parser: no ai/i)).toBeInTheDocument();
     expect(within(review).getByLabelText(/^line 1 brand$/i)).toHaveValue('DoorDash');
+    expect(within(review).getByLabelText(/^line 1 code or card number$/i)).toHaveValue('Dd-Code');
+    await user.click(within(review).getByRole('button', { name: /^uppercase line 1 code$/i }));
+    expect(within(review).getByLabelText(/^line 1 code or card number$/i)).toHaveValue('DD-CODE');
     expect(within(review).getByLabelText(/^line 2 PIN$/i)).toHaveValue('BB-PIN');
     fireEvent.change(within(review).getByLabelText(/^line 1 source$/i), { target: { value: 'Promo' } });
     fireEvent.change(within(review).getByLabelText(/^line 2 notes$/i), { target: { value: 'Email delivery' } });
@@ -2200,7 +2203,7 @@ describe('App', () => {
             brand: 'Uber',
             faceValue: '50',
             credentialProfile: 'claim_code',
-            primaryCode: 'NAAD XYHD QR65 U8LY',
+            primaryCode: 'Naad xyhd QR65 u8ly',
             secondaryCode: '',
             expirationMonth: '',
             expirationYear: '',
@@ -2209,7 +2212,10 @@ describe('App', () => {
             barcodeFormat: 'code128',
             source: '',
             notes: '',
-            warnings: ['AI parsed with google/gemini-2.5-flash; verify before import.'],
+            warnings: [
+              'AI parsed with google/gemini-2.5-flash; verify before import.',
+              'Code contains mixed uppercase/lowercase characters and was preserved as entered. Verify casing before import.',
+            ],
           },
           {
             id: 'ai-3',
@@ -2313,6 +2319,8 @@ describe('App', () => {
     expect(screen.getByLabelText(/^line 2 brand$/i)).toHaveValue('Lowes');
     expect(screen.getByLabelText(/^line 2 PIN$/i)).toHaveValue('7640');
     expect(screen.getByLabelText(/^line 2 notes$/i)).toHaveValue('Memo: 05/02/2026');
+    expect(screen.getByLabelText(/^line 3 code or card number$/i)).toHaveValue('Naad xyhd QR65 u8ly');
+    await user.click(screen.getByRole('button', { name: /^uppercase line 3 code$/i }));
     expect(screen.getByLabelText(/^line 3 code or card number$/i)).toHaveValue('NAAD XYHD QR65 U8LY');
     expect(screen.getByLabelText(/^line 4 EXP date$/i)).toHaveValue('11/2026');
     expect(screen.getByLabelText(/^line 4 security code$/i)).toHaveValue('123');

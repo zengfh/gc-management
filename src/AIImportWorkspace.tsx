@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import {
   Bot,
+  CaseUpper,
   CheckCircle2,
   FilePlus2,
   LoaderCircle,
@@ -18,6 +19,7 @@ import {
   bulkImportExpirationPatch,
   bulkImportMissingFields,
   bulkImportRowsToDealPayload,
+  canUppercaseBulkImportPrimaryCode,
   refreshBulkImportWarnings,
   type BulkImportDraft,
   type BulkImportProfile,
@@ -179,6 +181,11 @@ export function AIImportWorkspace({
 
   function removeRow(rowId: string) {
     setRows((current) => current.filter((row) => row.id !== rowId));
+    setSuccess('');
+  }
+
+  function uppercaseRowCode(row: BulkImportDraft) {
+    updateRow(row.id, { primaryCode: row.primaryCode.toUpperCase() });
     setSuccess('');
   }
 
@@ -605,13 +612,27 @@ export function AIImportWorkspace({
                           />
                         </td>
                         <td data-label="Code / number">
-                          <input
-                            className="mono"
-                            autoComplete="off"
-                            value={row.primaryCode}
-                            aria-label={`Line ${row.lineNumber} code or card number`}
-                            onChange={(event) => updateRow(row.id, { primaryCode: event.target.value })}
-                          />
+                          <div className="bulk-code-editor">
+                            <input
+                              className="mono"
+                              autoComplete="off"
+                              value={row.primaryCode}
+                              aria-label={`Line ${row.lineNumber} code or card number`}
+                              onChange={(event) => updateRow(row.id, { primaryCode: event.target.value })}
+                            />
+                            {canUppercaseBulkImportPrimaryCode(row) ? (
+                              <button
+                                type="button"
+                                className="table-action bulk-code-action"
+                                aria-label={`Uppercase line ${row.lineNumber} code`}
+                                title="Convert this code to uppercase. Claim-link URLs are never changed."
+                                onClick={() => uppercaseRowCode(row)}
+                              >
+                                <CaseUpper aria-hidden="true" size={14} />
+                                Uppercase
+                              </button>
+                            ) : null}
+                          </div>
                         </td>
                         <td data-label="PIN">
                           <input
