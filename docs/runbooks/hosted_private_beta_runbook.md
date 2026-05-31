@@ -92,7 +92,7 @@ AI Import keeps a short in-memory list of configured model choices. The server r
 For a private VPS deployment, add a daily cron entry that signals the running app process:
 
 ```cron
-17 9 * * * /usr/bin/pkill -USR2 -f '/usr/bin/node build/server/index.js' >> /home/opc/gc-management-data/release5/ai-model-refresh.cron.log 2>&1
+17 9 * * * /usr/bin/pkill -USR2 -f '^/usr/bin/node build/server/index.js$' >> /home/opc/gc-management-data/release5/ai-model-refresh.cron.log 2>&1
 ```
 
 This cron entry does not store API keys or call an unauthenticated HTTP endpoint. It only asks the already-running app process to refresh provider metadata using its configured environment.
