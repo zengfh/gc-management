@@ -260,6 +260,7 @@ export default function App() {
       onPreviewCsv={inventory.previewCsv}
       onConfirmCsv={inventory.confirmCsv}
       onAnalyzeAiImport={inventory.analyzeAiImport}
+      onLoadAiImportModels={inventory.loadAiImportModels}
       onImportBackup={backup.importBackup}
       onChangeUnlockSecret={handleChangeUnlockSecret}
       onGenerateRecoveryCodes={handleGenerateRecoveryCodes}

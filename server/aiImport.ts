@@ -1,12 +1,21 @@
 import { z } from 'zod';
 import { HttpError } from './http/errors.js';
 
-type AiProviderName = 'google' | 'openrouter' | 'groq';
+type AiProviderName = 'google' | 'openrouter' | 'groq' | 'custom';
 
 interface AiModelSelection {
   provider: AiProviderName;
+  providerLabel: string;
   model: string;
   refreshedAt: number;
+}
+
+export interface AiImportModelOption {
+  id: string;
+  label: string;
+  provider: string;
+  model: string;
+  auto?: boolean;
 }
 
 interface AiParsedCard {
@@ -47,7 +56,7 @@ export interface AiImportRow {
 }
 
 export interface AiImportAnalysis {
-  provider: AiProviderName;
+  provider: string;
   model: string;
   rows: AiImportRow[];
   diagnostics: {
@@ -60,6 +69,7 @@ export interface AiImportAnalysis {
 export interface AiImportPromptOptions {
   instruction?: string;
   previousRows?: unknown[];
+  modelSelection?: string;
 }
 
 interface TextPrepaidDetail {
@@ -217,6 +227,7 @@ const aiResponseSchema = z.object({
 });
 
 const modelCache = new Map<AiProviderName, AiModelSelection>();
+const modelOptionsCache = new Map<AiProviderName, { refreshedAt: number; options: AiImportModelOption[] }>();
 const modelCacheTtlMs = 24 * 60 * 60 * 1000;
 
 const openRouterFreePreference = [
@@ -243,6 +254,31 @@ function env(name: string): string {
   return process.env[name]?.trim() || '';
 }
 
+function customProviderConfig() {
+  const apiKey = env('GC_AI_CUSTOM_API_KEY');
+  const baseUrl = env('GC_AI_CUSTOM_BASE_URL') || env('GC_AI_CUSTOM_API_URL');
+  const model = env('GC_AI_CUSTOM_MODEL');
+  if (!apiKey || !baseUrl || !model) {
+    return null;
+  }
+  return {
+    apiKey,
+    baseUrl: baseUrl.replace(/\/+$/, ''),
+    model,
+    name: env('GC_AI_CUSTOM_PROVIDER_NAME') || 'custom',
+    protocol: (env('GC_AI_CUSTOM_PROTOCOL') || 'openai').toLowerCase(),
+    wireApi: (env('GC_AI_CUSTOM_WIRE_API') || 'chat').toLowerCase(),
+    reasoningEffort: env('GC_AI_CUSTOM_MODEL_REASONING_EFFORT'),
+  };
+}
+
+function providerLabel(provider: AiProviderName): string {
+  if (provider === 'custom') {
+    return customProviderConfig()?.name || 'custom';
+  }
+  return provider;
+}
+
 function configuredProviders(): AiProviderName[] {
   const providers: AiProviderName[] = [];
   if (env('GC_AI_GOOGLE_API_KEY')) {
@@ -254,6 +290,9 @@ function configuredProviders(): AiProviderName[] {
   if (env('GC_AI_GROQ_API_KEY')) {
     providers.push('groq');
   }
+  if (customProviderConfig()) {
+    providers.push('custom');
+  }
   return providers;
 }
 
@@ -264,7 +303,10 @@ function providerKey(provider: AiProviderName): string {
   if (provider === 'openrouter') {
     return env('GC_AI_OPENROUTER_API_KEY');
   }
-  return env('GC_AI_GROQ_API_KEY');
+  if (provider === 'groq') {
+    return env('GC_AI_GROQ_API_KEY');
+  }
+  return customProviderConfig()?.apiKey || '';
 }
 
 function providerOverride(provider: AiProviderName): string {
@@ -274,13 +316,16 @@ function providerOverride(provider: AiProviderName): string {
   if (provider === 'openrouter') {
     return env('GC_AI_OPENROUTER_MODEL');
   }
-  return env('GC_AI_GROQ_MODEL');
+  if (provider === 'groq') {
+    return env('GC_AI_GROQ_MODEL');
+  }
+  return customProviderConfig()?.model || '';
 }
 
 function cachedSelection(provider: AiProviderName): AiModelSelection | null {
   const override = providerOverride(provider);
   if (override) {
-    return { provider, model: override, refreshedAt: Date.now() };
+    return { provider, providerLabel: providerLabel(provider), model: override, refreshedAt: Date.now() };
   }
 
   const cached = modelCache.get(provider);
@@ -328,7 +373,7 @@ async function selectGoogleModel(apiKey: string): Promise<AiModelSelection> {
     model = googlePreference[0]!;
   }
 
-  const selection = { provider: 'google' as const, model, refreshedAt: Date.now() };
+  const selection = { provider: 'google' as const, providerLabel: providerLabel('google'), model, refreshedAt: Date.now() };
   modelCache.set('google', selection);
   return selection;
 }
@@ -366,7 +411,7 @@ async function selectOpenRouterModel(): Promise<AiModelSelection> {
     }
   }
 
-  const selection = { provider: 'openrouter' as const, model, refreshedAt: Date.now() };
+  const selection = { provider: 'openrouter' as const, providerLabel: providerLabel('openrouter'), model, refreshedAt: Date.now() };
   modelCache.set('openrouter', selection);
   return selection;
 }
@@ -393,9 +438,22 @@ async function selectGroqModel(apiKey: string): Promise<AiModelSelection> {
     model = groqPreference[0]!;
   }
 
-  const selection = { provider: 'groq' as const, model, refreshedAt: Date.now() };
+  const selection = { provider: 'groq' as const, providerLabel: providerLabel('groq'), model, refreshedAt: Date.now() };
   modelCache.set('groq', selection);
   return selection;
+}
+
+async function selectCustomModel(): Promise<AiModelSelection> {
+  const config = customProviderConfig();
+  if (!config) {
+    throw new AiProviderError('Missing custom AI provider configuration.', { retryable: false });
+  }
+  return {
+    provider: 'custom',
+    providerLabel: config.name,
+    model: config.model,
+    refreshedAt: Date.now(),
+  };
 }
 
 async function selectModel(provider: AiProviderName): Promise<AiModelSelection> {
@@ -409,7 +467,158 @@ async function selectModel(provider: AiProviderName): Promise<AiModelSelection> 
   if (provider === 'openrouter') {
     return selectOpenRouterModel();
   }
-  return selectGroqModel(apiKey);
+  if (provider === 'groq') {
+    return selectGroqModel(apiKey);
+  }
+  return selectCustomModel();
+}
+
+function modelOptionId(provider: AiProviderName, model: string): string {
+  return `${provider}:${encodeURIComponent(model)}`;
+}
+
+function modelOption(provider: AiProviderName, model: string): AiImportModelOption {
+  const label = providerLabel(provider);
+  return {
+    id: modelOptionId(provider, model),
+    label: `${label} / ${model}`,
+    provider: label,
+    model,
+  };
+}
+
+function uniqueOptions(provider: AiProviderName, models: string[]): AiImportModelOption[] {
+  return Array.from(new Set(models.map((model) => model.trim()).filter(Boolean)))
+    .map((model) => modelOption(provider, model));
+}
+
+async function googleModelOptions(apiKey: string): Promise<AiImportModelOption[]> {
+  const cached = modelOptionsCache.get('google');
+  if (cached && Date.now() - cached.refreshedAt < modelCacheTtlMs) {
+    return cached.options;
+  }
+  const override = env('GC_AI_GOOGLE_MODEL');
+  const fallbackModels = override ? [override] : googlePreference;
+  let models: string[];
+  try {
+    const payload = await fetchJson(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`);
+    const rows = Array.isArray((payload as { models?: unknown[] }).models)
+      ? (payload as { models: Array<{ name?: string; supportedGenerationMethods?: string[] }> }).models
+      : [];
+    const ids = rows
+      .filter((row) => row.supportedGenerationMethods?.includes('generateContent'))
+      .map((row) => String(row.name || '').replace(/^models\//, ''))
+      .filter(Boolean);
+    models = [...(override ? [override] : []), ...ids];
+  } catch {
+    models = fallbackModels;
+  }
+  const options = uniqueOptions('google', models);
+  modelOptionsCache.set('google', { refreshedAt: Date.now(), options });
+  return options;
+}
+
+async function openRouterModelOptions(): Promise<AiImportModelOption[]> {
+  const cached = modelOptionsCache.get('openrouter');
+  if (cached && Date.now() - cached.refreshedAt < modelCacheTtlMs) {
+    return cached.options;
+  }
+  const override = env('GC_AI_OPENROUTER_MODEL');
+  let models = override ? [override] : openRouterFreePreference;
+  const discoveryKey = openRouterDiscoveryKey();
+  if (discoveryKey) {
+    try {
+      const payload = await fetchJson('https://openrouter.ai/api/v1/models', {
+        headers: {
+          Authorization: `Bearer ${discoveryKey}`,
+          Accept: 'application/json',
+        },
+      });
+      const rows = Array.isArray((payload as { data?: unknown[] }).data)
+        ? (payload as { data: Array<{ id?: string }> }).data
+        : [];
+      const ids = rows.map((row) => String(row.id || '')).filter(Boolean);
+      models = [...(override ? [override] : []), ...ids];
+    } catch {
+      models = override ? [override] : openRouterFreePreference;
+    }
+  }
+  const options = uniqueOptions('openrouter', models);
+  modelOptionsCache.set('openrouter', { refreshedAt: Date.now(), options });
+  return options;
+}
+
+async function groqModelOptions(apiKey: string): Promise<AiImportModelOption[]> {
+  const cached = modelOptionsCache.get('groq');
+  if (cached && Date.now() - cached.refreshedAt < modelCacheTtlMs) {
+    return cached.options;
+  }
+  const override = env('GC_AI_GROQ_MODEL');
+  const fallbackModels = override ? [override] : groqPreference;
+  let models: string[];
+  try {
+    const payload = await fetchJson('https://api.groq.com/openai/v1/models', {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        Accept: 'application/json',
+      },
+    });
+    const ids = Array.isArray((payload as { data?: unknown[] }).data)
+      ? (payload as { data: Array<{ id?: string }> }).data.map((row) => String(row.id || '')).filter(Boolean)
+      : [];
+    models = [...(override ? [override] : []), ...ids];
+  } catch {
+    models = fallbackModels;
+  }
+  const options = uniqueOptions('groq', models);
+  modelOptionsCache.set('groq', { refreshedAt: Date.now(), options });
+  return options;
+}
+
+function customModelOptions(): AiImportModelOption[] {
+  const config = customProviderConfig();
+  return config ? [modelOption('custom', config.model)] : [];
+}
+
+export async function listAiImportModelOptions(): Promise<{ defaultSelection: string; options: AiImportModelOption[] }> {
+  const providers = configuredProviders();
+  const options: AiImportModelOption[] = [
+    { id: 'auto', label: 'Auto', provider: 'Auto', model: 'Auto', auto: true },
+  ];
+  for (const provider of providers) {
+    const apiKey = providerKey(provider);
+    if (provider === 'google') {
+      options.push(...await googleModelOptions(apiKey));
+    } else if (provider === 'openrouter') {
+      options.push(...await openRouterModelOptions());
+    } else if (provider === 'groq') {
+      options.push(...await groqModelOptions(apiKey));
+    } else {
+      options.push(...customModelOptions());
+    }
+  }
+  return { defaultSelection: 'auto', options };
+}
+
+async function resolveSelectedModel(selection: string | undefined): Promise<AiModelSelection | null> {
+  const selected = selection?.trim();
+  if (!selected || selected === 'auto') {
+    return null;
+  }
+  const [providerText, encodedModel] = selected.split(':', 2);
+  const provider = providerText as AiProviderName;
+  if (!['google', 'openrouter', 'groq', 'custom'].includes(provider) || !encodedModel) {
+    throw new AiProviderError('Selected AI model is not available.', { retryable: false });
+  }
+  if (!configuredProviders().includes(provider)) {
+    throw new AiProviderError('Selected AI provider is not configured.', { retryable: false });
+  }
+  const model = decodeURIComponent(encodedModel);
+  const available = (await listAiImportModelOptions()).options.some((option) => option.id === selected);
+  if (!available) {
+    throw new AiProviderError('Selected AI model is not available.', { retryable: false });
+  }
+  return { provider, providerLabel: providerLabel(provider), model, refreshedAt: Date.now() };
 }
 
 function safePreviousRows(previousRows: unknown[] | undefined): unknown[] {
@@ -509,6 +718,23 @@ function textFromOpenAiPayload(payload: unknown): string {
       .join('');
   }
   return '';
+}
+
+function textFromResponsesPayload(payload: unknown): string {
+  const outputText = (payload as { output_text?: unknown }).output_text;
+  if (typeof outputText === 'string') {
+    return outputText;
+  }
+  const output = (payload as { output?: unknown[] }).output || [];
+  return output
+    .flatMap((item) => {
+      const content = (item as { content?: unknown[] }).content || [];
+      return content.map((part) => {
+        const typed = part as { text?: unknown; type?: unknown };
+        return typeof typed.text === 'string' ? typed.text : '';
+      });
+    })
+    .join('');
 }
 
 function textFromGooglePayload(payload: unknown): string {
@@ -691,15 +917,18 @@ async function callGoogle(
 }
 
 async function callOpenAiCompatible(
-  provider: 'openrouter' | 'groq',
+  provider: 'openrouter' | 'groq' | 'custom',
   text: string,
   selection: AiModelSelection,
   apiKey: string,
   options: AiImportPromptOptions,
 ): Promise<unknown> {
+  const customConfig = provider === 'custom' ? customProviderConfig() : null;
   const url = provider === 'openrouter'
     ? 'https://openrouter.ai/api/v1/chat/completions'
-    : 'https://api.groq.com/openai/v1/chat/completions';
+    : provider === 'groq'
+      ? 'https://api.groq.com/openai/v1/chat/completions'
+      : `${customConfig?.baseUrl}/chat/completions`;
   const headers: Record<string, string> = {
     Authorization: `Bearer ${apiKey}`,
     'Content-Type': 'application/json',
@@ -731,7 +960,47 @@ async function callOpenAiCompatible(
   return extractJsonObject(textFromOpenAiPayload(payload));
 }
 
-function toRows(cards: AiParsedCard[], provider: AiProviderName, model: string, sourceText: string): Pick<AiImportAnalysis, 'rows' | 'diagnostics'> {
+async function callOpenAiResponsesCompatible(
+  text: string,
+  selection: AiModelSelection,
+  apiKey: string,
+  options: AiImportPromptOptions,
+): Promise<unknown> {
+  const config = customProviderConfig();
+  if (!config) {
+    throw new AiProviderError('Missing custom AI provider configuration.', { retryable: false });
+  }
+  const body: Record<string, unknown> = {
+    model: selection.model,
+    input: [
+      {
+        role: 'system',
+        content: 'You extract gift-card records and return only strict JSON.',
+      },
+      {
+        role: 'user',
+        content: aiPrompt(text, options),
+      },
+    ],
+    text: {
+      format: { type: 'json_object' },
+    },
+  };
+  if (config.reasoningEffort) {
+    body.reasoning = { effort: config.reasoningEffort };
+  }
+  const payload = await fetchJson(`${config.baseUrl}/responses`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+  return extractJsonObject(textFromResponsesPayload(payload));
+}
+
+function toRows(cards: AiParsedCard[], provider: string, model: string, sourceText: string): Pick<AiImportAnalysis, 'rows' | 'diagnostics'> {
   const textDetails = extractPrepaidDetailsFromText(sourceText);
   const normalizedCards = cards.flatMap((card) => {
     const normalized = normalizeAiCard(enrichCardFromText(card, textDetails));
@@ -772,7 +1041,7 @@ function toRows(cards: AiParsedCard[], provider: AiProviderName, model: string, 
   };
 }
 
-function safeFailureReason(provider: AiProviderName, caught: unknown): string {
+function safeFailureReason(provider: string, caught: unknown): string {
   if (caught instanceof z.ZodError) {
     const paths = caught.issues
       .slice(0, 4)
@@ -795,6 +1064,37 @@ export async function analyzeGiftCardsWithAi(
   text: string,
   options: AiImportPromptOptions = {},
 ): Promise<AiImportAnalysis> {
+  const selectedModel = await resolveSelectedModel(options.modelSelection);
+  if (selectedModel) {
+    const apiKey = providerKey(selectedModel.provider);
+    try {
+      const raw = selectedModel.provider === 'google'
+        ? await callGoogle(text, selectedModel, apiKey, options)
+        : selectedModel.provider === 'custom' && customProviderConfig()?.wireApi === 'responses'
+          ? await callOpenAiResponsesCompatible(text, selectedModel, apiKey, options)
+          : await callOpenAiCompatible(selectedModel.provider, text, selectedModel, apiKey, options);
+      const parsed = aiResponseSchema.parse(raw);
+      const { rows, diagnostics } = toRows(parsed.cards, selectedModel.providerLabel, selectedModel.model, text);
+      return {
+        provider: selectedModel.providerLabel,
+        model: selectedModel.model,
+        rows,
+        diagnostics,
+      };
+    } catch (caught) {
+      const failure = safeFailureReason(selectedModel.providerLabel, caught);
+      const quotaHit = /\b429\b|quota|rate/i.test(failure);
+      throw new HttpError(
+        quotaHit ? 429 : 503,
+        quotaHit ? 'AI_IMPORT_QUOTA_EXHAUSTED' : 'AI_IMPORT_FAILED',
+        quotaHit
+          ? 'The selected AI model has no quota available right now.'
+          : 'The selected AI model did not return a usable parse.',
+        { details: { providersTried: [selectedModel.providerLabel], providerFailures: [failure] } },
+      );
+    }
+  }
+
   const providers = configuredProviders();
   if (providers.length === 0) {
     throw new HttpError(503, 'AI_IMPORT_NOT_CONFIGURED', 'AI import is not configured. Set at least one GC_AI_* API key on the server.');
@@ -807,18 +1107,20 @@ export async function analyzeGiftCardsWithAi(
       const selection = await selectModel(provider);
       const raw = provider === 'google'
         ? await callGoogle(text, selection, apiKey, options)
-        : await callOpenAiCompatible(provider, text, selection, apiKey, options);
+        : provider === 'custom' && customProviderConfig()?.wireApi === 'responses'
+          ? await callOpenAiResponsesCompatible(text, selection, apiKey, options)
+          : await callOpenAiCompatible(provider, text, selection, apiKey, options);
       const parsed = aiResponseSchema.parse(raw);
-      const { rows, diagnostics } = toRows(parsed.cards, provider, selection.model, text);
+      const { rows, diagnostics } = toRows(parsed.cards, selection.providerLabel, selection.model, text);
       return {
-        provider,
+        provider: selection.providerLabel,
         model: selection.model,
         rows,
         diagnostics,
       };
     } catch (caught) {
       const error = caught as Error & { retryable?: boolean };
-      failures.push(safeFailureReason(provider, caught));
+      failures.push(safeFailureReason(providerLabel(provider), caught));
       if (error.retryable === false) {
         continue;
       }
@@ -832,6 +1134,6 @@ export async function analyzeGiftCardsWithAi(
     quotaHit
       ? 'No configured free AI provider has quota available right now.'
       : 'AI import failed for all configured providers.',
-    { details: { providersTried: providers, providerFailures: failures } },
+    { details: { providersTried: providers.map(providerLabel), providerFailures: failures } },
   );
 }

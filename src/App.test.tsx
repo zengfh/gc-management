@@ -2069,6 +2069,12 @@ describe('App', () => {
           },
         }),
       )
+      .mockResolvedValueOnce(jsonResponse({
+        data: {
+          defaultSelection: 'auto',
+          options: [{ id: 'auto', label: 'Auto', provider: 'Auto', model: 'Auto', auto: true }],
+        },
+      }))
       .mockResolvedValueOnce(
         jsonResponse(
           {
@@ -2282,6 +2288,17 @@ describe('App', () => {
           },
         }));
       }
+      if (path === '/api/ai-import/models') {
+        return Promise.resolve(jsonResponse({
+          data: {
+            defaultSelection: 'auto',
+            options: [
+              { id: 'auto', label: 'Auto', provider: 'Auto', model: 'Auto', auto: true },
+              { id: 'custom:gpt-5.5', label: 'hankzeng-gpt-5.5 / gpt-5.5', provider: 'hankzeng-gpt-5.5', model: 'gpt-5.5' },
+            ],
+          },
+        }));
+      }
       if (path === '/api/ai-import/analyze') {
         return aiAnalysisPromise;
       }
@@ -2482,6 +2499,14 @@ describe('App', () => {
           },
         }));
       }
+      if (path === '/api/ai-import/models') {
+        return Promise.resolve(jsonResponse({
+          data: {
+            defaultSelection: 'auto',
+            options: [{ id: 'auto', label: 'Auto', provider: 'Auto', model: 'Auto', auto: true }],
+          },
+        }));
+      }
       if (path === '/api/ai-import/analyze') {
         aiAnalyzeCalls += 1;
         return Promise.resolve(jsonResponse(aiAnalyzeCalls === 1 ? firstAiAnalysis : secondAiAnalysis));
@@ -2523,30 +2548,44 @@ describe('App', () => {
   });
 
   it('explains AI import provider failures without opening review', async () => {
-    fetchMock()
-      .mockResolvedValueOnce(
-        jsonResponse({
+    fetchMock().mockImplementation((url, init) => {
+      const path = String(url);
+      const method = (init as RequestInit | undefined)?.method || 'GET';
+      if (path === '/api/auth/status') {
+        return Promise.resolve(jsonResponse({
           data: {
             setupComplete: true,
             sessionValid: true,
             dekLoaded: true,
             csrfToken: 'csrf_ready',
           },
-        }),
-      )
-      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
-      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
-      .mockResolvedValueOnce(
-        jsonResponse({
+        }));
+      }
+      if (path === '/api/cards') {
+        return Promise.resolve(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }));
+      }
+      if (path === '/api/deals' && method === 'GET') {
+        return Promise.resolve(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }));
+      }
+      if (path.startsWith('/api/reference-values')) {
+        return Promise.resolve(jsonResponse({
           data: {
             deal_name: [],
             source: [],
             card_brand: [],
           },
-        }),
-      )
-      .mockResolvedValueOnce(
-        jsonResponse(
+        }));
+      }
+      if (path === '/api/ai-import/models') {
+        return Promise.resolve(jsonResponse({
+          data: {
+            defaultSelection: 'auto',
+            options: [{ id: 'auto', label: 'Auto', provider: 'Auto', model: 'Auto', auto: true }],
+          },
+        }));
+      }
+      if (path === '/api/ai-import/analyze') {
+        return Promise.resolve(jsonResponse(
           {
             error: {
               code: 'AI_IMPORT_QUOTA_EXHAUSTED',
@@ -2561,8 +2600,10 @@ describe('App', () => {
             },
           },
           429,
-        ),
-      );
+        ));
+      }
+      return Promise.reject(new Error(`Unhandled test request: ${method} ${path}`));
+    });
 
     const user = userEvent.setup();
     render(<App />);

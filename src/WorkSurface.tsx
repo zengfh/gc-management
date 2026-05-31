@@ -291,6 +291,7 @@ export function WorkSurface({
   onPreviewCsv,
   onConfirmCsv,
   onAnalyzeAiImport,
+  onLoadAiImportModels,
   onImportBackup,
   onChangeUnlockSecret,
   onGenerateRecoveryCodes,
@@ -836,6 +837,7 @@ export function WorkSurface({
               setActiveView('dashboard');
             }}
             onAnalyzeAiImport={onAnalyzeAiImport}
+            onLoadAiImportModels={onLoadAiImportModels}
             referenceValues={referenceValues}
             onLoadReferenceValues={onLoadReferenceValues}
             onUpsertReferenceValues={onUpsertReferenceValues}
@@ -1034,6 +1036,7 @@ export function WorkSurface({
             setActiveView('dashboard');
           }}
           onAnalyzeAiImport={onAnalyzeAiImport}
+          onLoadAiImportModels={onLoadAiImportModels}
           referenceValues={referenceValues}
           onLoadReferenceValues={onLoadReferenceValues}
           onUpsertReferenceValues={onUpsertReferenceValues}

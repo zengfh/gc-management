@@ -19,6 +19,14 @@ describe('AI import routes', () => {
       GC_AI_OPENROUTER_MODEL: process.env.GC_AI_OPENROUTER_MODEL,
       GC_AI_GROQ_API_KEY: process.env.GC_AI_GROQ_API_KEY,
       GC_AI_GROQ_MODEL: process.env.GC_AI_GROQ_MODEL,
+      GC_AI_CUSTOM_PROVIDER_NAME: process.env.GC_AI_CUSTOM_PROVIDER_NAME,
+      GC_AI_CUSTOM_API_KEY: process.env.GC_AI_CUSTOM_API_KEY,
+      GC_AI_CUSTOM_BASE_URL: process.env.GC_AI_CUSTOM_BASE_URL,
+      GC_AI_CUSTOM_API_URL: process.env.GC_AI_CUSTOM_API_URL,
+      GC_AI_CUSTOM_MODEL: process.env.GC_AI_CUSTOM_MODEL,
+      GC_AI_CUSTOM_PROTOCOL: process.env.GC_AI_CUSTOM_PROTOCOL,
+      GC_AI_CUSTOM_WIRE_API: process.env.GC_AI_CUSTOM_WIRE_API,
+      GC_AI_CUSTOM_MODEL_REASONING_EFFORT: process.env.GC_AI_CUSTOM_MODEL_REASONING_EFFORT,
     };
   });
 
@@ -406,5 +414,90 @@ describe('AI import routes', () => {
         ],
       },
     });
+  });
+
+  it('lists configured AI model choices with Auto first', async () => {
+    process.env.GC_AI_CUSTOM_PROVIDER_NAME = 'hankzeng-gpt-5.5';
+    process.env.GC_AI_CUSTOM_API_KEY = 'test-custom-key';
+    process.env.GC_AI_CUSTOM_BASE_URL = 'https://sub2api.example/v1';
+    process.env.GC_AI_CUSTOM_MODEL = 'gpt-5.5';
+    process.env.GC_AI_CUSTOM_WIRE_API = 'responses';
+    delete process.env.GC_AI_GOOGLE_API_KEY;
+    delete process.env.GC_AI_OPENROUTER_API_KEY;
+    delete process.env.GC_AI_GROQ_API_KEY;
+    const csrfToken = await setupOwner();
+
+    const response = await agent.get('/api/ai-import/models');
+
+    expect(csrfToken).toBeTruthy();
+    expect(response.status).toBe(200);
+    expect(response.body.data).toMatchObject({
+      defaultSelection: 'auto',
+      options: [
+        { id: 'auto', label: 'Auto', auto: true },
+        {
+          id: 'custom:gpt-5.5',
+          label: 'hankzeng-gpt-5.5 / gpt-5.5',
+          provider: 'hankzeng-gpt-5.5',
+          model: 'gpt-5.5',
+        },
+      ],
+    });
+  });
+
+  it('uses a selected custom Responses API model', async () => {
+    process.env.GC_AI_CUSTOM_PROVIDER_NAME = 'hankzeng-gpt-5.5';
+    process.env.GC_AI_CUSTOM_API_KEY = 'test-custom-key';
+    process.env.GC_AI_CUSTOM_BASE_URL = 'https://sub2api.example/v1';
+    process.env.GC_AI_CUSTOM_MODEL = 'gpt-5.5';
+    process.env.GC_AI_CUSTOM_PROTOCOL = 'openai';
+    process.env.GC_AI_CUSTOM_WIRE_API = 'responses';
+    process.env.GC_AI_CUSTOM_MODEL_REASONING_EFFORT = 'high';
+    delete process.env.GC_AI_GOOGLE_API_KEY;
+    delete process.env.GC_AI_OPENROUTER_API_KEY;
+    delete process.env.GC_AI_GROQ_API_KEY;
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response(JSON.stringify({
+      output_text: JSON.stringify({
+        cards: [
+          {
+            brand: 'DoorDash',
+            faceValue: '50',
+            credentialProfile: 'claim_code',
+            primaryCode: 'Dd-Claim-50',
+            confidence: 0.95,
+          },
+        ],
+      }),
+    })));
+    const csrfToken = await setupOwner();
+
+    const response = await postWithCsrf('/api/ai-import/analyze', csrfToken).send({
+      text: 'DoorDash $50 Dd-Claim-50',
+      modelSelection: 'custom:gpt-5.5',
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data).toMatchObject({
+      provider: 'hankzeng-gpt-5.5',
+      model: 'gpt-5.5',
+      rows: [
+        expect.objectContaining({
+          brand: 'DoorDash',
+          faceValue: '50',
+          credentialProfile: 'claim_code',
+          primaryCode: 'Dd-Claim-50',
+        }),
+      ],
+    });
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'https://sub2api.example/v1/responses',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer test-custom-key',
+        }),
+        body: expect.stringContaining('"reasoning":{"effort":"high"}'),
+      }),
+    );
   });
 });

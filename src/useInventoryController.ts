@@ -15,6 +15,7 @@ import type {
   ApiPayload,
   AiImportAnalyzePayload,
   AiImportAnalyzeResult,
+  AiImportModelsResult,
   CardMutationResult,
   CardSalePayload,
   CsvImportResult,
@@ -138,6 +139,10 @@ export function useInventoryController({ csrfToken }: InventoryControllerOptions
     });
   }
 
+  async function loadAiImportModels() {
+    return apiFetch<ApiResponse<AiImportModelsResult>>('/api/ai-import/models');
+  }
+
   async function createDeal(payload: ApiPayload) {
     const response = await apiFetch<ApiResponse<DealMutationResult>>('/api/deals', {
       method: 'POST',
@@ -258,6 +263,7 @@ export function useInventoryController({ csrfToken }: InventoryControllerOptions
     previewCsv,
     confirmCsv,
     analyzeAiImport,
+    loadAiImportModels,
     createDeal,
     dealArchiveTransition,
     editDeal,

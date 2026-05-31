@@ -2,7 +2,7 @@ import { Router } from 'express';
 import type Database from 'better-sqlite3';
 import { z } from 'zod';
 import { insertAuditEvent } from '../audit/index.js';
-import { analyzeGiftCardsWithAi } from '../aiImport.js';
+import { analyzeGiftCardsWithAi, listAiImportModelOptions } from '../aiImport.js';
 import { requireUnlockedSession } from '../auth/requireAuth.js';
 import { requireOperatorRole } from '../auth/roles.js';
 import { asyncHandler, badRequest } from '../http/errors.js';
@@ -12,6 +12,7 @@ const aiImportAnalyzeSchema = z.object({
   text: z.string().trim().min(1).max(25_000),
   instruction: z.string().trim().max(4_000).optional().default(''),
   previousRows: z.array(z.unknown()).max(200).optional().default([]),
+  modelSelection: z.string().trim().max(300).optional().default('auto'),
 });
 
 function elapsedSince(startedAt: number): number {
@@ -32,6 +33,14 @@ export function createAiImportRouter({ db }: { db: Database.Database }) {
   const router = Router();
   router.use(requireUnlockedSession);
 
+  router.get(
+    '/models',
+    requireOperatorRole,
+    asyncHandler(async (_req, res) => {
+      res.json(objectResponse(await listAiImportModelOptions()));
+    }),
+  );
+
   router.post(
     '/analyze',
     requireOperatorRole,
@@ -46,6 +55,7 @@ export function createAiImportRouter({ db }: { db: Database.Database }) {
         const analysis = await analyzeGiftCardsWithAi(parsed.data.text, {
           instruction: parsed.data.instruction,
           previousRows: parsed.data.previousRows,
+          modelSelection: parsed.data.modelSelection,
         });
         insertAuditEvent(db, {
           accountId: req.auth.accountId,
@@ -64,6 +74,7 @@ export function createAiImportRouter({ db }: { db: Database.Database }) {
             textLength: parsed.data.text.length,
             instructionLength: parsed.data.instruction.length,
             previousRowCount: parsed.data.previousRows.length,
+            modelSelection: parsed.data.modelSelection || 'auto',
             elapsedMs: elapsedSince(startedAt),
           },
           timestamp: new Date().toISOString(),
@@ -86,6 +97,7 @@ export function createAiImportRouter({ db }: { db: Database.Database }) {
             textLength: parsed.data.text.length,
             instructionLength: parsed.data.instruction.length,
             previousRowCount: parsed.data.previousRows.length,
+            modelSelection: parsed.data.modelSelection || 'auto',
             elapsedMs: elapsedSince(startedAt),
             ...(details.providersTried ? { providersTried: details.providersTried } : {}),
           },

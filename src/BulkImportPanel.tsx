@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { CaseUpper, FilePlus2, Upload, X } from 'lucide-react';
 import type { FeatureFlags, ReferenceValue, ReferenceValueState } from '../shared/domain';
-import type { AiImportAnalyzePayload, AiImportAnalyzeResult, ApiPayload, AsyncApiHandler, VoidHandler } from './appTypes';
+import type { AiImportAnalyzePayload, AiImportAnalyzeResult, AiImportModelOption, ApiPayload, AsyncApiHandler, VoidHandler } from './appTypes';
 import { aiImportErrorMessage, formatElapsedTime } from './aiImportUi';
 import {
   analyzeBulkImportText,
@@ -345,6 +345,7 @@ export function BulkImportPanel({
   onClose,
   onCreateDeal,
   onAnalyzeAiImport,
+  onLoadAiImportModels,
   referenceValues,
   onLoadReferenceValues = async () => referenceValues,
   onUpsertReferenceValues,
@@ -353,6 +354,7 @@ export function BulkImportPanel({
   onClose: VoidHandler;
   onCreateDeal: AsyncApiHandler<ApiPayload, unknown>;
   onAnalyzeAiImport: AsyncApiHandler<AiImportAnalyzePayload, { data: AiImportAnalyzeResult }>;
+  onLoadAiImportModels: () => Promise<{ data: { defaultSelection: string; options: AiImportModelOption[] } }>;
   referenceValues: ReferenceValueState;
   onLoadReferenceValues?: () => Promise<ReferenceValueState>;
   onUpsertReferenceValues: (values?: ReferenceValue[]) => Promise<ReferenceValue[]>;
@@ -368,6 +370,11 @@ export function BulkImportPanel({
   const [analysisSource, setAnalysisSource] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [aiAnalyzing, setAiAnalyzing] = useState(false);
+  const [modelSelection, setModelSelection] = useState('auto');
+  const [modelOptions, setModelOptions] = useState<AiImportModelOption[]>([
+    { id: 'auto', label: 'Auto', provider: 'Auto', model: 'Auto', auto: true },
+  ]);
+  const [modelError, setModelError] = useState('');
   const dialogRef = useDialogFocus(onClose);
   const loadReferenceValuesRef = useRef(onLoadReferenceValues);
   const canImport = features.csvImport;
@@ -391,6 +398,29 @@ export function BulkImportPanel({
       canceled = true;
     };
   }, []);
+
+  useEffect(() => {
+    let canceled = false;
+    onLoadAiImportModels()
+      .then((response) => {
+        if (canceled) {
+          return;
+        }
+        setModelOptions(response.data.options.length > 0
+          ? response.data.options
+          : [{ id: 'auto', label: 'Auto', provider: 'Auto', model: 'Auto', auto: true }]);
+        setModelSelection(response.data.defaultSelection || 'auto');
+        setModelError('');
+      })
+      .catch((caught) => {
+        if (!canceled) {
+          setModelError(errorMessage(caught));
+        }
+      });
+    return () => {
+      canceled = true;
+    };
+  }, [onLoadAiImportModels]);
 
   async function updateFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -440,7 +470,7 @@ export function BulkImportPanel({
     const startedAt = Date.now();
     setAiStatus('Contacting AI service. This is a live provider request; the review will show the provider and model that parsed the cards.');
     try {
-      const response = await onAnalyzeAiImport({ text });
+      const response = await onAnalyzeAiImport({ text, modelSelection });
       const analysis = response.data;
       const source = `${analysis.provider || 'AI'}${analysis.model ? `/${analysis.model}` : ''}`;
       const elapsed = formatElapsedTime(Date.now() - startedAt);
@@ -515,6 +545,19 @@ export function BulkImportPanel({
           ) : null}
           <label>
             <span className="label-with-help">
+              AI model
+              <HelpHint text="Auto lets the server choose the best configured model. Select a specific model to force this import to use it." />
+            </span>
+            <select value={modelSelection} onChange={(event) => setModelSelection(event.target.value)}>
+              {modelOptions.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span className="label-with-help">
               Gift-card lines
               <HelpHint text="One card per line for rule-based analysis, or paste messy text and use AI analysis. AI analysis sends the pasted card text to the configured AI provider and still requires review before import." />
             </span>
@@ -539,6 +582,7 @@ export function BulkImportPanel({
           {fileName ? <p className="muted-text import-file-name">{fileName}</p> : null}
           {rows.length > 0 ? <p className="muted-text">{parsedSummary}</p> : null}
           <FieldError message={error} />
+          {modelError ? <FieldError message={`AI model list unavailable: ${modelError}`} /> : null}
           {aiStatus ? (
             <p className="info-copy" role="status" aria-live="polite">
               {aiStatus}

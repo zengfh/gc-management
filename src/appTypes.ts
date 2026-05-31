@@ -30,6 +30,7 @@ export interface AiImportAnalyzePayload {
   text: string;
   instruction?: string;
   previousRows?: BulkImportDraft[];
+  modelSelection?: string;
 }
 
 export type AiImportAnalyzeResult = BulkImportAnalysis & {
@@ -37,6 +38,19 @@ export type AiImportAnalyzeResult = BulkImportAnalysis & {
   model?: string;
   diagnostics?: AiImportDiagnostics;
 };
+
+export interface AiImportModelOption {
+  id: string;
+  label: string;
+  provider: string;
+  model: string;
+  auto?: boolean;
+}
+
+export interface AiImportModelsResult {
+  defaultSelection: string;
+  options: AiImportModelOption[];
+}
 
 export interface CountSummary {
   cards?: number;
@@ -207,6 +221,7 @@ export interface WorkSurfaceProps {
   onPreviewCsv: AsyncApiHandler<{ csv: string }, ApiResponse<CsvPreviewPayload>>;
   onConfirmCsv: AsyncApiHandler<{ csv: string }, ApiResponse<CsvImportResult>>;
   onAnalyzeAiImport: AsyncApiHandler<AiImportAnalyzePayload, ApiResponse<AiImportAnalyzeResult>>;
+  onLoadAiImportModels: () => Promise<ApiResponse<AiImportModelsResult>>;
   onImportBackup: AsyncApiHandler<ApiPayload, ApiResponse<{ summary: ImportSummary }>>;
   onChangeUnlockSecret: AsyncApiHandler<ApiPayload, ApiResponse<unknown>>;
   onGenerateRecoveryCodes: AsyncApiHandler<{ currentUnlockSecret: string }, { codes: string[]; activeCount: number }>;

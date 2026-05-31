@@ -12,7 +12,7 @@ import {
   X,
 } from 'lucide-react';
 import type { FeatureFlags, ReferenceValue, ReferenceValueState } from '../shared/domain';
-import type { AiImportAnalyzePayload, AiImportAnalyzeResult, ApiPayload, AsyncApiHandler } from './appTypes';
+import type { AiImportAnalyzePayload, AiImportAnalyzeResult, AiImportModelOption, ApiPayload, AsyncApiHandler } from './appTypes';
 import { aiImportErrorMessage, formatElapsedTime } from './aiImportUi';
 import {
   bulkImportExpirationDate,
@@ -101,6 +101,7 @@ function eventIcon(event: AgentEvent) {
 export function AIImportWorkspace({
   onCreateDeal,
   onAnalyzeAiImport,
+  onLoadAiImportModels,
   referenceValues,
   onLoadReferenceValues,
   onUpsertReferenceValues,
@@ -109,6 +110,7 @@ export function AIImportWorkspace({
 }: {
   onCreateDeal: AsyncApiHandler<ApiPayload, unknown>;
   onAnalyzeAiImport: AsyncApiHandler<AiImportAnalyzePayload, { data: AiImportAnalyzeResult }>;
+  onLoadAiImportModels: () => Promise<{ data: { defaultSelection: string; options: AiImportModelOption[] } }>;
   referenceValues: ReferenceValueState;
   onLoadReferenceValues: () => Promise<ReferenceValueState>;
   onUpsertReferenceValues: (values?: ReferenceValue[]) => Promise<ReferenceValue[]>;
@@ -135,6 +137,11 @@ export function AIImportWorkspace({
   const [success, setSuccess] = useState('');
   const [analyzing, setAnalyzing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [modelSelection, setModelSelection] = useState('auto');
+  const [modelOptions, setModelOptions] = useState<AiImportModelOption[]>([
+    { id: 'auto', label: 'Auto', provider: 'Auto', model: 'Auto', auto: true },
+  ]);
+  const [modelError, setModelError] = useState('');
   const canImport = features.csvImport;
   const brandOptions = indexedBrandValues(referenceValues);
   const sourceOptions = indexedSourceValues(referenceValues);
@@ -153,6 +160,30 @@ export function AIImportWorkspace({
       canceled = true;
     };
   }, [onLoadReferenceValues]);
+
+  useEffect(() => {
+    let canceled = false;
+    onLoadAiImportModels()
+      .then((response) => {
+        if (canceled) {
+          return;
+        }
+        const options = response.data.options.length > 0
+          ? response.data.options
+          : [{ id: 'auto', label: 'Auto', provider: 'Auto', model: 'Auto', auto: true }];
+        setModelOptions(options);
+        setModelSelection(response.data.defaultSelection || 'auto');
+        setModelError('');
+      })
+      .catch((caught) => {
+        if (!canceled) {
+          setModelError(errorMessage(caught));
+        }
+      });
+    return () => {
+      canceled = true;
+    };
+  }, [onLoadAiImportModels]);
 
   function appendEvent(event: Omit<AgentEvent, 'id' | 'time'>): string {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -216,6 +247,7 @@ export function AIImportWorkspace({
     }
 
     const currentInstruction = withInstruction ? instruction.trim() : '';
+    const selectedModel = modelOptions.find((option) => option.id === modelSelection);
     const lineCount = textLineCount(sourceText);
     const startedAt = Date.now();
     const nextIteration = analysisCount + 1;
@@ -231,12 +263,15 @@ export function AIImportWorkspace({
       kind: 'agent',
       status: 'running',
       title: 'Asking configured AI provider',
-      detail: 'Waiting for the server to choose a configured model and return structured card candidates.',
+      detail: selectedModel?.auto
+        ? 'Waiting for the server to choose a configured model and return structured card candidates.'
+        : `Requesting ${selectedModel?.label || modelSelection} and waiting for structured card candidates.`,
     });
 
     try {
       const payload: AiImportAnalyzePayload = {
         text: sourceText,
+        modelSelection,
         ...(currentInstruction ? { instruction: currentInstruction } : {}),
         ...(rows.length > 0 ? { previousRows: rows } : {}),
       };
@@ -369,6 +404,20 @@ export function AIImportWorkspace({
 
         <div className="ai-composer">
           {!canImport ? <FieldError message="AI import is disabled by deployment policy." /> : null}
+          <label>
+            <span className="label-with-help">
+              AI model
+              <HelpHint text="Auto lets the server choose the best configured model. Select a specific model to force this import to use it." />
+            </span>
+            <select value={modelSelection} onChange={(event) => setModelSelection(event.target.value)}>
+              {modelOptions.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {modelError ? <FieldError message={`AI model list unavailable: ${modelError}`} /> : null}
           <label>
             <span className="label-with-help">
               Raw gift-card text
