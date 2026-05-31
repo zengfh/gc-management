@@ -485,7 +485,8 @@ Loose bulk import:
 - Confirm imports only when all rows are complete, then creates the reviewed cards through one normal encrypted create-deal request so the batch is transactionally accepted or rejected.
 - New brands discovered during review are added to the local hint index on import.
 - AI Import is a standalone workspace for messy pasted text. It uses an agent-style layout with raw input, live activity messages, provider/model/timing metadata, system normalization counts, editable review rows, discard, confirm import, and another-pass correction controls.
-- AI Import includes an AI model selector. `Auto` is the default and lets the server pick from configured providers; users can select any available configured model for a specific import run.
+- AI Import includes an AI model selector. When the private custom provider is configured, `hankzeng-gpt-5.5 / gpt-5.5` is the default; otherwise `Auto` is the fallback. `Auto` still lets the server pick from configured providers.
+- Public provider choices in the selector are intentionally short: OpenRouter must show only free `:free` models, and Gemini/Groq/OpenRouter are capped to the top three strongest configured free-tier choices per provider.
 - AI Import sends the pasted text to the configured server-side AI provider, returns editable review rows, and never writes to the database until the user confirms.
 - Another-pass correction sends the original text, optional user correction, and current draft context back to the server so the provider can return a full corrected card list.
 - For network prepaid cards, AI Import review shows separate EXP date and Security code fields instead of hiding expiration in notes or misusing PIN. Security-code storage must stay gated to private/local deployments through `GC_FEATURE_NETWORK_SECURITY_CODE_STORAGE`.

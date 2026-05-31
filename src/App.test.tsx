@@ -2291,7 +2291,7 @@ describe('App', () => {
       if (path === '/api/ai-import/models') {
         return Promise.resolve(jsonResponse({
           data: {
-            defaultSelection: 'auto',
+            defaultSelection: 'custom:gpt-5.5',
             options: [
               { id: 'auto', label: 'Auto', provider: 'Auto', model: 'Auto', auto: true },
               { id: 'custom:gpt-5.5', label: 'hankzeng-gpt-5.5 / gpt-5.5', provider: 'hankzeng-gpt-5.5', model: 'gpt-5.5' },

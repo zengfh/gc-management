@@ -245,6 +245,7 @@ const googlePreference = [
   'gemini-2.5-flash-lite',
   'gemini-2.0-flash',
 ];
+const maxDisplayedModelsPerProvider = 3;
 const oneCodeBrandPattern = /\b(uber|uber eats|ubereats|doordash|door dash|instacart|amazon|apple|steam|google play|playstation|xbox)\b/i;
 const headerTokenPattern = /^(card|cards?|brand|merchant|value|amount|code|pin|code\/pin|number|notes?|memo|source)$/i;
 const separatorPattern = /^[-_\s|]+$/;
@@ -492,6 +493,13 @@ function uniqueOptions(provider: AiProviderName, models: string[]): AiImportMode
     .map((model) => modelOption(provider, model));
 }
 
+function topPreferredAvailableModels(availableModels: string[], preferredModels: string[]): string[] {
+  const available = new Set(availableModels.map((model) => model.toLowerCase()));
+  return preferredModels
+    .filter((model) => available.has(model.toLowerCase()))
+    .slice(0, maxDisplayedModelsPerProvider);
+}
+
 async function googleModelOptions(apiKey: string): Promise<AiImportModelOption[]> {
   const cached = modelOptionsCache.get('google');
   if (cached && Date.now() - cached.refreshedAt < modelCacheTtlMs) {
@@ -509,9 +517,9 @@ async function googleModelOptions(apiKey: string): Promise<AiImportModelOption[]
       .filter((row) => row.supportedGenerationMethods?.includes('generateContent'))
       .map((row) => String(row.name || '').replace(/^models\//, ''))
       .filter(Boolean);
-    models = [...(override ? [override] : []), ...ids];
+    models = override ? [override] : topPreferredAvailableModels(ids, googlePreference);
   } catch {
-    models = fallbackModels;
+    models = fallbackModels.slice(0, maxDisplayedModelsPerProvider);
   }
   const options = uniqueOptions('google', models);
   modelOptionsCache.set('google', { refreshedAt: Date.now(), options });
@@ -535,10 +543,13 @@ async function openRouterModelOptions(): Promise<AiImportModelOption[]> {
         },
       });
       const rows = Array.isArray((payload as { data?: unknown[] }).data)
-        ? (payload as { data: Array<{ id?: string }> }).data
+        ? (payload as { data: Array<{ id?: string; pricing?: { prompt?: string; completion?: string } }> }).data
         : [];
-      const ids = rows.map((row) => String(row.id || '')).filter(Boolean);
-      models = [...(override ? [override] : []), ...ids];
+      const freeIds = rows
+        .filter((row) => row.pricing?.prompt === '0' && row.pricing?.completion === '0')
+        .map((row) => String(row.id || ''))
+        .filter(Boolean);
+      models = override ? [override] : topPreferredAvailableModels(freeIds, openRouterFreePreference);
     } catch {
       models = override ? [override] : openRouterFreePreference;
     }
@@ -566,9 +577,9 @@ async function groqModelOptions(apiKey: string): Promise<AiImportModelOption[]> 
     const ids = Array.isArray((payload as { data?: unknown[] }).data)
       ? (payload as { data: Array<{ id?: string }> }).data.map((row) => String(row.id || '')).filter(Boolean)
       : [];
-    models = [...(override ? [override] : []), ...ids];
+    models = override ? [override] : topPreferredAvailableModels(ids, groqPreference);
   } catch {
-    models = fallbackModels;
+    models = fallbackModels.slice(0, maxDisplayedModelsPerProvider);
   }
   const options = uniqueOptions('groq', models);
   modelOptionsCache.set('groq', { refreshedAt: Date.now(), options });
@@ -582,6 +593,8 @@ function customModelOptions(): AiImportModelOption[] {
 
 export async function listAiImportModelOptions(): Promise<{ defaultSelection: string; options: AiImportModelOption[] }> {
   const providers = configuredProviders();
+  const customOptions = customModelOptions();
+  const defaultSelection = customOptions[0]?.id || 'auto';
   const options: AiImportModelOption[] = [
     { id: 'auto', label: 'Auto', provider: 'Auto', model: 'Auto', auto: true },
   ];
@@ -597,7 +610,7 @@ export async function listAiImportModelOptions(): Promise<{ defaultSelection: st
       options.push(...customModelOptions());
     }
   }
-  return { defaultSelection: 'auto', options };
+  return { defaultSelection, options };
 }
 
 async function resolveSelectedModel(selection: string | undefined): Promise<AiModelSelection | null> {

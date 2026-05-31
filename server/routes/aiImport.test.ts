@@ -416,7 +416,7 @@ describe('AI import routes', () => {
     });
   });
 
-  it('lists configured AI model choices with Auto first', async () => {
+  it('lists configured AI model choices with custom model as the default', async () => {
     process.env.GC_AI_CUSTOM_PROVIDER_NAME = 'hankzeng-gpt-5.5';
     process.env.GC_AI_CUSTOM_API_KEY = 'test-custom-key';
     process.env.GC_AI_CUSTOM_BASE_URL = 'https://sub2api.example/v1';
@@ -432,7 +432,7 @@ describe('AI import routes', () => {
     expect(csrfToken).toBeTruthy();
     expect(response.status).toBe(200);
     expect(response.body.data).toMatchObject({
-      defaultSelection: 'auto',
+      defaultSelection: 'custom:gpt-5.5',
       options: [
         { id: 'auto', label: 'Auto', auto: true },
         {
@@ -443,6 +443,67 @@ describe('AI import routes', () => {
         },
       ],
     });
+  });
+
+  it('lists only the top free model choices for configured public providers', async () => {
+    process.env.GC_AI_GOOGLE_API_KEY = 'test-google-key';
+    process.env.GC_AI_OPENROUTER_API_KEY = 'test-openrouter-key';
+    process.env.GC_AI_GROQ_API_KEY = 'test-groq-key';
+    delete process.env.GC_AI_CUSTOM_API_KEY;
+    delete process.env.GC_AI_CUSTOM_BASE_URL;
+    delete process.env.GC_AI_CUSTOM_MODEL;
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        models: [
+          { name: 'models/gemini-2.5-flash', supportedGenerationMethods: ['generateContent'] },
+          { name: 'models/gemini-2.5-flash-lite', supportedGenerationMethods: ['generateContent'] },
+          { name: 'models/gemini-2.0-flash', supportedGenerationMethods: ['generateContent'] },
+          { name: 'models/gemini-1.5-pro', supportedGenerationMethods: ['generateContent'] },
+        ],
+      })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        data: [
+          { id: 'openai/gpt-oss-120b:free', pricing: { prompt: '0', completion: '0' } },
+          { id: 'qwen/qwen3-235b-a22b:free', pricing: { prompt: '0', completion: '0' } },
+          { id: 'deepseek/deepseek-r1:free', pricing: { prompt: '0', completion: '0' } },
+          { id: 'anthropic/claude-sonnet-4', pricing: { prompt: '3', completion: '15' } },
+          { id: 'meta-llama/llama-3.1-8b-instruct:free', pricing: { prompt: '0', completion: '0' } },
+        ],
+      })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        data: [
+          { id: 'openai/gpt-oss-120b' },
+          { id: 'llama-3.3-70b-versatile' },
+          { id: 'meta-llama/llama-4-maverick-17b-128e-instruct' },
+          { id: 'gemma2-9b-it' },
+        ],
+      })));
+    const csrfToken = await setupOwner();
+
+    const response = await agent.get('/api/ai-import/models');
+
+    expect(csrfToken).toBeTruthy();
+    expect(response.status).toBe(200);
+    expect(response.body.data).toMatchObject({
+      defaultSelection: 'auto',
+      options: [
+        { id: 'auto', label: 'Auto', auto: true },
+        { id: 'google:gemini-2.5-flash', provider: 'google', model: 'gemini-2.5-flash' },
+        { id: 'google:gemini-2.5-flash-lite', provider: 'google', model: 'gemini-2.5-flash-lite' },
+        { id: 'google:gemini-2.0-flash', provider: 'google', model: 'gemini-2.0-flash' },
+        { id: 'openrouter:openai%2Fgpt-oss-120b%3Afree', provider: 'openrouter', model: 'openai/gpt-oss-120b:free' },
+        { id: 'openrouter:qwen%2Fqwen3-235b-a22b%3Afree', provider: 'openrouter', model: 'qwen/qwen3-235b-a22b:free' },
+        { id: 'openrouter:deepseek%2Fdeepseek-r1%3Afree', provider: 'openrouter', model: 'deepseek/deepseek-r1:free' },
+        { id: 'groq:openai%2Fgpt-oss-120b', provider: 'groq', model: 'openai/gpt-oss-120b' },
+        { id: 'groq:llama-3.3-70b-versatile', provider: 'groq', model: 'llama-3.3-70b-versatile' },
+        {
+          id: 'groq:meta-llama%2Fllama-4-maverick-17b-128e-instruct',
+          provider: 'groq',
+          model: 'meta-llama/llama-4-maverick-17b-128e-instruct',
+        },
+      ],
+    });
+    expect(response.body.data.options).toHaveLength(10);
   });
 
   it('uses a selected custom Responses API model', async () => {
