@@ -101,6 +101,24 @@ function dateInDays(days: number): string {
   return date.toISOString().slice(0, 10);
 }
 
+function unfilteredCardCriteria(): CardSearchCriteria {
+  return {
+    cardNumber: '',
+    status: '',
+    cardType: '',
+    activeOnly: '',
+    brand: '',
+    source: '',
+    dealId: '',
+    expiresBefore: '',
+    text: '',
+    sortBy: '',
+    sortDir: '',
+    limit: '',
+    offset: 0,
+  };
+}
+
 function BulkCardActionPanel({
   action,
   selectedCount,
@@ -372,6 +390,9 @@ export function WorkSurface({
 
   async function activateView(view: ViewId) {
     setActiveView(view);
+    if (view === 'dashboard') {
+      await searchCardsAndHideCredentials(unfilteredCardCriteria());
+    }
     if (view === 'audit') {
       await onLoadAudit({});
     }

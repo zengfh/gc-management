@@ -399,6 +399,59 @@ describe('App', () => {
     expect(screen.getByText(/^Stale reservations$/i).closest('.metric')).toHaveTextContent('1');
   });
 
+  it('reloads unfiltered inventory when returning to dashboard from a prepaid quick link', async () => {
+    const allCards = [
+      {
+        id: 1,
+        brand: 'Target',
+        cardType: 'merchant',
+        status: 'available',
+        faceValueCents: 5000,
+        remainingBalanceCents: 5000,
+        purchaseCostCents: 4500,
+      },
+      {
+        id: 2,
+        brand: 'Visa',
+        cardType: 'prepaid',
+        status: 'available',
+        faceValueCents: 2500,
+        remainingBalanceCents: 2500,
+        purchaseCostCents: 2400,
+      },
+    ];
+    fetchMock()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            setupComplete: true,
+            sessionValid: true,
+            dekLoaded: true,
+            csrfToken: 'csrf_ready',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: allCards, page: { total: 2, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(jsonResponse({ data: [allCards[1]], page: { total: 1, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(jsonResponse({ data: allCards, page: { total: 2, limit: 50, offset: 0, hasMore: false } }));
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByRole('heading', { name: /dashboard/i });
+    expect(screen.getByText(/^Active remaining$/i).closest('.metric')).toHaveTextContent('$75.00');
+
+    await user.click(screen.getByRole('button', { name: /^prepaid cash \$25\.00$/i }));
+    expect(await screen.findByRole('heading', { name: /cards/i, level: 1 })).toBeInTheDocument();
+    await screen.findByRole('button', { name: /open visa details/i });
+
+    await user.click(screen.getByRole('button', { name: /^dashboard$/i }));
+    await screen.findByRole('button', { name: /^prepaid cash \$25\.00$/i });
+    expect(screen.getByText(/^Active remaining$/i).closest('.metric')).toHaveTextContent('$75.00');
+    expect(globalThis.fetch).toHaveBeenLastCalledWith('/api/cards', expect.objectContaining({ method: 'GET' }));
+  });
+
   it('loads the audit log from primary navigation', async () => {
     fetchMock()
       .mockResolvedValueOnce(

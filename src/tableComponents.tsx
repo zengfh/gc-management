@@ -577,6 +577,7 @@ export function CardSearchForm({
         cardNumber: '',
         status: '',
         cardType: '',
+        activeOnly: '',
         brand: '',
         source: '',
         dealId: '',
