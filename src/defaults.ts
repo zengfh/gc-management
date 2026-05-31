@@ -1,10 +1,14 @@
-import type { BackupSettings, DataPolicy, FeatureFlags, Page, SupportPolicy } from '../shared/domain';
+import type { BackupSettings, CardSearchCriteria, DataPolicy, FeatureFlags, Page, SupportPolicy } from '../shared/domain';
 
 export const defaultPage: Page = {
   limit: 50,
   offset: 0,
   total: 0,
   hasMore: false,
+};
+
+export const defaultCardCriteria: CardSearchCriteria = {
+  activeOnly: true,
 };
 
 export const defaultBackupSettings: BackupSettings = {

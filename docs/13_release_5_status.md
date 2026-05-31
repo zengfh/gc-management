@@ -41,6 +41,7 @@ Status: Release 5 complete
 - Added dashboard and cards inventory polish: priority clickable dashboard metrics, dashboard alerts/recent activity, no dashboard card-detail table, card-type filtering, prepaid cash-card focus section, selected-card bulk reserve/use/sell/void actions, and detail-page editing for editable card metadata.
 - Fixed list-level expiration population for new cards created from prepaid month/year credential fields and added migration `008_backfill_card_expiration_dates.sql` to backfill existing rows from stored expiration credential hints.
 - Simplified the Cards table for phone use: source and purchase cost stay recorded in Card Detail but are hidden from the main list, card details open from an explicit `Details` action, row lifecycle actions sit near the left side of the row, and card usage can be undone from both the record-usage flow and row/detail actions.
+- Further tightened the Cards table for daily use: Remaining now appears immediately after Status, the dedicated Reservation column is removed, and the default Cards query uses `activeOnly=true` so sold, used-up, and void cards are hidden until a Status filter is selected.
 
 ## Verification
 
@@ -88,6 +89,16 @@ Completed on 2026-05-31 for Cards table compact actions and undoable usage polis
 - `npm test -- src/App.test.tsx server/routes/cards.test.ts src/cardSearch.test.ts`
 - `npm run build`
 - `npm run test:e2e:release5`
+- `npm run test:e2e`
+- `git diff --check`
+
+Completed on 2026-05-31 for active Cards default and column order polish:
+
+- `npm run lint`
+- `npm run typecheck -- --pretty false`
+- `npm test`
+- `npm test -- src/App.test.tsx src/cardSearch.test.ts`
+- `npm run build`
 - `npm run test:e2e`
 - `git diff --check`
 - `npm run test:e2e`

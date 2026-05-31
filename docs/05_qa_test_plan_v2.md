@@ -186,7 +186,8 @@ Example:
 | CARD-014 | UI | Card detail edit form | Detail page saves editable metadata and removes the row-level Edit action from the cards table |
 | CARD-015 | UI | Bulk card lifecycle actions | Selecting multiple cards can reserve, use remaining, sell remaining, or void eligible cards; ineligible cards are skipped with clear feedback |
 | CARD-016 | Integration | Create network prepaid from month/year expiration | List-level expiration date is populated as the first day of that month |
-| CARD-017 | UI | Compact cards list actions | Source and purchase cost are hidden from the main Cards table, Details is an explicit row action, lifecycle actions are near the left side, and source/cost remain visible in Card Detail |
+| CARD-017 | UI | Compact cards list actions | Remaining appears immediately after status; source, purchase cost, and reservation column are hidden from the main Cards table; Details is an explicit row action; lifecycle actions are near the left side; source/cost/reservation metadata remain visible in Card Detail |
+| CARD-018 | UI/API | Default active Cards filter | Initial Cards load and Clear Search request `activeOnly=true`; sold, used-up, and void cards are hidden by default but can be shown by selecting their Status filter |
 
 ### 7.4.1 Dashboard Inventory UX
 

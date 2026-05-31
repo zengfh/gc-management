@@ -48,7 +48,7 @@ import {
   VoidCardPanel,
 } from './cardDealPanels';
 import type { CardDetailState, DealDetailState, ViewId, WorkSurfaceProps } from './appTypes';
-import { defaultFeatureFlags, defaultPage } from './defaults';
+import { defaultCardCriteria, defaultFeatureFlags, defaultPage } from './defaults';
 import { errorMessage, formatDisplayValue, formatMoney, isBeforeToday, isWithinNextDays, statusText, viewTitle } from './display';
 import { FieldError } from './formUi';
 import {
@@ -104,10 +104,10 @@ function dateInDays(days: number): string {
 
 function unfilteredCardCriteria(): CardSearchCriteria {
   return {
+    ...defaultCardCriteria,
     cardNumber: '',
     status: '',
     cardType: '',
-    activeOnly: '',
     brand: '',
     source: '',
     dealId: '',

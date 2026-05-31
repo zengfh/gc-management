@@ -234,12 +234,11 @@ export function CardsTable({
             ) : null}
             <SortableHeader field="brand" label="Card" sortBy={sortBy} sortDir={sortDir} onSortCards={onSortCards} />
             <SortableHeader field="status" label="Status" sortBy={sortBy} sortDir={sortDir} onSortCards={onSortCards} />
+            <SortableHeader field="remainingBalanceCents" label="Remaining" numeric sortBy={sortBy} sortDir={sortDir} onSortCards={onSortCards} />
             <th>Actions</th>
-            <th>Reservation</th>
             <th>Credential</th>
             <SortableHeader field="expirationDate" label="Expiration" sortBy={sortBy} sortDir={sortDir} onSortCards={onSortCards} />
             <SortableHeader field="faceValueCents" label="Face" numeric sortBy={sortBy} sortDir={sortDir} onSortCards={onSortCards} />
-            <SortableHeader field="remainingBalanceCents" label="Remaining" numeric sortBy={sortBy} sortDir={sortDir} onSortCards={onSortCards} />
             <SortableHeader field="updatedAt" label="Updated" sortBy={sortBy} sortDir={sortDir} onSortCards={onSortCards} />
           </tr>
         </thead>
@@ -265,6 +264,7 @@ export function CardsTable({
               <td>
                 <StatusBadge status={card.status} />
               </td>
+              <td className="numeric">{formatMoney(card.remainingBalanceCents)}</td>
               <td>
                 <div className="row-actions card-row-actions">
                   <button
@@ -357,16 +357,6 @@ export function CardsTable({
                   ) : null}
                 </div>
               </td>
-              <td>
-                {card.status === 'reserved' ? (
-                  <div className="reservation-cell">
-                    <strong>{card.reservedFor || 'Reserved'}</strong>
-                    <span>{card.reservedUntil ? `Until ${card.reservedUntil}` : 'No expiration'}</span>
-                  </div>
-                ) : (
-                  'Not reserved'
-                )}
-              </td>
               <td className="mono credential-cell">
                 {credentialsVisible
                   ? revealedCredentialText(revealedCredentialsByCardId[String(card.id)]) || credentialSummaryText(card)
@@ -374,7 +364,6 @@ export function CardsTable({
               </td>
               <td>{card.expirationDate || 'Not recorded'}</td>
               <td className="numeric">{formatMoney(card.faceValueCents)}</td>
-              <td className="numeric">{formatMoney(card.remainingBalanceCents)}</td>
               <td>{card.updatedAt ? new Date(card.updatedAt).toLocaleDateString() : 'Not recorded'}</td>
             </tr>
           ))}
@@ -658,6 +647,7 @@ export function CardSearchForm({
         cardNumber,
         status,
         cardType,
+        activeOnly: status ? '' : true,
         brand,
         source: '',
         dealId,
@@ -688,7 +678,7 @@ export function CardSearchForm({
         cardNumber: '',
         status: '',
         cardType: '',
-        activeOnly: '',
+        activeOnly: true,
         brand: '',
         source: '',
         dealId: '',
@@ -720,7 +710,7 @@ export function CardSearchForm({
       <label>
         <span>Status</span>
         <select value={status} onChange={(event) => setStatus(event.target.value)}>
-          <option value="">All statuses</option>
+          <option value="">Active inventory</option>
           {Object.entries(statusLabels).map(([value, label]) => (
             <option key={value} value={value}>
               {label}

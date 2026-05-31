@@ -322,7 +322,7 @@ describe('App', () => {
     expect(screen.getByText(/staples promo/i)).toBeInTheDocument();
 
     await waitFor(() => {
-      expect(globalThis.fetch).toHaveBeenCalledWith('/api/cards', expect.any(Object));
+      expect(globalThis.fetch).toHaveBeenCalledWith('/api/cards?activeOnly=true', expect.any(Object));
       expect(globalThis.fetch).toHaveBeenCalledWith('/api/deals', expect.any(Object));
     });
   });
@@ -449,7 +449,7 @@ describe('App', () => {
     await user.click(screen.getByRole('button', { name: /^dashboard$/i }));
     await screen.findByRole('button', { name: /^prepaid cash \$25\.00$/i });
     expect(screen.getByText(/^Active remaining$/i).closest('.metric')).toHaveTextContent('$75.00');
-    expect(globalThis.fetch).toHaveBeenLastCalledWith('/api/cards', expect.objectContaining({ method: 'GET' }));
+    expect(globalThis.fetch).toHaveBeenLastCalledWith('/api/cards?activeOnly=true', expect.objectContaining({ method: 'GET' }));
   });
 
   it('loads the audit log from primary navigation', async () => {
@@ -2266,7 +2266,7 @@ describe('App', () => {
           },
         }));
       }
-      if (path === '/api/cards') {
+      if (path.startsWith('/api/cards')) {
         return Promise.resolve(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }));
       }
       if (path === '/api/deals' && method === 'GET') {
@@ -2484,7 +2484,7 @@ describe('App', () => {
           },
         }));
       }
-      if (path === '/api/cards') {
+      if (path.startsWith('/api/cards')) {
         return Promise.resolve(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }));
       }
       if (path === '/api/deals' && method === 'GET') {
@@ -2561,7 +2561,7 @@ describe('App', () => {
           },
         }));
       }
-      if (path === '/api/cards') {
+      if (path.startsWith('/api/cards')) {
         return Promise.resolve(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }));
       }
       if (path === '/api/deals' && method === 'GET') {
@@ -3672,8 +3672,9 @@ describe('App', () => {
     await user.selectOptions(within(dialog).getByLabelText(/^buyer type$/i), 'dealer');
     await user.click(within(dialog).getByRole('button', { name: /^record sale$/i }));
 
-    expect(await screen.findByRole('row', { name: /target.*sold/i })).toBeInTheDocument();
-    expect(screen.getByText(/\$0\.00/)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: /open target details/i })).not.toBeInTheDocument();
+    });
     expect(globalThis.fetch).toHaveBeenLastCalledWith(
       '/api/cards/1/sell',
       expect.objectContaining({
@@ -3831,8 +3832,9 @@ describe('App', () => {
     await user.type(within(dialog).getByLabelText(/^reason$/i), 'Card no longer valid');
     await user.click(within(dialog).getByRole('button', { name: /^void card$/i }));
 
-    expect(await screen.findByRole('row', { name: /target.*void/i })).toBeInTheDocument();
-    expect(screen.getByText(/\$0\.00/)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: /open target details/i })).not.toBeInTheDocument();
+    });
     expect(globalThis.fetch).toHaveBeenLastCalledWith(
       '/api/cards/1/void',
       expect.objectContaining({
@@ -3916,7 +3918,7 @@ describe('App', () => {
     expect(screen.queryByText(/amazon/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/4111 1111 1111 1111/i)).not.toBeInTheDocument();
     expect(globalThis.fetch).toHaveBeenLastCalledWith(
-      '/api/cards?credential=4111+1111+1111+1111',
+      '/api/cards?activeOnly=true&credential=4111+1111+1111+1111',
       expect.objectContaining({
         method: 'GET',
       }),
@@ -4206,7 +4208,7 @@ describe('App', () => {
     expect(await screen.findByText(/target/i)).toBeInTheDocument();
     expect(screen.queryByText(/amazon/i)).not.toBeInTheDocument();
     expect(globalThis.fetch).toHaveBeenLastCalledWith(
-      '/api/cards?dealId=10&expiresBefore=2026-06-01&text=holiday&sortBy=expirationDate&sortDir=asc',
+      '/api/cards?activeOnly=true&dealId=10&expiresBefore=2026-06-01&text=holiday&sortBy=expirationDate&sortDir=asc',
       expect.objectContaining({
         method: 'GET',
       }),
@@ -4273,7 +4275,7 @@ describe('App', () => {
     expect(screen.queryByText(/target/i)).not.toBeInTheDocument();
     expect(screen.getByText(/2-2 of 2/i)).toBeInTheDocument();
     expect(globalThis.fetch).toHaveBeenLastCalledWith(
-      '/api/cards?limit=1&offset=1',
+      '/api/cards?limit=1&offset=1&activeOnly=true',
       expect.objectContaining({
         method: 'GET',
       }),
@@ -4531,7 +4533,7 @@ describe('App', () => {
     await user.type(within(reserveDialog).getByLabelText(/^reservation notes$/i), 'Awaiting payment');
     await user.click(within(reserveDialog).getByRole('button', { name: /^reserve card$/i }));
 
-    expect(await screen.findByRole('row', { name: /target.*reserved.*dealer a/i })).toBeInTheDocument();
+    expect(await screen.findByRole('row', { name: /target.*reserved/i })).toBeInTheDocument();
     expect(globalThis.fetch).toHaveBeenNthCalledWith(
       4,
       '/api/cards/1/reserve',

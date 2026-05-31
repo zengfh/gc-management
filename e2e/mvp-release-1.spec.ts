@@ -78,11 +78,17 @@ test.describe.serial('MVP Release 1 critical flows', () => {
     await page.getByLabel(/^buyer$/i).fill('Dealer A');
     await page.getByRole('combobox', { name: /^buyer type$/i }).selectOption('dealer');
     await page.getByRole('button', { name: /^record sale$/i }).click();
-    await expect(page.getByRole('row', { name: /sold.*target/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /undo sale target/i })).toHaveCount(0);
 
+    await page.getByRole('combobox', { name: /^status$/i }).selectOption('sold');
+    await page.getByRole('button', { name: /^search cards$/i }).click();
+    await expect(page.getByRole('row', { name: /sold.*target/i })).toBeVisible();
     await page.getByRole('button', { name: /undo sale target/i }).click();
     await page.getByLabel(/^reason$/i).fill('Buyer canceled');
     await page.getByRole('button', { name: /^undo sale$/i }).click();
+    await expect(page.getByRole('button', { name: /undo sale target/i })).toHaveCount(0);
+    await page.getByRole('combobox', { name: /^status$/i }).selectOption('reserved');
+    await page.getByRole('button', { name: /^search cards$/i }).click();
     await expect(page.getByRole('row', { name: /reserved.*target/i })).toBeVisible();
   });
 
@@ -111,6 +117,29 @@ test.describe.serial('MVP Release 1 critical flows', () => {
     await expect(detail.getByText(/reversed/i)).toBeVisible();
     await page.getByRole('button', { name: /close card details/i }).click();
     await expect(page.getByRole('row', { name: /available.*target/i })).toBeVisible();
+  });
+
+  test('cards table is compact on phone and keeps source cost in detail', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await unlockExistingVault(page);
+
+    await page.getByRole('button', { name: /^cards$/i }).click();
+    await expect(page.getByRole('columnheader').nth(1)).toHaveText(/card/i);
+    await expect(page.getByRole('columnheader').nth(2)).toHaveText(/status/i);
+    await expect(page.getByRole('columnheader').nth(3)).toHaveText(/remaining/i);
+    await expect(page.getByRole('columnheader', { name: /^reservation$/i })).toHaveCount(0);
+    await expect(page.getByRole('columnheader', { name: /^source$/i })).toHaveCount(0);
+    await expect(page.getByRole('columnheader', { name: /^cost$/i })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /open target details/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /use target/i })).toBeVisible();
+
+    await page.getByRole('button', { name: /open target details/i }).click();
+    const detail = page.getByRole('dialog', { name: /card details/i });
+    await expect(detail).toBeVisible();
+    await expect(detail.getByText(/^source$/i).first()).toBeVisible();
+    await expect(detail.getByText(/^cost$/i).first()).toBeVisible();
+    await expect(detail.getByText(/staples/i)).toBeVisible();
+    await expect(detail.getByText('$45.00')).toBeVisible();
   });
 
   test('preview and confirm CSV import without rendering full credentials', async ({ page }) => {

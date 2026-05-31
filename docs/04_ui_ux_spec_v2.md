@@ -282,15 +282,14 @@ Columns:
 
 - Card identity: brand and card type
 - Status
-- Actions
-- Reservation summary when reserved
-- Face Value
 - Remaining Balance
-- Expiration
+- Actions
 - Credential summary
+- Expiration
+- Face Value
 - Updated
 
-The Cards tab intentionally does not show purchase cost or source as primary columns. Those fields are still recorded and editable in Card Detail where there is enough context for cost/source review.
+The Cards tab intentionally does not show purchase cost, source, or a dedicated reservation column as primary columns. Those fields are still recorded and editable or reviewable in Card Detail where there is enough context for cost/source/reservation review. Remaining balance appears immediately after status because it is the most important operational value.
 
 Filters:
 
@@ -301,6 +300,11 @@ Filters:
 - Expiration window
 - Has remaining balance
 - Search by exact full card number
+
+Default:
+
+- Cards opens with active inventory filtering enabled, which shows available, reserved, and in-use cards with remaining value.
+- Sold, used-up, and void cards are hidden by default. The user can still inspect them by selecting the corresponding Status filter.
 
 Row actions:
 
@@ -469,7 +473,9 @@ Release 5.1 inventory UX refinements:
 - Cards table does not expose a separate row-level Edit button. Editing happens inside Card Details so the user can review credentials, status, balances, history, and editable metadata in one place.
 - Card Details supports editing brand, card type, network, face value, remaining balance, purchase cost, expiration date, format, source, and notes for non-terminal cards. Sold, used-up, and void cards show notes-only editing.
 - New prepaid cards created from month/year expiration fields populate the list-level `expirationDate` as the first day of the month, e.g. `11/2026` becomes `2026-11-01`.
-- Cards tab hides source and purchase cost from the main table to reduce horizontal clutter; those fields remain visible and editable in Card Detail.
+- Cards tab hides source, purchase cost, and the dedicated reservation column from the main table to reduce horizontal clutter; those fields remain visible in Card Detail.
+- Cards tab defaults to the `activeOnly=true` filter so sold, used-up, and void cards do not clutter the everyday working list. Terminal cards can still be found by choosing their Status filter.
+- Remaining balance is placed immediately after Status in the cards table.
 - Use actions are undoable from the record-usage panel, from the row-level `Undo use` action for reversible usage, and from Card Detail usage history.
 
 ### 7.11 CSV Import
