@@ -561,4 +561,56 @@ describe('AI import routes', () => {
       }),
     );
   });
+
+  it('passes indexed references to AI import and canonicalizes returned brand casing', async () => {
+    process.env.GC_AI_CUSTOM_PROVIDER_NAME = 'hankzeng-gpt-5.5';
+    process.env.GC_AI_CUSTOM_API_KEY = 'test-custom-key';
+    process.env.GC_AI_CUSTOM_BASE_URL = 'https://sub2api.example/v1';
+    process.env.GC_AI_CUSTOM_MODEL = 'gpt-5.5';
+    process.env.GC_AI_CUSTOM_WIRE_API = 'responses';
+    delete process.env.GC_AI_GOOGLE_API_KEY;
+    delete process.env.GC_AI_OPENROUTER_API_KEY;
+    delete process.env.GC_AI_GROQ_API_KEY;
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response(JSON.stringify({
+      output_text: JSON.stringify({
+        cards: [
+          {
+            brand: 'DELTA',
+            faceValue: '50',
+            credentialProfile: 'claim_code',
+            primaryCode: 'abc',
+            source: 'costco',
+            confidence: 0.95,
+          },
+        ],
+      }),
+    })));
+    const csrfToken = await setupOwner();
+    const timestamp = new Date().toISOString();
+    db.prepare(
+      `INSERT INTO reference_values (
+        accountId, type, value, normalizedValue, usageCount, lastUsedAt, createdAt, updatedAt
+      ) VALUES
+        (1, 'card_brand', 'Delta', 'delta', 3, ?, ?, ?),
+        (1, 'source', 'Costco', 'costco', 2, ?, ?, ?)`,
+    ).run(timestamp, timestamp, timestamp, timestamp, timestamp, timestamp);
+
+    const response = await postWithCsrf('/api/ai-import/analyze', csrfToken).send({
+      text: 'DelTa 50 abc from costco',
+      modelSelection: 'custom:gpt-5.5',
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.rows[0]).toMatchObject({
+      brand: 'Delta',
+      source: 'Costco',
+      primaryCode: 'abc',
+    });
+    const body = JSON.parse(vi.mocked(globalThis.fetch).mock.calls[0][1].body);
+    const prompt = body.input[1].content;
+    expect(prompt).toContain('Existing indexed brands');
+    expect(prompt).toContain('Delta');
+    expect(prompt).toContain('Existing indexed sources');
+    expect(prompt).toContain('Costco');
+  });
 });

@@ -64,6 +64,7 @@ function BulkImportReviewModal({
   const brandOptions = indexedBrandValues(referenceValues);
   const sourceOptions = indexedSourceValues(referenceValues);
   const invalidRows = rows.filter((row) => bulkImportMissingFields(row).length > 0);
+  const [approvedNewBrandKey, setApprovedNewBrandKey] = useState('');
   const newBrands = rows
     .map((row) => row.brand.trim())
     .filter((brand, index, all) =>
@@ -71,6 +72,8 @@ function BulkImportReviewModal({
         && all.findIndex((candidate) => candidate.toLowerCase() === brand.toLowerCase()) === index
         && !hasIndexedReferenceValue(referenceValues?.[referenceValueTypes.cardBrand] || [], brand),
     );
+  const newBrandKey = newBrands.join('\0');
+  const newBrandsApproved = newBrands.length === 0 || approvedNewBrandKey === newBrandKey;
 
   function updateRow(rowId: string, patch: Partial<BulkImportDraft>) {
     onRowsChange(rows.map((row) => (
@@ -317,9 +320,14 @@ function BulkImportReviewModal({
           </datalist>
         </div>
         {newBrands.length > 0 ? (
-          <p className="muted-text">
-            New brands will be added to the hint index on import: {newBrands.join(', ')}.
-          </p>
+          <label className="check-row new-brand-confirmation">
+            <input
+              type="checkbox"
+              checked={newBrandsApproved}
+              onChange={(event) => setApprovedNewBrandKey(event.target.checked ? newBrandKey : '')}
+            />
+            <span>Confirm new brands will be added to the hint index: {newBrands.join(', ')}.</span>
+          </label>
         ) : null}
         <FieldError message={error} />
         <div className="panel-actions">
@@ -329,7 +337,7 @@ function BulkImportReviewModal({
           <button
             type="button"
             className="primary-action"
-            disabled={submitting || invalidRows.length > 0 || rows.length === 0}
+            disabled={submitting || invalidRows.length > 0 || rows.length === 0 || !newBrandsApproved}
             onClick={onConfirm}
           >
             <FilePlus2 aria-hidden="true" size={17} />

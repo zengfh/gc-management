@@ -467,6 +467,8 @@ Release 5.1 inventory UX refinements:
 - Dashboard lower sections show alerts for active cards expiring soon and recent card activity.
 - Cards tab includes a card-type filter and a prepaid cash-card focus section for Visa/Mastercard/Amex/Discover-style cards.
 - Cards tab supports selected-row bulk lifecycle actions for reserve, use remaining balance, sell remaining balance, and void. Bulk edit remains out of scope.
+- Cards tab supports tri-state column sorting from the table header for status, brand, source, expiration, face value, remaining balance, cost, and updated date. Header arrows must communicate default, ascending, and descending state.
+- Cards tab brand/source filters use the same substring-matching hint behavior as Add Deal. Suggestions come from the reference index and current card-page values so users can select indexed brands/sources while typing.
 - Cards table does not expose a separate row-level Edit button. Editing happens inside Card Details so the user can review credentials, status, balances, history, and editable metadata in one place.
 - Card Details supports editing brand, card type, network, face value, remaining balance, purchase cost, expiration date, format, source, and notes for non-terminal cards. Sold, used-up, and void cards show notes-only editing.
 - New prepaid cards created from month/year expiration fields populate the list-level `expirationDate` as the first day of the month, e.g. `11/2026` becomes `2026-11-01`.
@@ -487,7 +489,9 @@ Loose bulk import:
 - AI Import is a standalone workspace for messy pasted text. It uses an agent-style layout with raw input, live activity messages, provider/model/timing metadata, system normalization counts, editable review rows, discard, confirm import, and another-pass correction controls.
 - AI Import includes an AI model selector. When the private custom provider is configured, `hankzeng-gpt-5.5 / gpt-5.5` is the default; otherwise `Auto` is the fallback. `Auto` still lets the server pick from configured providers.
 - Public provider choices in the selector are intentionally short: OpenRouter must show only free `:free` models, and Gemini/Groq/OpenRouter are capped to the top three strongest configured free-tier choices per provider.
+- Server-side AI model selection refreshes automatically on startup, every 24 hours, and on `SIGUSR2` so production cron can force a daily refresh of the free-model list.
 - AI Import sends the pasted text to the configured server-side AI provider, returns editable review rows, and never writes to the database until the user confirms.
+- AI Import prompts include indexed brand/source values so the model can normalize casing and obvious variants to existing names. The server also canonicalizes exact case-insensitive brand/source matches before showing review rows.
 - Another-pass correction sends the original text, optional user correction, and current draft context back to the server so the provider can return a full corrected card list.
 - For network prepaid cards, AI Import review shows separate EXP date and Security code fields instead of hiding expiration in notes or misusing PIN. Security-code storage must stay gated to private/local deployments through `GC_FEATURE_NETWORK_SECURITY_CODE_STORAGE`.
 - Server-side AI model selection checks configured providers at most once per day and prefers free models. If all configured free providers are out of quota, the UI must show a clear error and leave the pasted text intact.

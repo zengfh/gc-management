@@ -1,9 +1,22 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
-import { ArrowUpRight, CreditCard, ScrollText, Search, Tag, type LucideIcon } from 'lucide-react';
-import type { AuditCriteria, AuditEvent, Card, CardSearchCriteria, Deal, Page, RevealedCredentials } from '../shared/domain';
+import { ArrowDown, ArrowUp, ArrowUpDown, ArrowUpRight, CreditCard, ScrollText, Search, Tag, type LucideIcon } from 'lucide-react';
+import type {
+  AuditCriteria,
+  AuditEvent,
+  Card,
+  CardSearchCriteria,
+  Deal,
+  Page,
+  ReferenceValue,
+  ReferenceValueState,
+  ReferenceValueType,
+  RevealedCredentials,
+} from '../shared/domain';
 import { credentialSummaryText } from './credentialHelpers';
 import { errorMessage, formatDateTime, formatMoney, statusLabels } from './display';
 import { FieldError } from './formUi';
+import { ReferenceCombobox } from './ReferenceCombobox';
+import { defaultReferenceValues, referenceValueTypes } from './referenceValues';
 import { StatusBadge } from './StatusBadge';
 
 export function Metric({
@@ -90,14 +103,82 @@ function revealedCredentialText(credentials?: RevealedCredentials): string {
   return legacyFields.map(([label, value]) => `${label}: ${value}`).join(' | ');
 }
 
+function referenceOptionsWithCards(
+  indexedOptions: ReferenceValue[],
+  values: string[],
+  type: ReferenceValueType,
+): ReferenceValue[] {
+  const seen = new Set<string>();
+  const options: ReferenceValue[] = [];
+  for (const option of indexedOptions) {
+    const key = String(option.value || '').trim().toLowerCase();
+    if (!key || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    options.push(option);
+  }
+  for (const value of values) {
+    const trimmed = String(value || '').trim();
+    const key = trimmed.toLowerCase();
+    if (!key || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    options.push({
+      type,
+      value: trimmed,
+      usageCount: 1,
+      lastUsedAt: '',
+    });
+  }
+  return options;
+}
+
+function SortableHeader({
+  field,
+  label,
+  numeric = false,
+  sortBy,
+  sortDir,
+  onSortCards,
+}: {
+  field: string;
+  label: string;
+  numeric?: boolean;
+  sortBy: string;
+  sortDir: string;
+  onSortCards: ((sortBy: string) => void) | undefined;
+}) {
+  const active = sortBy === field && (sortDir === 'asc' || sortDir === 'desc');
+  const ariaSort = !active ? 'none' : sortDir === 'asc' ? 'ascending' : 'descending';
+  const Icon = !active ? ArrowUpDown : sortDir === 'asc' ? ArrowUp : ArrowDown;
+  return (
+    <th className={numeric ? 'numeric' : undefined} aria-sort={ariaSort}>
+      <button
+        type="button"
+        className={`sort-header${active ? ' active' : ''}`}
+        onClick={() => onSortCards?.(field)}
+        title={`Sort by ${label}`}
+      >
+        <span>{label}</span>
+        <Icon aria-hidden="true" size={13} />
+      </button>
+    </th>
+  );
+}
+
 export function CardsTable({
   cards,
   canManage,
+  sortBy = '',
+  sortDir = '',
   credentialsVisible = false,
   revealedCredentialsByCardId = {},
   selectedCardIds,
   onToggleCardSelected,
   onToggleAllCardsSelected,
+  onSortCards,
   onUseCard,
   onViewCard,
   onDeleteCard,
@@ -109,11 +190,14 @@ export function CardsTable({
 }: {
   cards: Card[];
   canManage: boolean;
+  sortBy?: string;
+  sortDir?: string;
   credentialsVisible?: boolean;
   revealedCredentialsByCardId?: Record<string, RevealedCredentials>;
   selectedCardIds?: Set<string>;
   onToggleCardSelected?: (cardId: string, checked: boolean) => void;
   onToggleAllCardsSelected?: (checked: boolean) => void;
+  onSortCards?: (sortBy: string) => void;
   onUseCard: (card: Card) => void;
   onViewCard: (card: Card) => void;
   onDeleteCard: (card: Card) => void;
@@ -146,16 +230,16 @@ export function CardsTable({
                 />
               </th>
             ) : null}
-            <th>Status</th>
-            <th>Brand</th>
+            <SortableHeader field="status" label="Status" sortBy={sortBy} sortDir={sortDir} onSortCards={onSortCards} />
+            <SortableHeader field="brand" label="Brand" sortBy={sortBy} sortDir={sortDir} onSortCards={onSortCards} />
             <th>Reservation</th>
             <th>Credential</th>
-            <th>Source</th>
-            <th>Expiration</th>
-            <th className="numeric">Face</th>
-            <th className="numeric">Remaining</th>
-            <th className="numeric">Cost</th>
-            <th>Updated</th>
+            <SortableHeader field="source" label="Source" sortBy={sortBy} sortDir={sortDir} onSortCards={onSortCards} />
+            <SortableHeader field="expirationDate" label="Expiration" sortBy={sortBy} sortDir={sortDir} onSortCards={onSortCards} />
+            <SortableHeader field="faceValueCents" label="Face" numeric sortBy={sortBy} sortDir={sortDir} onSortCards={onSortCards} />
+            <SortableHeader field="remainingBalanceCents" label="Remaining" numeric sortBy={sortBy} sortDir={sortDir} onSortCards={onSortCards} />
+            <SortableHeader field="purchaseCostCents" label="Cost" numeric sortBy={sortBy} sortDir={sortDir} onSortCards={onSortCards} />
+            <SortableHeader field="updatedAt" label="Updated" sortBy={sortBy} sortDir={sortDir} onSortCards={onSortCards} />
             <th>Actions</th>
           </tr>
         </thead>
@@ -513,10 +597,14 @@ export function AuditFilterForm({ onLoadAudit }: { onLoadAudit: (criteria?: Audi
 
 export function CardSearchForm({
   deals,
+  cards = [],
+  referenceValues = defaultReferenceValues,
   onSearchCards,
   initialCriteria = {},
 }: {
   deals: Deal[];
+  cards?: Card[];
+  referenceValues?: ReferenceValueState;
   onSearchCards: (criteria?: CardSearchCriteria) => Promise<unknown>;
   initialCriteria?: CardSearchCriteria;
 }) {
@@ -534,6 +622,16 @@ export function CardSearchForm({
   const [sortValue, setSortValue] = useState(initialSortValue);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const brandOptions = referenceOptionsWithCards(
+    referenceValues?.[referenceValueTypes.cardBrand] || [],
+    cards.map((card) => card.brand),
+    'card_brand',
+  );
+  const sourceOptions = referenceOptionsWithCards(
+    referenceValues?.[referenceValueTypes.source] || [],
+    cards.map((card) => card.source || ''),
+    'source',
+  );
 
   async function submitSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -625,14 +723,20 @@ export function CardSearchForm({
           <option value="prepaid">Prepaid cash cards</option>
         </select>
       </label>
-      <label>
-        <span>Brand</span>
-        <input value={brand} onChange={(event) => setBrand(event.target.value)} />
-      </label>
-      <label>
-        <span>Source</span>
-        <input value={source} onChange={(event) => setSource(event.target.value)} />
-      </label>
+      <ReferenceCombobox
+        label="Brand"
+        value={brand}
+        onChange={setBrand}
+        options={brandOptions}
+        helpText="Filter by indexed card brand. Substring matches work, so Amazon matches A, Am, maz, or zon."
+      />
+      <ReferenceCombobox
+        label="Source"
+        value={source}
+        onChange={setSource}
+        options={sourceOptions}
+        helpText="Filter by indexed purchase source. Substring matches work while typing."
+      />
       <label>
         <span>Deal</span>
         <select value={dealId} onChange={(event) => setDealId(event.target.value)}>

@@ -142,12 +142,15 @@ export function AIImportWorkspace({
     { id: 'auto', label: 'Auto', provider: 'Auto', model: 'Auto', auto: true },
   ]);
   const [modelError, setModelError] = useState('');
+  const [approvedNewBrandKey, setApprovedNewBrandKey] = useState('');
   const canImport = features.csvImport;
   const brandOptions = indexedBrandValues(referenceValues);
   const sourceOptions = indexedSourceValues(referenceValues);
   const invalidRows = useMemo(() => rows.filter((row) => bulkImportMissingFields(row).length > 0), [rows]);
   const readyRows = rows.length - invalidRows.length;
   const newBrands = useMemo(() => newBrandValues(rows, referenceValues), [referenceValues, rows]);
+  const newBrandKey = newBrands.join('\0');
+  const newBrandsApproved = newBrands.length === 0 || approvedNewBrandKey === newBrandKey;
 
   useEffect(() => {
     let canceled = false;
@@ -538,7 +541,14 @@ export function AIImportWorkspace({
             </div>
           </dl>
           {newBrands.length > 0 ? (
-            <p className="muted-text">New brands will be indexed on import: {newBrands.join(', ')}.</p>
+            <label className="check-row new-brand-confirmation">
+              <input
+                type="checkbox"
+                checked={newBrandsApproved}
+                onChange={(event) => setApprovedNewBrandKey(event.target.checked ? newBrandKey : '')}
+              />
+              <span>Confirm new brands will be added to the hint index: {newBrands.join(', ')}.</span>
+            </label>
           ) : null}
         </section>
       </aside>
@@ -552,7 +562,7 @@ export function AIImportWorkspace({
           <button
             type="button"
             className="primary-action compact"
-            disabled={submitting || invalidRows.length > 0 || rows.length === 0}
+            disabled={submitting || invalidRows.length > 0 || rows.length === 0 || !newBrandsApproved}
             onClick={() => void confirmImport()}
           >
             <FilePlus2 aria-hidden="true" size={17} />

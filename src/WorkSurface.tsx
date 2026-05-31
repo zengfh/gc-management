@@ -485,6 +485,20 @@ export function WorkSurface({
     await onSearchCards(criteria);
   }
 
+  async function sortCards(field: string) {
+    const currentSortBy = String(cardCriteria.sortBy || '');
+    const currentSortDir = String(cardCriteria.sortDir || '');
+    if (currentSortBy !== field) {
+      await searchCardsAndHideCredentials({ sortBy: field, sortDir: 'asc' });
+      return;
+    }
+    if (currentSortDir === 'asc') {
+      await searchCardsAndHideCredentials({ sortBy: field, sortDir: 'desc' });
+      return;
+    }
+    await searchCardsAndHideCredentials({ sortBy: '', sortDir: '' });
+  }
+
   async function goToCards(criteria: CardSearchCriteria = {}) {
     setActiveView('cards');
     await searchCardsAndHideCredentials(criteria);
@@ -774,6 +788,8 @@ export function WorkSurface({
             <CardSearchForm
               key={JSON.stringify(cardCriteria)}
               deals={deals}
+              cards={cards}
+              referenceValues={referenceValues}
               onSearchCards={searchCardsAndHideCredentials}
               initialCriteria={cardCriteria}
             />
@@ -808,8 +824,11 @@ export function WorkSurface({
             <CardsTable
               cards={cards}
               canManage={userCanManageInventory}
+              sortBy={String(cardCriteria.sortBy || '')}
+              sortDir={String(cardCriteria.sortDir || '')}
               credentialsVisible={cardCredentialsVisible}
               revealedCredentialsByCardId={revealedCardCredentials}
+              onSortCards={(field) => void sortCards(field)}
               {...(userCanManageInventory
                 ? {
                     selectedCardIds,

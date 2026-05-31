@@ -85,6 +85,18 @@ After SMTP is configured, use Settings -> Data Operations -> Send expiration ema
 
 Temporary SSH-tunnel testing without TLS can set `GC_SESSION_COOKIE_SECURE=false` and use an `APP_ORIGIN` such as `http://localhost:5180,http://127.0.0.1:5180`. Do not use that setting for a public HTTPS deployment.
 
+## AI Model Refresh
+
+AI Import keeps a short in-memory list of configured model choices. The server refreshes that list on startup, every 24 hours, and when it receives `SIGUSR2`.
+
+For a private VPS deployment, add a daily cron entry that signals the running app process:
+
+```cron
+17 9 * * * /usr/bin/pkill -USR2 -f '/usr/bin/node build/server/index.js' >> /home/opc/gc-management-data/release5/ai-model-refresh.cron.log 2>&1
+```
+
+This cron entry does not store API keys or call an unauthenticated HTTP endpoint. It only asks the already-running app process to refresh provider metadata using its configured environment.
+
 ## Deployment Layout
 
 Recommended host layout:

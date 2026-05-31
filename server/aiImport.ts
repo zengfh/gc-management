@@ -70,6 +70,8 @@ export interface AiImportPromptOptions {
   instruction?: string;
   previousRows?: unknown[];
   modelSelection?: string;
+  existingBrands?: string[];
+  existingSources?: string[];
 }
 
 interface TextPrepaidDetail {
@@ -278,6 +280,28 @@ function providerLabel(provider: AiProviderName): string {
     return customProviderConfig()?.name || 'custom';
   }
   return provider;
+}
+
+function normalizeReferenceMatch(value: unknown): string {
+  return String(value || '').trim().toLowerCase();
+}
+
+function compactReferenceMatch(value: unknown): string {
+  return normalizeReferenceMatch(value).replace(/[^a-z0-9]+/g, '');
+}
+
+function canonicalReferenceValue(value: string, options: string[] | undefined): string {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return '';
+  }
+  const exact = (options || []).find((option) => normalizeReferenceMatch(option) === normalizeReferenceMatch(trimmed));
+  if (exact) {
+    return exact;
+  }
+  const compacted = compactReferenceMatch(trimmed);
+  const compactMatch = (options || []).find((option) => compactReferenceMatch(option) === compacted);
+  return compactMatch || trimmed;
 }
 
 function configuredProviders(): AiProviderName[] {
@@ -613,6 +637,12 @@ export async function listAiImportModelOptions(): Promise<{ defaultSelection: st
   return { defaultSelection, options };
 }
 
+export async function refreshAiImportModelOptions(): Promise<{ defaultSelection: string; options: AiImportModelOption[] }> {
+  modelCache.clear();
+  modelOptionsCache.clear();
+  return listAiImportModelOptions();
+}
+
 async function resolveSelectedModel(selection: string | undefined): Promise<AiModelSelection | null> {
   const selected = selection?.trim();
   if (!selected || selected === 'auto') {
@@ -653,9 +683,17 @@ function safePreviousRows(previousRows: unknown[] | undefined): unknown[] {
 }
 
 function aiPrompt(text: string, options: AiImportPromptOptions = {}): string {
+  const existingBrands = (options.existingBrands || []).map((brand) => brand.trim()).filter(Boolean).slice(0, 200);
+  const existingSources = (options.existingSources || []).map((source) => source.trim()).filter(Boolean).slice(0, 120);
   const lines = [
     'Extract gift card inventory from the user text.',
     'Return ONLY strict JSON with this shape: {"cards":[{"brand":"","faceValue":"","credentialProfile":"claim_code|claim_link|merchant_number_pin|barcode|network_prepaid|custom","primaryCode":"","secondaryCode":"","notes":"","source":"","rawLine":"","confidence":0.0}]}',
+    existingBrands.length > 0
+      ? `Existing indexed brands, use exact spelling/casing when the user text appears to refer to one of these: ${existingBrands.join(', ')}.`
+      : '',
+    existingSources.length > 0
+      ? `Existing indexed sources, use exact spelling/casing when the user text appears to refer to one of these: ${existingSources.join(', ')}.`
+      : '',
     'Rules:',
     '- Do not invent missing values. Leave uncertain optional fields empty and mention uncertainty in notes.',
     '- If the merchant/brand is missing but the card is clearly network prepaid, infer only the card network when obvious from the number: Visa starts with 4, Mastercard commonly starts with 51-55 or 2221-2720, Amex starts with 34 or 37, Discover commonly starts with 6011/65/644-649.',
@@ -698,7 +736,7 @@ function aiPrompt(text: string, options: AiImportPromptOptions = {}): string {
   }
 
   lines.push('', 'User text:', text);
-  return lines.join('\n');
+  return lines.filter(Boolean).join('\n');
 }
 
 function extractJsonObject(text: string): unknown {
@@ -1013,7 +1051,13 @@ async function callOpenAiResponsesCompatible(
   return extractJsonObject(textFromResponsesPayload(payload));
 }
 
-function toRows(cards: AiParsedCard[], provider: string, model: string, sourceText: string): Pick<AiImportAnalysis, 'rows' | 'diagnostics'> {
+function toRows(
+  cards: AiParsedCard[],
+  provider: string,
+  model: string,
+  sourceText: string,
+  options: AiImportPromptOptions = {},
+): Pick<AiImportAnalysis, 'rows' | 'diagnostics'> {
   const textDetails = extractPrepaidDetailsFromText(sourceText);
   const normalizedCards = cards.flatMap((card) => {
     const normalized = normalizeAiCard(enrichCardFromText(card, textDetails));
@@ -1023,7 +1067,7 @@ function toRows(cards: AiParsedCard[], provider: string, model: string, sourceTe
     id: `ai-${index + 1}`,
     lineNumber: index + 1,
     rawLine: card.rawLine || '',
-    brand: card.brand,
+    brand: canonicalReferenceValue(card.brand, options.existingBrands),
     faceValue: card.faceValue,
     credentialProfile: card.credentialProfile,
     primaryCode: card.primaryCode,
@@ -1033,7 +1077,7 @@ function toRows(cards: AiParsedCard[], provider: string, model: string, sourceTe
     billingZip: card.billingZip || '',
     networkSecurityCode: card.networkSecurityCode || '',
     barcodeFormat: card.barcodeFormat || 'code128',
-    source: card.source || '',
+    source: canonicalReferenceValue(card.source || '', options.existingSources),
     notes: card.notes || '',
     warnings: [
       `AI parsed with ${provider}/${model}; verify before import.`,
@@ -1087,7 +1131,7 @@ export async function analyzeGiftCardsWithAi(
           ? await callOpenAiResponsesCompatible(text, selectedModel, apiKey, options)
           : await callOpenAiCompatible(selectedModel.provider, text, selectedModel, apiKey, options);
       const parsed = aiResponseSchema.parse(raw);
-      const { rows, diagnostics } = toRows(parsed.cards, selectedModel.providerLabel, selectedModel.model, text);
+      const { rows, diagnostics } = toRows(parsed.cards, selectedModel.providerLabel, selectedModel.model, text, options);
       return {
         provider: selectedModel.providerLabel,
         model: selectedModel.model,
@@ -1124,7 +1168,7 @@ export async function analyzeGiftCardsWithAi(
           ? await callOpenAiResponsesCompatible(text, selection, apiKey, options)
           : await callOpenAiCompatible(provider, text, selection, apiKey, options);
       const parsed = aiResponseSchema.parse(raw);
-      const { rows, diagnostics } = toRows(parsed.cards, selection.providerLabel, selection.model, text);
+      const { rows, diagnostics } = toRows(parsed.cards, selection.providerLabel, selection.model, text, options);
       return {
         provider: selection.providerLabel,
         model: selection.model,

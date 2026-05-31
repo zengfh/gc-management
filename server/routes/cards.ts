@@ -17,6 +17,7 @@ import {
   credentialProfiles,
   credentialSearchBlindIndexes,
   insertCredentialFields,
+  normalizeCredentialBrandForDuplicate,
   normalizeCredentialValue,
   parseCredentialSummary,
   type PreparedCredentialField,
@@ -310,6 +311,7 @@ const cardSortColumns = {
   faceValueCents: 'faceValueCents',
   purchaseCostCents: 'purchaseCostCents',
   remainingBalanceCents: 'remainingBalanceCents',
+  source: 'source',
   status: 'status',
   updatedAt: 'updatedAt',
 };
@@ -746,7 +748,7 @@ function previewCsvRow(
   if (normalizedCardNumber) {
     cardNumberHash = hashCardNumber(normalizedCardNumber, auth.blindIndexKey);
     if (brand) {
-      const duplicateKey = `${brand}\0${cardNumberHash}`;
+      const duplicateKey = `${normalizeCredentialBrandForDuplicate(brand)}\0${cardNumberHash}`;
       if (importHashes.has(duplicateKey)) {
         errors.push(rowError('cardNumber', 'duplicate_import_row', 'Duplicate card number in this import.'));
       } else {
@@ -789,7 +791,7 @@ function applyCsvConflicts(
     `SELECT id
      FROM cards
      WHERE accountId = ?
-       AND brand = ?
+       AND LOWER(TRIM(brand)) = ?
        AND cardNumberHash = ?
        AND status IN ('available', 'reserved', 'in_use')
      LIMIT 1`,
@@ -802,7 +804,11 @@ function applyCsvConflicts(
       return responseRow;
     }
 
-    const conflictRow = lookup.get(auth.accountId, row.parsed.brand, row.cardNumberHash) as { id: number } | undefined;
+    const conflictRow = lookup.get(
+      auth.accountId,
+      normalizeCredentialBrandForDuplicate(row.parsed.brand),
+      row.cardNumberHash,
+    ) as { id: number } | undefined;
     const errors = conflictRow
       ? [
           ...row.errors,
@@ -1113,12 +1119,12 @@ export function createCardsRouter({ db }: { db: Database.Database }) {
       }
 
       if (req.query.brand) {
-        where.push('brand = ?');
+        where.push('LOWER(TRIM(brand)) = LOWER(TRIM(?))');
         params.push(String(req.query.brand).trim());
       }
 
       if (req.query.source) {
-        where.push('source = ?');
+        where.push('LOWER(TRIM(source)) = LOWER(TRIM(?))');
         params.push(String(req.query.source).trim());
       }
 

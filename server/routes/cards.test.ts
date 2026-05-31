@@ -132,7 +132,7 @@ describe('card routes', () => {
     ]);
   }, 45_000);
 
-  it('blocks active duplicate cards by normalized number and brand', async () => {
+  it('blocks active duplicate cards by normalized number and case-insensitive brand', async () => {
     const csrfToken = await setupOwner();
 
     const first = await postWithCsrf('/api/cards', csrfToken).send({
@@ -141,7 +141,7 @@ describe('card routes', () => {
     expect(first.status).toBe(201);
 
     const duplicate = await postWithCsrf('/api/cards', csrfToken).send({
-      cards: [sampleCard({ cardNumber: '4111111111111111' })],
+      cards: [sampleCard({ brand: 'target', cardNumber: '4111111111111111' })],
     });
     expect(duplicate.status).toBe(409);
     expect(duplicate.body.error.code).toBe('DUPLICATE_ACTIVE_CARD');

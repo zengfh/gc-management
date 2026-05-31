@@ -15,6 +15,23 @@ const aiImportAnalyzeSchema = z.object({
   modelSelection: z.string().trim().max(300).optional().default('auto'),
 });
 
+function aiReferenceContext(db: Database.Database, accountId: number) {
+  const rows = db
+    .prepare(
+      `SELECT type, value
+       FROM reference_values
+       WHERE accountId = ?
+         AND type IN ('card_brand', 'source')
+       ORDER BY usageCount DESC, lastUsedAt DESC, value COLLATE NOCASE ASC
+       LIMIT 320`,
+    )
+    .all(accountId) as Array<{ type: 'card_brand' | 'source'; value: string }>;
+  return {
+    existingBrands: rows.filter((row) => row.type === 'card_brand').map((row) => row.value),
+    existingSources: rows.filter((row) => row.type === 'source').map((row) => row.value),
+  };
+}
+
 function elapsedSince(startedAt: number): number {
   return Math.max(1, Date.now() - startedAt);
 }
@@ -56,6 +73,7 @@ export function createAiImportRouter({ db }: { db: Database.Database }) {
           instruction: parsed.data.instruction,
           previousRows: parsed.data.previousRows,
           modelSelection: parsed.data.modelSelection,
+          ...aiReferenceContext(db, req.auth.accountId),
         });
         insertAuditEvent(db, {
           accountId: req.auth.accountId,

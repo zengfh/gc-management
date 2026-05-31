@@ -781,9 +781,14 @@ export function parseCredentialSummary(row: CredentialSummaryRow) {
 }
 
 export function duplicateKeysForCredentialFields(card: PreparedCardCredentialCarrier): string[] {
+  const brandKey = normalizeCredentialBrandForDuplicate(card.brand);
   return card.credentialFields
     .filter((field) => field.blindIndex)
-    .map((field) => `${card.brand}\0${field.blindIndex}`);
+    .map((field) => `${brandKey}\0${field.blindIndex}`);
+}
+
+export function normalizeCredentialBrandForDuplicate(brand: unknown): string {
+  return String(brand || '').trim().toLowerCase();
 }
 
 export function assertNoDuplicatePreparedCredentials(cards: PreparedCardCredentialCarrier[], conflictFactory: () => Error) {
@@ -810,7 +815,7 @@ export function assertNoExistingCredentialDuplicates(
      JOIN cards ON cards.id = fields.cardId
       AND cards.accountId = fields.accountId
      WHERE fields.accountId = ?
-       AND cards.brand = ?
+       AND LOWER(TRIM(cards.brand)) = ?
        AND fields.blindIndex = ?
        AND cards.status IN ('available', 'reserved', 'in_use')
      LIMIT 1`,
@@ -821,7 +826,7 @@ export function assertNoExistingCredentialDuplicates(
       if (!field.blindIndex) {
         continue;
       }
-      if (lookup.get(auth.accountId, card.brand, field.blindIndex)) {
+      if (lookup.get(auth.accountId, normalizeCredentialBrandForDuplicate(card.brand), field.blindIndex)) {
         throw conflictFactory();
       }
     }

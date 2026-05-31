@@ -157,7 +157,7 @@ describe('CSV import preview route', () => {
 
     const csv = [
       'brand,cardType,faceValue,purchaseCost,cardNumber,pin',
-      'Target,merchant,50.00,45.00,4111 1111 1111 1111,9999',
+      'target,merchant,50.00,45.00,4111 1111 1111 1111,9999',
       ',merchant,-5,4.00,,',
       'Best Buy,invalid,25.00,20.00,,',
     ].join('\n');
