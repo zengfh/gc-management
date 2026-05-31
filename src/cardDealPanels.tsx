@@ -1371,15 +1371,22 @@ export function UseCardPanel({
   card,
   onClose,
   onUseCard,
+  onUndoUsage,
 }: {
   card: Card;
   onClose: VoidHandler;
-  onUseCard: (cardId: string, payload: ApiPayload) => Promise<unknown>;
+  onUseCard: (cardId: string, payload: ApiPayload) => Promise<ApiResponse<{ card: Card; usages?: Usage[] }>>;
+  onUndoUsage: (cardId: string, payload: ApiPayload) => Promise<unknown>;
 }) {
   const [amount, setAmount] = useState('');
   const [merchant, setMerchant] = useState('');
   const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+  const [undoReason, setUndoReason] = useState('');
+  const [undoError, setUndoError] = useState('');
+  const [recordedUsage, setRecordedUsage] = useState<Usage | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [undoing, setUndoing] = useState(false);
   const dialogRef = useDialogFocus(onClose);
 
   async function submitUsage(event: FormEvent<HTMLFormElement>) {
@@ -1394,15 +1401,42 @@ export function UseCardPanel({
 
     setSubmitting(true);
     try {
-      await onUseCard(card.id, {
+      const response = await onUseCard(card.id, {
         amountCents,
         ...(merchant.trim() ? { merchant: merchant.trim() } : {}),
       });
-      onClose();
+      const usage = (response.data.usages || []).find(canUndoUsage) || null;
+      setRecordedUsage(usage);
+      setMessage('Usage recorded. If this gets refunded, you can undo it here before closing.');
+      setAmount('');
+      setMerchant('');
     } catch (caught) {
       setError(errorMessage(caught));
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function submitUndo(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setUndoError('');
+    const reason = undoReason.trim();
+    if (!recordedUsage) {
+      setUndoError('No reversible usage is available.');
+      return;
+    }
+    if (!reason) {
+      setUndoError('Reason is required.');
+      return;
+    }
+    setUndoing(true);
+    try {
+      await onUndoUsage(card.id, { usageId: recordedUsage.id, reason });
+      onClose();
+    } catch (caught) {
+      setUndoError(errorMessage(caught));
+    } finally {
+      setUndoing(false);
     }
   }
 
@@ -1438,6 +1472,7 @@ export function UseCardPanel({
             <input value={merchant} onChange={(event) => setMerchant(event.target.value)} />
           </label>
           <FieldError message={error} />
+          {message ? <p className="success-copy">{message}</p> : null}
           <div className="panel-actions">
             <button type="button" className="secondary-action" onClick={onClose}>
               Cancel
@@ -1445,6 +1480,106 @@ export function UseCardPanel({
             <button type="submit" className="primary-action" disabled={submitting}>
               <CreditCard aria-hidden="true" size={17} />
               {submitting ? 'Recording...' : 'Record usage'}
+            </button>
+          </div>
+        </form>
+        {recordedUsage ? (
+          <form className="panel-form undo-use-form" onSubmit={submitUndo}>
+            <div className="preview-box">
+              <span>Last recorded usage</span>
+              <strong>{formatMoney(recordedUsage.amountCents)}</strong>
+            </div>
+            <label>
+              <span>Refund / undo reason</span>
+              <input value={undoReason} onChange={(event) => setUndoReason(event.target.value)} />
+            </label>
+            <FieldError message={undoError} />
+            <div className="panel-actions">
+              <button type="submit" className="secondary-action" disabled={undoing}>
+                {undoing ? 'Undoing...' : 'Undo this usage'}
+              </button>
+            </div>
+          </form>
+        ) : null}
+      </section>
+    </div>
+  );
+}
+
+export function UndoUsagePanel({
+  card,
+  usage,
+  loading,
+  error,
+  onClose,
+  onUndoUsage,
+}: {
+  card: Card;
+  usage: Usage | null;
+  loading: boolean;
+  error: string;
+  onClose: VoidHandler;
+  onUndoUsage: (cardId: string, payload: ApiPayload) => Promise<unknown>;
+}) {
+  const [reason, setReason] = useState('');
+  const [submitError, setSubmitError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const dialogRef = useDialogFocus(onClose);
+
+  async function submitUndo(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSubmitError('');
+    if (!usage) {
+      setSubmitError('No reversible usage is available.');
+      return;
+    }
+    const trimmedReason = reason.trim();
+    if (!trimmedReason) {
+      setSubmitError('Reason is required.');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await onUndoUsage(card.id, { usageId: usage.id, reason: trimmedReason });
+      onClose();
+    } catch (caught) {
+      setSubmitError(errorMessage(caught));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <section ref={dialogRef} className="slide-panel" role="dialog" aria-modal="true" aria-labelledby="undo-usage-title">
+        <div className="panel-heading">
+          <div>
+            <p className="eyebrow">{card.brand}</p>
+            <h2 id="undo-usage-title">Undo usage</h2>
+          </div>
+          <button type="button" className="icon-button" aria-label="Close undo usage" onClick={onClose}>
+            <X aria-hidden="true" size={18} />
+          </button>
+        </div>
+        <form className="panel-form" onSubmit={submitUndo}>
+          {loading ? <div className="loading-strip">Loading latest usage...</div> : null}
+          {usage ? (
+            <div className="preview-box">
+              <span>{usage.merchant || 'Latest usage'}</span>
+              <strong>{formatMoney(usage.amountCents)}</strong>
+            </div>
+          ) : null}
+          <label>
+            <span>Refund / undo reason</span>
+            <input value={reason} onChange={(event) => setReason(event.target.value)} disabled={loading || !usage} />
+          </label>
+          <FieldError message={error || submitError} />
+          <div className="panel-actions">
+            <button type="button" className="secondary-action" onClick={onClose} disabled={submitting}>
+              Cancel
+            </button>
+            <button type="submit" className="primary-action" disabled={loading || !usage || submitting}>
+              {submitting ? 'Undoing...' : 'Undo usage'}
             </button>
           </div>
         </form>

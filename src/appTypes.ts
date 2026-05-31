@@ -236,7 +236,7 @@ export interface WorkSurfaceProps {
   onLoadCardDetail: (cardId: string) => Promise<ApiResponse<CardDetail>>;
   onLoadDealDetail: (dealId: string) => Promise<ApiResponse<DealDetail>>;
   onRevealCardCredentials: (cardId: string) => Promise<ApiResponse<RevealedCredentials>>;
-  onUseCard: (cardId: string, payload: ApiPayload) => Promise<unknown>;
+  onUseCard: (cardId: string, payload: ApiPayload) => Promise<ApiResponse<CardDetail>>;
   onUndoUsage: (cardId: string, payload: ApiPayload) => Promise<ApiResponse<CardMutationResult>>;
   onEditCard: (cardId: string, payload: ApiPayload) => Promise<ApiResponse<Card>>;
   onDeleteCard: (cardId: string) => Promise<unknown>;

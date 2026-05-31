@@ -186,6 +186,7 @@ Example:
 | CARD-014 | UI | Card detail edit form | Detail page saves editable metadata and removes the row-level Edit action from the cards table |
 | CARD-015 | UI | Bulk card lifecycle actions | Selecting multiple cards can reserve, use remaining, sell remaining, or void eligible cards; ineligible cards are skipped with clear feedback |
 | CARD-016 | Integration | Create network prepaid from month/year expiration | List-level expiration date is populated as the first day of that month |
+| CARD-017 | UI | Compact cards list actions | Source and purchase cost are hidden from the main Cards table, Details is an explicit row action, lifecycle actions are near the left side, and source/cost remain visible in Card Detail |
 
 ### 7.4.1 Dashboard Inventory UX
 
@@ -214,6 +215,7 @@ Example:
 | LIFE-012 | Integration | undo latest usage | balance restored; status recalculated |
 | LIFE-013 | Integration | undo middle usage | balance recalculated correctly |
 | LIFE-014 | Integration | undo write-off | 409 rejected |
+| LIFE-014A | UI | undo recently recorded usage | Record usage panel keeps an immediate undo option for refund/correction cases and requires a reason |
 | LIFE-015 | Integration | void available card | write-off for full balance; status void; balance 0 |
 | LIFE-016 | Integration | void reserved card | write-off for full balance; status void; balance 0 |
 | LIFE-017 | Integration | void in-use card | write-off for remaining balance; active usages sum to face value |

@@ -280,27 +280,23 @@ Empty state:
 
 Columns:
 
+- Card identity: brand and card type
 - Status
-- Brand
+- Actions
 - Reservation summary when reserved
-- Last 4
-- Type
-- Format
 - Face Value
 - Remaining Balance
-- Purchase Cost
-- Deal
-- Source
 - Expiration
+- Credential summary
 - Updated
-- Actions
+
+The Cards tab intentionally does not show purchase cost or source as primary columns. Those fields are still recorded and editable in Card Detail where there is enough context for cost/source review.
 
 Filters:
 
 - Status
 - Brand
 - Type
-- Source
 - Deal
 - Expiration window
 - Has remaining balance
@@ -308,17 +304,18 @@ Filters:
 
 Row actions:
 
-- View
+- Details, shown as an explicit button near the card identity instead of making the brand text the hidden click target
 - Reserve/Unreserve; reserve opens a panel for reserved-for, reserved-until, and reservation notes
 - Sell
-- Use
-- Edit
+- Use; after recording usage, the panel offers an immediate undo path for refund/correction cases
+- Undo use for the latest reversible usage on in-use/used-up cards
 - Void
 
 Rules:
 
 - Only show valid actions for current status.
 - Disabled actions should explain why if visible.
+- Mobile layout keeps the action cluster near the left side of each row so common actions do not require scrolling to the far-right edge.
 
 ### 7.5 Card Detail
 
@@ -467,11 +464,13 @@ Release 5.1 inventory UX refinements:
 - Dashboard lower sections show alerts for active cards expiring soon and recent card activity.
 - Cards tab includes a card-type filter and a prepaid cash-card focus section for Visa/Mastercard/Amex/Discover-style cards.
 - Cards tab supports selected-row bulk lifecycle actions for reserve, use remaining balance, sell remaining balance, and void. Bulk edit remains out of scope.
-- Cards tab supports tri-state column sorting from the table header for status, brand, source, expiration, face value, remaining balance, cost, and updated date. Header arrows must communicate default, ascending, and descending state.
-- Cards tab brand/source filters use the same substring-matching hint behavior as Add Deal. Suggestions come from the reference index and current card-page values so users can select indexed brands/sources while typing.
+- Cards tab supports tri-state column sorting from the table header for status, brand, expiration, face value, remaining balance, and updated date. Header arrows must communicate default, ascending, and descending state.
+- Cards tab brand filter uses the same substring-matching hint behavior as Add Deal. Suggestions come from the reference index and current card-page values so users can select indexed brands while typing.
 - Cards table does not expose a separate row-level Edit button. Editing happens inside Card Details so the user can review credentials, status, balances, history, and editable metadata in one place.
 - Card Details supports editing brand, card type, network, face value, remaining balance, purchase cost, expiration date, format, source, and notes for non-terminal cards. Sold, used-up, and void cards show notes-only editing.
 - New prepaid cards created from month/year expiration fields populate the list-level `expirationDate` as the first day of the month, e.g. `11/2026` becomes `2026-11-01`.
+- Cards tab hides source and purchase cost from the main table to reduce horizontal clutter; those fields remain visible and editable in Card Detail.
+- Use actions are undoable from the record-usage panel, from the row-level `Undo use` action for reversible usage, and from Card Detail usage history.
 
 ### 7.11 CSV Import
 

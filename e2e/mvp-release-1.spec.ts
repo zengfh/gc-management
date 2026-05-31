@@ -99,6 +99,8 @@ test.describe.serial('MVP Release 1 critical flows', () => {
     await page.getByRole('button', { name: /^record usage$/i }).click();
     await expect(page.getByRole('row', { name: /in use.*target/i })).toBeVisible();
     await expect(page.getByText('$37.50')).toBeVisible();
+    await expect(page.getByRole('button', { name: /^undo this usage$/i })).toBeVisible();
+    await page.getByRole('button', { name: /close record usage/i }).click();
 
     await page.getByRole('button', { name: /open target details/i }).click();
     const detail = page.getByRole('dialog', { name: /card details/i });
@@ -159,6 +161,7 @@ test.describe.serial('MVP Release 1 critical flows', () => {
     await expect(review.getByLabel(/^line 2 PIN$/i)).toHaveValue('BB-E2E-PIN');
     await review.getByLabel(/^line 1 source$/i).fill('Promo');
     await review.getByLabel(/^line 2 notes$/i).fill('Email delivery');
+    await review.getByLabel(/^confirm new brands will be added/i).check();
     await review.getByRole('button', { name: /^import 2 cards$/i }).click();
 
     await expect(page.getByText(/imported 2 cards/i)).toBeVisible();

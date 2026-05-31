@@ -30,8 +30,8 @@ Status: Release 5 complete
 - Extended AI import analysis so a correction pass can send the original pasted text plus the current draft context back to the provider for a corrected full card list.
 - Added AI model selection for AI Import. The private `hankzeng-gpt-5.5 / gpt-5.5` provider is the default when configured, with `Auto` still available. Public provider lists are limited to free/top-three choices per provider. Added support for a custom OpenAI-compatible provider, including Responses API and reasoning effort configuration.
 - Added automatic AI model-list refresh support. The server refreshes configured model choices on startup, every 24 hours, and when the process receives `SIGUSR2`; production cron can send that signal daily to refresh the in-memory free-model list without exposing API keys.
-- Added Cards table tri-state sorting from column headers for status, brand, source, expiration, face value, remaining balance, cost, and updated date.
-- Added Cards tab brand/source autocomplete using loaded reference indexes plus current card-page values, with substring matching while typing.
+- Added Cards table tri-state sorting from column headers for status, brand, expiration, face value, remaining balance, and updated date.
+- Added Cards tab brand autocomplete using loaded reference indexes plus current card-page values, with substring matching while typing.
 - Hardened duplicate detection so active duplicate credentials compare brands case-insensitively. AI Import now sends indexed brands/sources in the prompt and canonicalizes returned brand/source casing against the local index before review.
 - Bulk Import and AI Import now require explicit confirmation before newly discovered brands are added to the hint index.
 - Fixed AI Import for network prepaid text that omits an explicit brand but includes card number, balance, expiration, and CVV/CVC labels. The parser now accepts common aliases, infers the card network when safe, maps expiration to the explicit EXP date review field, maps security codes to the explicit local-only Security code review field, and persists security codes only when `GC_FEATURE_NETWORK_SECURITY_CODE_STORAGE` is enabled.
@@ -40,6 +40,7 @@ Status: Release 5 complete
 - Improved AI Import failure messages with safe provider-level failure reasons instead of only saying every provider failed.
 - Added dashboard and cards inventory polish: priority clickable dashboard metrics, dashboard alerts/recent activity, no dashboard card-detail table, card-type filtering, prepaid cash-card focus section, selected-card bulk reserve/use/sell/void actions, and detail-page editing for editable card metadata.
 - Fixed list-level expiration population for new cards created from prepaid month/year credential fields and added migration `008_backfill_card_expiration_dates.sql` to backfill existing rows from stored expiration credential hints.
+- Simplified the Cards table for phone use: source and purchase cost stay recorded in Card Detail but are hidden from the main list, card details open from an explicit `Details` action, row lifecycle actions sit near the left side of the row, and card usage can be undone from both the record-usage flow and row/detail actions.
 
 ## Verification
 
@@ -78,6 +79,17 @@ Completed on 2026-05-30 for dashboard/cards inventory polish:
 - `npm test`
 - `npm test -- server/routes/cards.test.ts src/App.test.tsx`
 - `npm run test:e2e:release5`
+
+Completed on 2026-05-31 for Cards table compact actions and undoable usage polish:
+
+- `npm run lint`
+- `npm run typecheck -- --pretty false`
+- `npm test`
+- `npm test -- src/App.test.tsx server/routes/cards.test.ts src/cardSearch.test.ts`
+- `npm run build`
+- `npm run test:e2e:release5`
+- `npm run test:e2e`
+- `git diff --check`
 - `npm run test:e2e`
 - `npm audit --audit-level=high`
 

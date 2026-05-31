@@ -43,6 +43,7 @@ import {
   ReserveCardPanel,
   SellCardPanel,
   UndoSalePanel,
+  UndoUsagePanel,
   UseCardPanel,
   VoidCardPanel,
 } from './cardDealPanels';
@@ -67,7 +68,7 @@ import {
   DealsTable,
   Metric,
 } from './tableComponents';
-import type { AuthState, Card, CardSearchCriteria, Deal, RevealedCredentials } from '../shared/domain';
+import type { AuthState, Card, CardSearchCriteria, Deal, RevealedCredentials, Usage } from '../shared/domain';
 
 const navItems: Array<{ id: ViewId; label: string; icon: LucideIcon }> = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -321,6 +322,10 @@ export function WorkSurface({
   const [showBulkImport, setShowBulkImport] = useState(false);
   const [editDeal, setEditDeal] = useState<Deal | null>(null);
   const [usageCard, setUsageCard] = useState<Card | null>(null);
+  const [undoUsageCard, setUndoUsageCard] = useState<Card | null>(null);
+  const [undoUsageCandidate, setUndoUsageCandidate] = useState<Usage | null>(null);
+  const [undoUsageLoading, setUndoUsageLoading] = useState(false);
+  const [undoUsageError, setUndoUsageError] = useState('');
   const [deleteCard, setDeleteCard] = useState<Card | null>(null);
   const [reserveCard, setReserveCard] = useState<Card | null>(null);
   const [saleCard, setSaleCard] = useState<Card | null>(null);
@@ -467,6 +472,27 @@ export function WorkSurface({
     const response = await onUndoUsage(currentCard.id, { usageId, reason });
     setDetailState({ card: response.data.card, data: response.data, error: '', loading: false });
     return response;
+  }
+
+  async function openUndoUsage(card: Card) {
+    setUndoUsageCard(card);
+    setUndoUsageCandidate(null);
+    setUndoUsageError('');
+    setUndoUsageLoading(true);
+    try {
+      const response = await onLoadCardDetail(card.id);
+      const latestUsage = (response.data.usages || []).find(
+        (usage) => !usage.isWriteOff && !usage.isReversed && !usage.reversedAt,
+      ) || null;
+      setUndoUsageCandidate(latestUsage);
+      if (!latestUsage) {
+        setUndoUsageError('No reversible usage was found for this card.');
+      }
+    } catch (caught) {
+      setUndoUsageError(errorMessage(caught));
+    } finally {
+      setUndoUsageLoading(false);
+    }
   }
 
   async function pageCards(offset: number) {
@@ -841,6 +867,7 @@ export function WorkSurface({
               onDeleteCard={setDeleteCard}
               onSellCard={setSaleCard}
               onUndoSale={setUndoSaleCard}
+              onUndoUsage={(card) => void openUndoUsage(card)}
               onVoidCard={setVoidCard}
               onReserveCard={setReserveCard}
               onUnreserveCard={onUnreserveCard}
@@ -1074,6 +1101,21 @@ export function WorkSurface({
           card={usageCard}
           onClose={() => setUsageCard(null)}
           onUseCard={onUseCard}
+          onUndoUsage={onUndoUsage}
+        />
+      ) : null}
+      {undoUsageCard ? (
+        <UndoUsagePanel
+          card={undoUsageCard}
+          usage={undoUsageCandidate}
+          loading={undoUsageLoading}
+          error={undoUsageError}
+          onClose={() => {
+            setUndoUsageCard(null);
+            setUndoUsageCandidate(null);
+            setUndoUsageError('');
+          }}
+          onUndoUsage={onUndoUsage}
         />
       ) : null}
       {deleteCard ? (

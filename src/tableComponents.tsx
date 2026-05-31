@@ -184,6 +184,7 @@ export function CardsTable({
   onDeleteCard,
   onSellCard,
   onUndoSale,
+  onUndoUsage,
   onVoidCard,
   onReserveCard,
   onUnreserveCard,
@@ -203,6 +204,7 @@ export function CardsTable({
   onDeleteCard: (card: Card) => void;
   onSellCard: (card: Card) => void;
   onUndoSale: (card: Card) => void;
+  onUndoUsage: (card: Card) => void;
   onVoidCard: (card: Card) => void;
   onReserveCard: (card: Card) => void;
   onUnreserveCard: (card: Card) => void;
@@ -230,17 +232,15 @@ export function CardsTable({
                 />
               </th>
             ) : null}
+            <SortableHeader field="brand" label="Card" sortBy={sortBy} sortDir={sortDir} onSortCards={onSortCards} />
             <SortableHeader field="status" label="Status" sortBy={sortBy} sortDir={sortDir} onSortCards={onSortCards} />
-            <SortableHeader field="brand" label="Brand" sortBy={sortBy} sortDir={sortDir} onSortCards={onSortCards} />
+            <th>Actions</th>
             <th>Reservation</th>
             <th>Credential</th>
-            <SortableHeader field="source" label="Source" sortBy={sortBy} sortDir={sortDir} onSortCards={onSortCards} />
             <SortableHeader field="expirationDate" label="Expiration" sortBy={sortBy} sortDir={sortDir} onSortCards={onSortCards} />
             <SortableHeader field="faceValueCents" label="Face" numeric sortBy={sortBy} sortDir={sortDir} onSortCards={onSortCards} />
             <SortableHeader field="remainingBalanceCents" label="Remaining" numeric sortBy={sortBy} sortDir={sortDir} onSortCards={onSortCards} />
-            <SortableHeader field="purchaseCostCents" label="Cost" numeric sortBy={sortBy} sortDir={sortDir} onSortCards={onSortCards} />
             <SortableHeader field="updatedAt" label="Updated" sortBy={sortBy} sortDir={sortDir} onSortCards={onSortCards} />
-            <th>Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -257,51 +257,24 @@ export function CardsTable({
                 </td>
               ) : null}
               <td>
+                <div className="card-summary-cell" aria-label={`${card.brand} ${formatDisplayCardType(card.cardType)}`}>
+                  <strong aria-hidden="true">{card.brand}</strong>
+                  <span aria-hidden="true">{formatDisplayCardType(card.cardType)}</span>
+                </div>
+              </td>
+              <td>
                 <StatusBadge status={card.status} />
               </td>
               <td>
-                <button
-                  type="button"
-                  className="table-link"
-                  aria-label={`Open ${card.brand} details`}
-                  onClick={() => onViewCard(card)}
-                >
-                  {card.brand}
-                </button>
-              </td>
-              <td>
-                {card.status === 'reserved' ? (
-                  <div className="reservation-cell">
-                    <strong>{card.reservedFor || 'Reserved'}</strong>
-                    <span>{card.reservedUntil ? `Until ${card.reservedUntil}` : 'No expiration'}</span>
-                  </div>
-                ) : (
-                  'Not reserved'
-                )}
-              </td>
-              <td className="mono credential-cell">
-                {credentialsVisible
-                  ? revealedCredentialText(revealedCredentialsByCardId[String(card.id)]) || credentialSummaryText(card)
-                  : credentialSummaryText(card)}
-              </td>
-              <td>{card.source || 'Not recorded'}</td>
-              <td>{card.expirationDate || 'Not recorded'}</td>
-              <td className="numeric">{formatMoney(card.faceValueCents)}</td>
-              <td className="numeric">{formatMoney(card.remainingBalanceCents)}</td>
-              <td className="numeric">{formatMoney(card.purchaseCostCents)}</td>
-              <td>{card.updatedAt ? new Date(card.updatedAt).toLocaleDateString() : 'Not recorded'}</td>
-              <td>
-                <div className="row-actions">
-                  {canManage && card.status === 'available' ? (
-                    <button
-                      type="button"
-                      className="table-action danger"
-                      aria-label={`Delete ${card.brand}`}
-                      onClick={() => onDeleteCard(card)}
-                    >
-                      Delete
-                    </button>
-                  ) : null}
+                <div className="row-actions card-row-actions">
+                  <button
+                    type="button"
+                    className="table-action primary"
+                    aria-label={`Open ${card.brand} details`}
+                    onClick={() => onViewCard(card)}
+                  >
+                    Details
+                  </button>
                   {canManage && card.status === 'available' ? (
                     <button
                       type="button"
@@ -322,16 +295,6 @@ export function CardsTable({
                       Unreserve
                     </button>
                   ) : null}
-                  {canManage && ['available', 'reserved', 'in_use'].includes(card.status) ? (
-                    <button
-                      type="button"
-                      className="table-action"
-                      aria-label={`Sell ${card.brand}`}
-                      onClick={() => onSellCard(card)}
-                    >
-                      Sell
-                    </button>
-                  ) : null}
                   {canManage && ['available', 'in_use'].includes(card.status) ? (
                     <button
                       type="button"
@@ -342,14 +305,24 @@ export function CardsTable({
                       Use
                     </button>
                   ) : null}
+                  {canManage && ['in_use', 'used_up'].includes(card.status) ? (
+                    <button
+                      type="button"
+                      className="table-action"
+                      aria-label={`Undo usage ${card.brand}`}
+                      onClick={() => onUndoUsage(card)}
+                    >
+                      Undo use
+                    </button>
+                  ) : null}
                   {canManage && ['available', 'reserved', 'in_use'].includes(card.status) ? (
                     <button
                       type="button"
-                      className="table-action danger"
-                      aria-label={`Void ${card.brand}`}
-                      onClick={() => onVoidCard(card)}
+                      className="table-action"
+                      aria-label={`Sell ${card.brand}`}
+                      onClick={() => onSellCard(card)}
                     >
-                      Void
+                      Sell
                     </button>
                   ) : null}
                   {canManage && card.status === 'sold' ? (
@@ -362,17 +335,64 @@ export function CardsTable({
                       Undo sale
                     </button>
                   ) : null}
-                  {!canManage || !['available', 'reserved', 'in_use', 'sold'].includes(card.status) ? (
-                    <span className="muted-text">{canManage ? 'No action' : 'Read only'}</span>
+                  {canManage && ['available', 'reserved', 'in_use'].includes(card.status) ? (
+                    <button
+                      type="button"
+                      className="table-action danger"
+                      aria-label={`Void ${card.brand}`}
+                      onClick={() => onVoidCard(card)}
+                    >
+                      Void
+                    </button>
+                  ) : null}
+                  {canManage && card.status === 'available' ? (
+                    <button
+                      type="button"
+                      className="table-action danger"
+                      aria-label={`Delete ${card.brand}`}
+                      onClick={() => onDeleteCard(card)}
+                    >
+                      Delete
+                    </button>
                   ) : null}
                 </div>
               </td>
+              <td>
+                {card.status === 'reserved' ? (
+                  <div className="reservation-cell">
+                    <strong>{card.reservedFor || 'Reserved'}</strong>
+                    <span>{card.reservedUntil ? `Until ${card.reservedUntil}` : 'No expiration'}</span>
+                  </div>
+                ) : (
+                  'Not reserved'
+                )}
+              </td>
+              <td className="mono credential-cell">
+                {credentialsVisible
+                  ? revealedCredentialText(revealedCredentialsByCardId[String(card.id)]) || credentialSummaryText(card)
+                  : credentialSummaryText(card)}
+              </td>
+              <td>{card.expirationDate || 'Not recorded'}</td>
+              <td className="numeric">{formatMoney(card.faceValueCents)}</td>
+              <td className="numeric">{formatMoney(card.remainingBalanceCents)}</td>
+              <td>{card.updatedAt ? new Date(card.updatedAt).toLocaleDateString() : 'Not recorded'}</td>
             </tr>
           ))}
         </tbody>
       </table>
     </div>
   );
+}
+
+function formatDisplayCardType(value: unknown): string {
+  const normalized = String(value || '').trim();
+  if (normalized === 'prepaid') {
+    return 'Prepaid cash';
+  }
+  if (normalized === 'merchant') {
+    return 'Merchant card';
+  }
+  return normalized || 'Card';
 }
 
 export function DealsTable({
@@ -615,7 +635,6 @@ export function CardSearchForm({
   const [status, setStatus] = useState(initialCriteria.status || '');
   const [cardType, setCardType] = useState(initialCriteria.cardType || '');
   const [brand, setBrand] = useState(String(initialCriteria.brand || ''));
-  const [source, setSource] = useState(String(initialCriteria.source || ''));
   const [dealId, setDealId] = useState(String(initialCriteria.dealId || ''));
   const [expiresBefore, setExpiresBefore] = useState(String(initialCriteria.expiresBefore || ''));
   const [text, setText] = useState(String(initialCriteria.text || ''));
@@ -626,11 +645,6 @@ export function CardSearchForm({
     referenceValues?.[referenceValueTypes.cardBrand] || [],
     cards.map((card) => card.brand),
     'card_brand',
-  );
-  const sourceOptions = referenceOptionsWithCards(
-    referenceValues?.[referenceValueTypes.source] || [],
-    cards.map((card) => card.source || ''),
-    'source',
   );
 
   async function submitSearch(event: FormEvent<HTMLFormElement>) {
@@ -645,7 +659,7 @@ export function CardSearchForm({
         status,
         cardType,
         brand,
-        source,
+        source: '',
         dealId,
         expiresBefore,
         text,
@@ -664,7 +678,6 @@ export function CardSearchForm({
     setStatus('');
     setCardType('');
     setBrand('');
-    setSource('');
     setDealId('');
     setExpiresBefore('');
     setText('');
@@ -729,13 +742,6 @@ export function CardSearchForm({
         onChange={setBrand}
         options={brandOptions}
         helpText="Filter by indexed card brand. Substring matches work, so Amazon matches A, Am, maz, or zon."
-      />
-      <ReferenceCombobox
-        label="Source"
-        value={source}
-        onChange={setSource}
-        options={sourceOptions}
-        helpText="Filter by indexed purchase source. Substring matches work while typing."
       />
       <label>
         <span>Deal</span>

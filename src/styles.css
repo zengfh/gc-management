@@ -915,7 +915,7 @@ table {
   width: 100%;
   border-collapse: separate;
   border-spacing: 0 8px;
-  min-width: 980px;
+  min-width: 860px;
   padding: 0 10px 10px;
 }
 
@@ -1024,6 +1024,13 @@ tbody tr:hover td {
   font-weight: 800;
 }
 
+.table-action.primary {
+  border-color: rgba(99, 102, 241, 0.42);
+  color: var(--color-text-inverse);
+  background: var(--gradient-primary);
+  box-shadow: var(--glow-primary);
+}
+
 .table-action:hover:not(:disabled) {
   border-color: var(--color-primary);
   background: var(--color-primary-muted);
@@ -1061,7 +1068,28 @@ tbody tr:hover td {
 .row-actions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
+}
+
+.card-row-actions {
+  min-width: 220px;
+}
+
+.card-summary-cell {
+  display: grid;
+  gap: 3px;
+}
+
+.card-summary-cell strong {
+  color: var(--color-text);
+  font-weight: 850;
+}
+
+.card-summary-cell span {
+  color: var(--color-muted-strong);
+  font-size: 0.78rem;
+  font-weight: 700;
 }
 
 .pagination-bar {

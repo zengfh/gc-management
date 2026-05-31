@@ -141,7 +141,7 @@ A redacted, append-only record of important actions.
 | ID | Requirement | Priority | Acceptance Criteria |
 |---|---|---:|---|
 | CARD-01 | User can create merchant and prepaid cards | P0 | Required fields are validated; money is stored as integer cents; credential profile fields are normalized/encrypted according to profile |
-| CARD-02 | User can list cards with pagination, filters, and sorting | P0 | Status, card type, brand, source, deal, expiration, credential, and text filters work; unsupported sort fields are rejected |
+| CARD-02 | User can list cards with pagination, filters, and sorting | P0 | Status, card type, brand, deal, expiration, credential, and text filters work; list columns prioritize card identity, status, actions, credential summary, expiration, face, remaining, and updated date; source and cost remain available in card detail |
 | CARD-03 | User can view a card detail page | P0 | Detail shows card data, masked credentials, transactions, usages, audit timeline, and the primary edit surface for editable metadata |
 | CARD-04 | User can edit allowed fields | P0 | Brand, card type, network, values, expiration, format, source, and notes can be edited from detail when status allows; terminal cards allow notes only; changes are audited |
 | CARD-05 | System prevents duplicate active cards when indexed primary credential and brand match | P0 | Normalized code/number/barcode variants match; conflict is surfaced clearly |

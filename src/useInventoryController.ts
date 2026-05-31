@@ -175,12 +175,13 @@ export function useInventoryController({ csrfToken }: InventoryControllerOptions
   }
 
   async function useCard(cardId: string, payload: ApiPayload) {
-    const response = await apiFetch<ApiResponse<CardMutationResult>>(`/api/cards/${cardId}/use`, {
+    const response = await apiFetch<ApiResponse<CardDetail>>(`/api/cards/${cardId}/use`, {
       method: 'POST',
       body: payload,
       csrfToken: csrfToken(),
     });
     setCards((current) => replaceCard(current, response.data.card));
+    return response;
   }
 
   async function undoUsage(cardId: string, payload: ApiPayload) {
