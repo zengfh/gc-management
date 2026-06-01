@@ -441,6 +441,12 @@ Error response:
 | GET | /api/auth/status | Returns setupComplete, sessionValid, dekLoaded, public feature flags, csrfToken if session valid |
 | POST | /api/auth/setup | Creates first user/account; 409 if already setup |
 | POST | /api/auth/login | Unlocks DEK; regenerates session; rate limited |
+| GET | /api/auth/passkeys | Lists current user's registered passkeys without credential material |
+| POST | /api/auth/passkeys/register/options | Requires unlocked session and CSRF; creates WebAuthn registration options |
+| POST | /api/auth/passkeys/register/verify | Requires unlocked session and CSRF; verifies WebAuthn registration and stores public key plus a server-wrapped DEK copy |
+| POST | /api/auth/passkeys/login/options | Creates WebAuthn authentication options for a registered passkey |
+| POST | /api/auth/passkeys/login/verify | Verifies WebAuthn authentication, unwraps the DEK convenience copy, regenerates session, and unlocks memory state |
+| DELETE | /api/auth/passkeys/:id | Requires unlocked session and CSRF; removes current user's passkey |
 | POST | /api/auth/logout | Clears session and user unlock state |
 | POST | /api/auth/change-unlock-secret | Old secret required; rewraps DEK with new salt |
 
@@ -448,7 +454,8 @@ Error response:
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | /api/cards | Paginated; filterable; exact card-number search through blind index |
+| GET | /api/cards | Paginated; filterable; exact card-number search through blind index; response includes server aggregate summary for dashboard metrics |
+| GET | /api/cards/summary | Server aggregate inventory summary independent of list filters |
 | GET | /api/cards/:id | Includes detail, transactions, usages, audit summary |
 | POST | /api/cards | Create one or batch; normalized/encrypted by backend |
 | PUT | /api/cards/:id | Allowed fields by status; rowVersion recommended |

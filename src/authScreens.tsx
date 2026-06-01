@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { Lock, RefreshCw, ShieldCheck } from 'lucide-react';
+import { KeyRound, Lock, RefreshCw, ShieldCheck } from 'lucide-react';
 import type { AsyncApiHandler } from './appTypes';
 import { errorMessage } from './display';
 import { FieldError } from './formUi';
@@ -109,10 +109,12 @@ export function SetupScreen({ onSetup }: { onSetup: AsyncApiHandler<{ email: str
 
 export function UnlockScreen({
   onLogin,
+  onPasskeyLogin,
   onAcceptInvite,
   onRecoverAccess,
 }: {
   onLogin: AsyncApiHandler<{ email: string; unlockSecret: string }>;
+  onPasskeyLogin: AsyncApiHandler<{ email: string }>;
   onAcceptInvite: AsyncApiHandler<{ email: string; inviteCode: string; unlockSecret: string }>;
   onRecoverAccess: AsyncApiHandler<{ email: string; recoveryCode: string; newUnlockSecret: string }>;
 }) {
@@ -137,6 +139,18 @@ export function UnlockScreen({
     setSubmitting(true);
     try {
       await onLogin({ email: email.trim(), unlockSecret });
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function submitPasskeyLogin() {
+    setError('');
+    setSubmitting(true);
+    try {
+      await onPasskeyLogin({ email: email.trim() });
     } catch (caught) {
       setError(errorMessage(caught));
     } finally {
@@ -259,6 +273,10 @@ export function UnlockScreen({
             <button type="submit" className="primary-action" disabled={submitting}>
               <Lock aria-hidden="true" size={18} />
               {submitting ? 'Unlocking...' : 'Unlock'}
+            </button>
+            <button type="button" className="secondary-action" disabled={submitting} onClick={submitPasskeyLogin}>
+              <KeyRound aria-hidden="true" size={18} />
+              Use passkey
             </button>
           </form>
         ) : null}

@@ -42,6 +42,9 @@ Status: Release 5 complete
 - Fixed list-level expiration population for new cards created from prepaid month/year credential fields and added migration `008_backfill_card_expiration_dates.sql` to backfill existing rows from stored expiration credential hints.
 - Simplified the Cards table for phone use: source and purchase cost stay recorded in Card Detail but are hidden from the main list, card details open from an explicit `Details` action, row lifecycle actions sit near the left side of the row, and card usage can be undone from both the record-usage flow and row/detail actions.
 - Further tightened the Cards table for daily use: Remaining now appears immediately after Status, the dedicated Reservation column is removed, and the default Cards query uses `activeOnly=true` so sold, used-up, and void cards are hidden until a Status filter is selected.
+- Added passkey convenience unlock: users can add/delete passkeys from Settings after unlocking, then use a registered passkey from the locked screen. The unlock secret and recovery codes remain the fallback recovery path.
+- Fixed dashboard money logic so active remaining, active cost basis, sold proceeds, and realized P&L come from a server-side inventory summary instead of the currently visible Cards table rows.
+- Fixed duplicate-looking Deal filter options by grouping normalized duplicate deal names and filtering duplicate groups by `dealName`, so repeated `Bulk Import` deals no longer appear as indistinguishable select entries.
 
 ## Verification
 
@@ -51,6 +54,15 @@ Status: Release 5 complete
 - `npm run test:release5-acceptance` passed.
 - `npm run test:e2e:release5` passed.
 - `E2E_CLIENT_PORT=5174 E2E_API_PORT=3002 npm run test:e2e` passed.
+
+Latest verification on 2026-06-01 for passkeys, dashboard aggregate metrics, and grouped Deal filters:
+
+- `npm run lint`
+- `npm run typecheck -- --pretty false`
+- `npm test`
+- `npm run build`
+- `npm run test:e2e`
+- `git diff --check`
 
 ## AI Import Rework Verification
 

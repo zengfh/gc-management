@@ -50,6 +50,7 @@ NODE_ENV=production
 PORT=3001
 HOST=127.0.0.1
 SESSION_SECRET=<long-random-secret>
+GC_PASSKEY_WRAP_SECRET=<long-random-secret-stable-across-session-secret-rotation>
 GC_DB_PATH=/var/lib/gc-management/gcmanager.db
 APP_ORIGIN=https://giftcards.example.com
 GC_SERVE_STATIC=true
@@ -84,6 +85,8 @@ Expiration notifications are sent to active owner/admin users with email address
 After SMTP is configured, use Settings -> Data Operations -> Send expiration email test to verify delivery from the browser. The test sends through the same configured mail transport but does not require a card to be near expiration.
 
 Temporary SSH-tunnel testing without TLS can set `GC_SESSION_COOKIE_SECURE=false` and use an `APP_ORIGIN` such as `http://localhost:5180,http://127.0.0.1:5180`. Do not use that setting for a public HTTPS deployment.
+
+Passkey login requires a secure browser context, so production should use HTTPS on the configured `APP_ORIGIN`. Set `GC_PASSKEY_WRAP_SECRET` before registering passkeys; if it is omitted, passkeys use `SESSION_SECRET` as the wrap secret and can be invalidated by session-secret rotation.
 
 ## AI Model Refresh
 

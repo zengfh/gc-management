@@ -108,4 +108,4 @@ Do not run multi-instance deployments yet. `GC_DEPLOYMENT_MODE=multi-instance` f
 - The process memory contains decrypted key material while a user session is unlocked.
 - Browser compromise, host compromise, or leaked backups can expose sensitive value.
 - Commercial launch still needs legal/privacy review, compliance review, and independent security assessment.
-- MFA/passkey support and true multi-tenant isolation remain future requirements before broad third-party use.
+- Passkey convenience unlock exists for private use, but third-party product use still needs formal MFA policy, account recovery policy, and true multi-tenant isolation.

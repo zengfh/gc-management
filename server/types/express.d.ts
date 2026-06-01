@@ -25,5 +25,11 @@ declare module 'express-session' {
     email?: string | null;
     displayName?: string | null;
     csrfToken?: string;
+    webauthn?: {
+      type: 'registration' | 'authentication';
+      challenge: string;
+      userId?: number;
+      expiresAt: string;
+    };
   }
 }

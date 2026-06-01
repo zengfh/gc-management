@@ -49,7 +49,7 @@ This is now safer for a trusted small team on one account:
 
 Do not market this as a general multi-tenant product until these are done:
 
-- MFA or passkey support for owner/admin accounts.
+- Formal MFA policy beyond the private-use passkey convenience unlock.
 - Email delivery for invites and security notifications.
 - Email verification before account recovery or sensitive account changes.
 - True multi-tenant account isolation and tenant lifecycle.

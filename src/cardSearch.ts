@@ -28,6 +28,7 @@ export function cardSearchQuery(criteria: CardSearchCriteria): string {
     ['brand', criteriaValue(criteria.brand)],
     ['source', criteriaValue(criteria.source)],
     ['dealId', criteriaValue(criteria.dealId)],
+    ['dealName', criteriaValue(criteria.dealName)],
     ['expiresBefore', criteriaValue(criteria.expiresBefore)],
     ['text', criteriaValue(criteria.text)],
     ['sortBy', criteriaValue(criteria.sortBy)],

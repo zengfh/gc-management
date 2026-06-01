@@ -24,6 +24,8 @@
     "test:e2e:release5": "E2E_CLIENT_PORT=5174 E2E_API_PORT=3002 playwright test e2e/release5-acceptance.spec.ts"
   },
   "dependencies": {
+    "@simplewebauthn/browser": "^13.3.0",
+    "@simplewebauthn/server": "^13.3.1",
     "@tanstack/react-query": "^5.90.12",
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^12.5.0",

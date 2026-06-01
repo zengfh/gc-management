@@ -463,10 +463,11 @@ Release 5.1 inventory UX refinements:
 
 - The dashboard prioritizes operational metrics first: expiring in 30 days, active remaining balance, prepaid cash balance, and reserved balance.
 - Every top-priority dashboard metric is clickable and opens the Cards tab with the matching filter applied.
-- Secondary dashboard metrics remain visible but visually lower-priority: cost basis, gross margin, sold proceeds, realized P&L, available face, in-use remaining, stale reservations, and tracked cards.
+- Secondary dashboard metrics remain visible but visually lower-priority: cost basis, gross margin, sold proceeds, realized P&L, available face, in-use remaining, stale reservations, and tracked cards. These metrics must come from server aggregate summary data, not from the current Cards table rows, so sold proceeds and active cost basis remain correct when the Cards tab is filtered.
 - Dashboard card-detail tables are removed. Detail inspection happens from the Cards tab or dashboard alert/activity items.
 - Dashboard lower sections show alerts for active cards expiring soon and recent card activity.
 - Cards tab includes a card-type filter and a prepaid cash-card focus section for Visa/Mastercard/Amex/Discover-style cards.
+- Cards tab Deal filter groups duplicate display names, e.g. several `Bulk Import` deals appear as one option with a count and filter by normalized deal name.
 - Cards tab supports selected-row bulk lifecycle actions for reserve, use remaining balance, sell remaining balance, and void. Bulk edit remains out of scope.
 - Cards tab supports tri-state column sorting from the table header for status, brand, expiration, face value, remaining balance, and updated date. Header arrows must communicate default, ascending, and descending state.
 - Cards tab brand filter uses the same substring-matching hint behavior as Add Deal. Suggestions come from the reference index and current card-page values so users can select indexed brands while typing.
@@ -477,6 +478,12 @@ Release 5.1 inventory UX refinements:
 - Cards tab defaults to the `activeOnly=true` filter so sold, used-up, and void cards do not clutter the everyday working list. Terminal cards can still be found by choosing their Status filter.
 - Remaining balance is placed immediately after Status in the cards table.
 - Use actions are undoable from the record-usage panel, from the row-level `Undo use` action for reversible usage, and from Card Detail usage history.
+
+### 7.10.2 Passkey Settings UX
+
+- The locked screen includes a secondary `Use passkey` action alongside unlock-secret login.
+- Settings includes a Passkeys section with registered count, add-passkey flow, optional passkey name, list/refresh, and delete.
+- Passkey copy must state that unlock secret and recovery codes remain the fallback.
 
 ### 7.11 CSV Import
 

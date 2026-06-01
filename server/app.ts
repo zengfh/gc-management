@@ -206,7 +206,14 @@ export function createApp({ db, logger = console, serveStatic, staticDir = defau
   app.use(createRequestLogger({ logger }));
   app.use(
     csrfProtection({
-      exemptPaths: ['/api/auth/setup', '/api/auth/login', '/api/auth/accept-invite', '/api/auth/recover'],
+      exemptPaths: [
+        '/api/auth/setup',
+        '/api/auth/login',
+        '/api/auth/passkeys/login/options',
+        '/api/auth/passkeys/login/verify',
+        '/api/auth/accept-invite',
+        '/api/auth/recover',
+      ],
     }),
   );
 

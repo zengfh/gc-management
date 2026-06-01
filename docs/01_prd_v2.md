@@ -125,6 +125,7 @@ A redacted, append-only record of important actions.
 | AUTH-03 | Logout clears session and encrypted-data access | P0 | After logout, protected API calls return 401; sensitive UI data is cleared |
 | AUTH-04 | Server restart requires re-login | P0 | API reports locked state until user authenticates again |
 | AUTH-05 | Change unlock secret re-wraps DEK without rewriting card data | P1 | Existing cards decrypt after change; old secret no longer works |
+| AUTH-06 | User can register and use passkeys for convenience unlock | P1 | A passkey can be registered from Settings after unlock; the locked screen can unlock with a registered passkey; unlock secret and recovery codes remain required fallback paths |
 
 ### 8.2 Deals
 
@@ -141,7 +142,7 @@ A redacted, append-only record of important actions.
 | ID | Requirement | Priority | Acceptance Criteria |
 |---|---|---:|---|
 | CARD-01 | User can create merchant and prepaid cards | P0 | Required fields are validated; money is stored as integer cents; credential profile fields are normalized/encrypted according to profile |
-| CARD-02 | User can list cards with pagination, filters, and sorting | P0 | Cards defaults to active inventory only, excluding sold, used-up, and void cards until a status filter is selected; status, card type, brand, deal, expiration, credential, and text filters work; list columns prioritize card identity, status, remaining value, actions, credential summary, expiration, face, and updated date; source, cost, and reservation metadata remain available in card detail |
+| CARD-02 | User can list cards with pagination, filters, and sorting | P0 | Cards defaults to active inventory only, excluding sold, used-up, and void cards until a status filter is selected; status, card type, brand, deal, expiration, credential, and text filters work; duplicate deal names are grouped in the Deal filter and filter by normalized deal name; list columns prioritize card identity, status, remaining value, actions, credential summary, expiration, face, and updated date; source, cost, and reservation metadata remain available in card detail |
 | CARD-03 | User can view a card detail page | P0 | Detail shows card data, masked credentials, transactions, usages, audit timeline, and the primary edit surface for editable metadata |
 | CARD-04 | User can edit allowed fields | P0 | Brand, card type, network, values, expiration, format, source, and notes can be edited from detail when status allows; terminal cards allow notes only; changes are audited |
 | CARD-05 | System prevents duplicate active cards when indexed primary credential and brand match | P0 | Normalized code/number/barcode variants match; conflict is surfaced clearly |
@@ -212,7 +213,7 @@ Allowed statuses:
 
 | ID | Requirement | Priority | Acceptance Criteria |
 |---|---|---:|---|
-| DASH-01 | Dashboard summarizes inventory value | P1 | Shows available/reserved/in-use face value, remaining balance, cost basis, and counts |
+| DASH-01 | Dashboard summarizes inventory value | P1 | Shows available/reserved/in-use face value, remaining balance, cost basis, sold proceeds, realized P&L, and counts from server-side aggregate data that is independent of the current Cards tab filter |
 | DASH-02 | Dashboard highlights expiring cards | P1 | Shows cards expiring within configurable windows |
 | DASH-03 | Dashboard highlights anomalies | P2 | Duplicate candidates, cards with missing required metadata, and stale reservations are surfaced |
 

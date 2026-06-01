@@ -326,6 +326,53 @@ describe('card routes', () => {
     ]);
   }, 45_000);
 
+  it('filters duplicate-named deals by normalized deal name', async () => {
+    const csrfToken = await setupOwner();
+
+    const firstBulk = await postWithCsrf('/api/deals', csrfToken).send({
+      name: 'Bulk Import',
+      source: 'CSV',
+      totalCostCents: 4_500,
+      cards: [
+        sampleCard({
+          brand: 'Target',
+          cardNumber: '4111 1111 1111 1111',
+        }),
+      ],
+    });
+    const secondBulk = await postWithCsrf('/api/deals', csrfToken).send({
+      name: 'bulk import',
+      source: 'AI',
+      totalCostCents: 4_500,
+      cards: [
+        sampleCard({
+          brand: 'Amazon',
+          cardNumber: '4222 2222 2222 2222',
+        }),
+      ],
+    });
+    await postWithCsrf('/api/deals', csrfToken).send({
+      name: 'Manual Add',
+      source: 'Manual',
+      totalCostCents: 4_500,
+      cards: [
+        sampleCard({
+          brand: 'Best Buy',
+          cardNumber: '4333 3333 3333 3333',
+        }),
+      ],
+    });
+
+    const filtered = await agent.get('/api/cards').query({ dealName: 'BULK IMPORT', sortBy: 'brand', sortDir: 'asc' });
+
+    expect(filtered.status).toBe(200);
+    expect(filtered.body.data.map((card) => card.id)).toEqual([
+      secondBulk.body.data.cards[0].id,
+      firstBulk.body.data.cards[0].id,
+    ]);
+    expect(filtered.body.page.total).toBe(2);
+  }, 45_000);
+
   it('returns card detail with redacted audit history', async () => {
     const csrfToken = await setupOwner();
     const createResponse = await postWithCsrf('/api/cards', csrfToken).send({
@@ -488,6 +535,15 @@ describe('card routes', () => {
       status: 'sold',
       latestSalePriceCents: 4_800,
     });
+    expect(soldListResponse.body.summary).toMatchObject({
+      activeRemainingCents: 0,
+      activeCostBasisCents: 0,
+      soldProceedsCents: 4_800,
+      soldCostBasisCents: 4_500,
+      realizedProfitCents: 300,
+      soldCards: 1,
+      trackedCards: 1,
+    });
 
     const duplicateSell = await postWithCsrf(`/api/cards/${cardId}/sell`, csrfToken).send({
       salePriceCents: 4_800,
@@ -513,6 +569,12 @@ describe('card routes', () => {
       id: cardId,
       status: 'available',
       latestSalePriceCents: null,
+    });
+    expect(restoredListResponse.body.summary).toMatchObject({
+      activeRemainingCents: 5_000,
+      activeCostBasisCents: 4_500,
+      soldProceedsCents: 0,
+      soldCards: 0,
     });
     expect(undoResponse.body.data.transactions.map((transaction) => transaction.type)).toEqual([
       'sale_reversal',

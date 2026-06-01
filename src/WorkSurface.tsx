@@ -55,6 +55,7 @@ import {
   ChangeUnlockSecretForm,
   DataOperationsPanel,
   DataPolicyForm,
+  PasskeyPanel,
   RecoveryCodesPanel,
   SupportPolicyForm,
   UserAdminPanel,
@@ -68,7 +69,7 @@ import {
   DealsTable,
   Metric,
 } from './tableComponents';
-import type { AuthState, Card, CardSearchCriteria, Deal, RevealedCredentials, Usage } from '../shared/domain';
+import type { AuthState, Card, CardInventorySummary, CardSearchCriteria, Deal, RevealedCredentials, Usage } from '../shared/domain';
 
 const navItems: Array<{ id: ViewId; label: string; icon: LucideIcon }> = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -111,12 +112,57 @@ function unfilteredCardCriteria(): CardSearchCriteria {
     brand: '',
     source: '',
     dealId: '',
+    dealName: '',
     expiresBefore: '',
     text: '',
     sortBy: '',
     sortDir: '',
     limit: '',
     offset: 0,
+  };
+}
+
+function summarizeCards(cards: Card[]): CardInventorySummary {
+  const activeCards = cards.filter((card) => ['available', 'reserved', 'in_use'].includes(card.status));
+  const soldCards = cards.filter((card) => card.status === 'sold');
+  const activeRemainingCents = activeCards.reduce((sum, card) => sum + card.remainingBalanceCents, 0);
+  const activeCostBasisCents = activeCards.reduce((sum, card) => sum + card.purchaseCostCents, 0);
+  const soldProceedsCents = soldCards.reduce((sum, card) => sum + (card.latestSalePriceCents || 0), 0);
+  const soldCostBasisCents = soldCards.reduce((sum, card) => sum + card.purchaseCostCents, 0);
+
+  return {
+    activeRemainingCents,
+    activeCostBasisCents,
+    activeGrossMarginCents: activeRemainingCents - activeCostBasisCents,
+    availableFaceCents: cards
+      .filter((card) => card.status === 'available')
+      .reduce((sum, card) => sum + card.faceValueCents, 0),
+    reservedRemainingCents: cards
+      .filter((card) => card.status === 'reserved')
+      .reduce((sum, card) => sum + card.remainingBalanceCents, 0),
+    inUseRemainingCents: cards
+      .filter((card) => card.status === 'in_use')
+      .reduce((sum, card) => sum + card.remainingBalanceCents, 0),
+    soldProceedsCents,
+    soldCostBasisCents,
+    realizedProfitCents: soldProceedsCents - soldCostBasisCents,
+    expiringSoonRemainingCents: activeCards
+      .filter((card) => isWithinNextDays(card.expirationDate, 30))
+      .reduce((sum, card) => sum + card.remainingBalanceCents, 0),
+    prepaidRemainingCents: activeCards
+      .filter((card) => card.cardType === 'prepaid')
+      .reduce((sum, card) => sum + card.remainingBalanceCents, 0),
+    staleReservationCount: cards.filter(
+      (card) => card.status === 'reserved' && isBeforeToday(card.reservedUntil),
+    ).length,
+    trackedCards: cards.length,
+    activeCards: activeCards.filter((card) => card.remainingBalanceCents > 0).length,
+    availableCards: cards.filter((card) => card.status === 'available').length,
+    reservedCards: cards.filter((card) => card.status === 'reserved').length,
+    inUseCards: cards.filter((card) => card.status === 'in_use').length,
+    soldCards: soldCards.length,
+    usedUpCards: cards.filter((card) => card.status === 'used_up').length,
+    voidCards: cards.filter((card) => card.status === 'void').length,
   };
 }
 
@@ -245,6 +291,7 @@ export function WorkSurface({
   cards,
   cardsPage,
   cardCriteria,
+  cardSummary,
   deals,
   auditEvents,
   auditLoading,
@@ -296,6 +343,9 @@ export function WorkSurface({
   onImportBackup,
   onChangeUnlockSecret,
   onGenerateRecoveryCodes,
+  onLoadPasskeys,
+  onRegisterPasskey,
+  onDeletePasskey,
   onLoadReferenceValues,
   onUpsertReferenceValues,
   onCreateDeal,
@@ -351,29 +401,20 @@ export function WorkSurface({
     ...(features || {}),
   };
   const activeCards = cards.filter((card) => ['available', 'reserved', 'in_use'].includes(card.status));
-  const soldCards = cards.filter((card) => card.status === 'sold');
-  const activeRemaining = activeCards.reduce((sum, card) => sum + card.remainingBalanceCents, 0);
-  const activeCostBasis = activeCards.reduce((sum, card) => sum + card.purchaseCostCents, 0);
-  const availableFace = cards
-    .filter((card) => card.status === 'available')
-    .reduce((sum, card) => sum + card.faceValueCents, 0);
-  const reservedRemaining = cards
-    .filter((card) => card.status === 'reserved')
-    .reduce((sum, card) => sum + card.remainingBalanceCents, 0);
-  const inUseRemaining = cards
-    .filter((card) => card.status === 'in_use')
-    .reduce((sum, card) => sum + card.remainingBalanceCents, 0);
-  const soldProceeds = soldCards.reduce((sum, card) => sum + (card.latestSalePriceCents || 0), 0);
-  const soldCostBasis = soldCards.reduce((sum, card) => sum + card.purchaseCostCents, 0);
-  const activeGrossMargin = activeRemaining - activeCostBasis;
-  const realizedProfit = soldProceeds - soldCostBasis;
+  const dashboardSummary = cardSummary || summarizeCards(cards);
+  const activeRemaining = dashboardSummary.activeRemainingCents;
+  const activeCostBasis = dashboardSummary.activeCostBasisCents;
+  const availableFace = dashboardSummary.availableFaceCents;
+  const reservedRemaining = dashboardSummary.reservedRemainingCents;
+  const inUseRemaining = dashboardSummary.inUseRemainingCents;
+  const soldProceeds = dashboardSummary.soldProceedsCents;
+  const activeGrossMargin = dashboardSummary.activeGrossMarginCents;
+  const realizedProfit = dashboardSummary.realizedProfitCents;
   const expiringSoonCards = activeCards.filter((card) => isWithinNextDays(card.expirationDate, 30));
-  const expiringSoonRemaining = expiringSoonCards.reduce((sum, card) => sum + card.remainingBalanceCents, 0);
+  const expiringSoonRemaining = dashboardSummary.expiringSoonRemainingCents;
   const prepaidCards = activeCards.filter((card) => card.cardType === 'prepaid');
-  const prepaidRemaining = prepaidCards.reduce((sum, card) => sum + card.remainingBalanceCents, 0);
-  const staleReservationCount = cards.filter(
-    (card) => card.status === 'reserved' && isBeforeToday(card.reservedUntil),
-  ).length;
+  const prepaidRemaining = dashboardSummary.prepaidRemainingCents;
+  const staleReservationCount = dashboardSummary.staleReservationCount;
   const selectedCards = cards.filter((card) => selectedCardIds.has(String(card.id)));
 
   const primaryMetrics = [
@@ -391,7 +432,7 @@ export function WorkSurface({
     { label: 'Available face', value: formatMoney(availableFace), icon: PackageCheck },
     { label: 'In-use remaining', value: formatMoney(inUseRemaining), icon: CreditCard },
     { label: 'Stale reservations', value: String(staleReservationCount), icon: PackageCheck },
-    { label: 'Tracked cards', value: String(cards.length), icon: CreditCard },
+    { label: 'Tracked cards', value: String(dashboardSummary.trackedCards), icon: CreditCard },
   ];
 
   async function activateView(view: ViewId) {
@@ -527,7 +568,14 @@ export function WorkSurface({
 
   async function goToCards(criteria: CardSearchCriteria = {}) {
     setActiveView('cards');
-    await searchCardsAndHideCredentials(criteria);
+    const nextCriteria = {
+      ...unfilteredCardCriteria(),
+      ...criteria,
+    };
+    if (nextCriteria.status) {
+      nextCriteria.activeOnly = '';
+    }
+    await searchCardsAndHideCredentials(nextCriteria);
   }
 
   function toggleCardSelected(cardId: string, checked: boolean) {
@@ -1055,6 +1103,15 @@ export function WorkSurface({
               <section className="backup-block">
                 <h3>Unlock Secret</h3>
                 <ChangeUnlockSecretForm onChangeUnlockSecret={onChangeUnlockSecret} />
+              </section>
+              <section className="backup-block">
+                <h3>Passkeys</h3>
+                <PasskeyPanel
+                  passkeyCount={auth.passkeys?.count}
+                  onLoadPasskeys={onLoadPasskeys}
+                  onRegisterPasskey={onRegisterPasskey}
+                  onDeletePasskey={onDeletePasskey}
+                />
               </section>
             </div>
           </section>

@@ -29,6 +29,7 @@ import type {
   ApiResponse,
   Card,
   CardDetail,
+  CardInventorySummary,
   CardSearchCriteria,
   Deal,
   DealDetail,
@@ -38,6 +39,10 @@ import type {
 interface InventoryControllerOptions {
   csrfToken: () => string;
 }
+
+type CardListResponse = ApiResponse<Card[]> & {
+  summary?: CardInventorySummary;
+};
 
 const activeCardStatuses = new Set(['available', 'reserved', 'in_use']);
 
@@ -80,6 +85,7 @@ export function useInventoryController({ csrfToken }: InventoryControllerOptions
   const [cards, setCards] = useState<Card[]>([]);
   const [cardsPage, setCardsPage] = useState(defaultPage);
   const [cardCriteria, setCardCriteria] = useState<CardSearchCriteria>(defaultCardCriteria);
+  const [cardSummary, setCardSummary] = useState<CardInventorySummary | null>(null);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -87,12 +93,13 @@ export function useInventoryController({ csrfToken }: InventoryControllerOptions
     setLoading(true);
     try {
       const [cardsResponse, dealsResponse] = await Promise.all([
-        apiFetch<ApiResponse<Card[]>>(`/api/cards${cardSearchQuery(defaultCardCriteria)}`),
+        apiFetch<CardListResponse>(`/api/cards${cardSearchQuery(defaultCardCriteria)}`),
         apiFetch<ApiResponse<Deal[]>>('/api/deals'),
       ]);
       setCards(cardsResponse.data || []);
       setCardsPage(cardsResponse.page || defaultPage);
       setCardCriteria(defaultCardCriteria);
+      setCardSummary(cardsResponse.summary || null);
       setDeals(dealsResponse.data || []);
     } finally {
       setLoading(false);
@@ -103,6 +110,7 @@ export function useInventoryController({ csrfToken }: InventoryControllerOptions
     setCards([]);
     setCardsPage(defaultPage);
     setCardCriteria(defaultCardCriteria);
+    setCardSummary(null);
     setDeals([]);
   }, []);
 
@@ -111,10 +119,11 @@ export function useInventoryController({ csrfToken }: InventoryControllerOptions
     const query = cardSearchQuery(nextCriteria);
     setLoading(true);
     try {
-      const response = await apiFetch<ApiResponse<Card[]>>(`/api/cards${query}`);
+      const response = await apiFetch<CardListResponse>(`/api/cards${query}`);
       setCards(response.data || []);
       setCardsPage(response.page || defaultPage);
       setCardCriteria(nextCriteria);
+      setCardSummary(response.summary || null);
     } finally {
       setLoading(false);
     }
@@ -163,6 +172,7 @@ export function useInventoryController({ csrfToken }: InventoryControllerOptions
     });
     setCards((current) => mergeCards(current, response.data.cards));
     setCardsPage((current) => incrementPageTotal(current, response.data.cards.length));
+    setCardSummary(null);
     return response;
   }
 
@@ -186,6 +196,7 @@ export function useInventoryController({ csrfToken }: InventoryControllerOptions
     });
     setDeals((current) => upsertDeal(current, response.data.deal));
     setCards((current) => mergeCards(current, response.data.cards));
+    setCardSummary(null);
   }
 
   async function dealArchiveTransition(dealId: string, action: 'archive' | 'unarchive', includeArchived: boolean) {
@@ -216,6 +227,7 @@ export function useInventoryController({ csrfToken }: InventoryControllerOptions
       csrfToken: csrfToken(),
     });
     setCards((current) => replaceCardForCurrentCriteria(current, response.data.card, cardCriteria));
+    setCardSummary(null);
     return response;
   }
 
@@ -226,6 +238,7 @@ export function useInventoryController({ csrfToken }: InventoryControllerOptions
       csrfToken: csrfToken(),
     });
     setCards((current) => replaceCardForCurrentCriteria(current, response.data.card, cardCriteria));
+    setCardSummary(null);
     return response;
   }
 
@@ -236,6 +249,7 @@ export function useInventoryController({ csrfToken }: InventoryControllerOptions
       csrfToken: csrfToken(),
     });
     setCards((current) => replaceCardForCurrentCriteria(current, response.data, cardCriteria));
+    setCardSummary(null);
     return response;
   }
 
@@ -245,6 +259,7 @@ export function useInventoryController({ csrfToken }: InventoryControllerOptions
       csrfToken: csrfToken(),
     });
     setCards((current) => removeCard(current, cardId));
+    setCardSummary(null);
   }
 
   async function sellCard(cardId: string, payload: CardSalePayload) {
@@ -258,6 +273,7 @@ export function useInventoryController({ csrfToken }: InventoryControllerOptions
         ...response.data.card,
         latestSalePriceCents: payload.salePriceCents,
       }, cardCriteria));
+    setCardSummary(null);
   }
 
   async function undoSale(cardId: string, payload: ApiPayload) {
@@ -271,6 +287,7 @@ export function useInventoryController({ csrfToken }: InventoryControllerOptions
         ...response.data.card,
         latestSalePriceCents: null,
       }, cardCriteria));
+    setCardSummary(null);
   }
 
   async function voidCard(cardId: string, payload: ApiPayload) {
@@ -280,6 +297,7 @@ export function useInventoryController({ csrfToken }: InventoryControllerOptions
       csrfToken: csrfToken(),
     });
     setCards((current) => replaceCardForCurrentCriteria(current, response.data.card, cardCriteria));
+    setCardSummary(null);
   }
 
   async function cardTransition(cardId: string, action: 'reserve' | 'unreserve', payload: ApiPayload = {}) {
@@ -289,12 +307,14 @@ export function useInventoryController({ csrfToken }: InventoryControllerOptions
       csrfToken: csrfToken(),
     });
     setCards((current) => replaceCardForCurrentCriteria(current, response.data, cardCriteria));
+    setCardSummary(null);
   }
 
   return {
     cards,
     cardsPage,
     cardCriteria,
+    cardSummary,
     deals,
     loading,
     loadInventory,

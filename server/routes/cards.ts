@@ -48,6 +48,30 @@ interface CountRow {
   count: number;
 }
 
+interface CardInventorySummaryBaseRow {
+  activeRemainingCents: number | null;
+  activeCostBasisCents: number | null;
+  availableFaceCents: number | null;
+  reservedRemainingCents: number | null;
+  inUseRemainingCents: number | null;
+  expiringSoonRemainingCents: number | null;
+  prepaidRemainingCents: number | null;
+  staleReservationCount: number | null;
+  trackedCards: number | null;
+  activeCards: number | null;
+  availableCards: number | null;
+  reservedCards: number | null;
+  inUseCards: number | null;
+  soldCards: number | null;
+  usedUpCards: number | null;
+  voidCards: number | null;
+}
+
+interface CardInventorySoldSummaryRow {
+  soldProceedsCents: number | null;
+  soldCostBasisCents: number | null;
+}
+
 interface ActivityCountRow {
   transactionCount: number;
   usageCount: number;
@@ -400,6 +424,13 @@ const voidCardSchema = z
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+function dateOnlyInDays(days: number): string {
+  const date = new Date();
+  date.setUTCHours(0, 0, 0, 0);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
 }
 
 function zodFieldErrors(error: z.ZodError) {
@@ -1011,6 +1042,109 @@ function toAuditResponse(row: AuditRow) {
   };
 }
 
+function cardInventorySummary(db: Database.Database, auth: AuthContext) {
+  const today = dateOnlyInDays(0);
+  const expiresBy = dateOnlyInDays(30);
+  const base = db
+    .prepare(
+      `SELECT
+          COALESCE(SUM(CASE WHEN status IN ('available', 'reserved', 'in_use') THEN remainingBalanceCents ELSE 0 END), 0) AS activeRemainingCents,
+          COALESCE(SUM(CASE WHEN status IN ('available', 'reserved', 'in_use') THEN purchaseCostCents ELSE 0 END), 0) AS activeCostBasisCents,
+          COALESCE(SUM(CASE WHEN status = 'available' THEN faceValueCents ELSE 0 END), 0) AS availableFaceCents,
+          COALESCE(SUM(CASE WHEN status = 'reserved' THEN remainingBalanceCents ELSE 0 END), 0) AS reservedRemainingCents,
+          COALESCE(SUM(CASE WHEN status = 'in_use' THEN remainingBalanceCents ELSE 0 END), 0) AS inUseRemainingCents,
+          COALESCE(SUM(CASE
+            WHEN status IN ('available', 'reserved', 'in_use')
+             AND remainingBalanceCents > 0
+             AND expirationDate IS NOT NULL
+             AND expirationDate >= ?
+             AND expirationDate <= ?
+            THEN remainingBalanceCents ELSE 0 END), 0) AS expiringSoonRemainingCents,
+          COALESCE(SUM(CASE
+            WHEN status IN ('available', 'reserved', 'in_use')
+             AND remainingBalanceCents > 0
+             AND cardType = 'prepaid'
+            THEN remainingBalanceCents ELSE 0 END), 0) AS prepaidRemainingCents,
+          COALESCE(SUM(CASE
+            WHEN status = 'reserved'
+             AND reservedUntil IS NOT NULL
+             AND reservedUntil < ?
+            THEN 1 ELSE 0 END), 0) AS staleReservationCount,
+          COUNT(*) AS trackedCards,
+          COALESCE(SUM(CASE WHEN status IN ('available', 'reserved', 'in_use') AND remainingBalanceCents > 0 THEN 1 ELSE 0 END), 0) AS activeCards,
+          COALESCE(SUM(CASE WHEN status = 'available' THEN 1 ELSE 0 END), 0) AS availableCards,
+          COALESCE(SUM(CASE WHEN status = 'reserved' THEN 1 ELSE 0 END), 0) AS reservedCards,
+          COALESCE(SUM(CASE WHEN status = 'in_use' THEN 1 ELSE 0 END), 0) AS inUseCards,
+          COALESCE(SUM(CASE WHEN status = 'sold' THEN 1 ELSE 0 END), 0) AS soldCards,
+          COALESCE(SUM(CASE WHEN status = 'used_up' THEN 1 ELSE 0 END), 0) AS usedUpCards,
+          COALESCE(SUM(CASE WHEN status = 'void' THEN 1 ELSE 0 END), 0) AS voidCards
+       FROM cards
+       WHERE accountId = ?`,
+    )
+    .get(today, expiresBy, today, auth.accountId) as CardInventorySummaryBaseRow;
+  const sold = db
+    .prepare(
+      `WITH sold_cards AS (
+         SELECT cards.id,
+                cards.purchaseCostCents,
+                (
+                  SELECT sale.salePriceCents
+                  FROM transactions AS sale
+                  WHERE sale.accountId = cards.accountId
+                    AND sale.cardId = cards.id
+                    AND sale.type = 'sale'
+                    AND NOT EXISTS (
+                      SELECT 1
+                      FROM transactions AS reversal
+                      WHERE reversal.accountId = sale.accountId
+                        AND reversal.cardId = sale.cardId
+                        AND reversal.type = 'sale_reversal'
+                        AND reversal.id > sale.id
+                    )
+                  ORDER BY sale.id DESC
+                  LIMIT 1
+                ) AS latestSalePriceCents
+         FROM cards
+         WHERE accountId = ?
+           AND status = 'sold'
+       )
+       SELECT
+          COALESCE(SUM(COALESCE(latestSalePriceCents, 0)), 0) AS soldProceedsCents,
+          COALESCE(SUM(purchaseCostCents), 0) AS soldCostBasisCents
+       FROM sold_cards`,
+    )
+    .get(auth.accountId) as CardInventorySoldSummaryRow;
+
+  const activeRemainingCents = Number(base.activeRemainingCents || 0);
+  const activeCostBasisCents = Number(base.activeCostBasisCents || 0);
+  const soldProceedsCents = Number(sold.soldProceedsCents || 0);
+  const soldCostBasisCents = Number(sold.soldCostBasisCents || 0);
+
+  return {
+    activeRemainingCents,
+    activeCostBasisCents,
+    activeGrossMarginCents: activeRemainingCents - activeCostBasisCents,
+    availableFaceCents: Number(base.availableFaceCents || 0),
+    reservedRemainingCents: Number(base.reservedRemainingCents || 0),
+    inUseRemainingCents: Number(base.inUseRemainingCents || 0),
+    soldProceedsCents,
+    soldCostBasisCents,
+    realizedProfitCents: soldProceedsCents - soldCostBasisCents,
+    expiringSoonRemainingCents: Number(base.expiringSoonRemainingCents || 0),
+    prepaidRemainingCents: Number(base.prepaidRemainingCents || 0),
+    staleReservationCount: Number(base.staleReservationCount || 0),
+    trackedCards: Number(base.trackedCards || 0),
+    activeCards: Number(base.activeCards || 0),
+    availableCards: Number(base.availableCards || 0),
+    reservedCards: Number(base.reservedCards || 0),
+    inUseCards: Number(base.inUseCards || 0),
+    soldCards: Number(base.soldCards || 0),
+    usedUpCards: Number(base.usedUpCards || 0),
+    voidCards: Number(base.voidCards || 0),
+    updatedAt: nowIso(),
+  };
+}
+
 function pageResponse<T>(data: T[], { limit, offset, total }: { limit: number; offset: number; total: number }) {
   return {
     data,
@@ -1134,6 +1268,20 @@ export function createCardsRouter({ db }: { db: Database.Database }) {
         params.push(dealId);
       }
 
+      const dealName = String(req.query.dealName || '').trim();
+      if (dealName) {
+        where.push(
+          `EXISTS (
+            SELECT 1
+            FROM deals
+            WHERE deals.accountId = cards.accountId
+              AND deals.id = cards.dealId
+              AND LOWER(TRIM(deals.name)) = LOWER(TRIM(?))
+          )`,
+        );
+        params.push(dealName);
+      }
+
       const expiresBefore = parseDateFilter(req.query.expiresBefore, 'expiresBefore');
       if (expiresBefore) {
         where.push('expirationDate IS NOT NULL AND expirationDate <= ?');
@@ -1222,7 +1370,17 @@ export function createCardsRouter({ db }: { db: Database.Database }) {
         )
         .all(...params, limit, offset) as CardRow[];
 
-      res.json(pageResponse(rows.map(toCardResponse), { limit, offset, total }));
+      res.json({
+        ...pageResponse(rows.map(toCardResponse), { limit, offset, total }),
+        summary: cardInventorySummary(db, req.auth),
+      });
+    }),
+  );
+
+  router.get(
+    '/summary',
+    asyncHandler(async (req, res) => {
+      res.json(objectResponse(cardInventorySummary(db, req.auth)));
     }),
   );
 

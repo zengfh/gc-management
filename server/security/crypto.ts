@@ -84,6 +84,12 @@ export function deriveBlindIndexKey(dek: Buffer): Buffer {
   );
 }
 
+export function deriveServerSecretKey(secret: string, context: string): Buffer {
+  return Buffer.from(
+    crypto.hkdfSync('sha256', Buffer.from(secret), Buffer.alloc(0), context, dekBytes),
+  );
+}
+
 export function normalizeCardNumber(input: unknown): string | null {
   return input ? String(input).replace(/\D/g, '') : null;
 }

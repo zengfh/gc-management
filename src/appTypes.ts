@@ -7,6 +7,7 @@ import type {
   BackupSettings,
   Card,
   CardDetail,
+  CardInventorySummary,
   CardSearchCriteria,
   CredentialFieldKind,
   CredentialProfile,
@@ -15,6 +16,7 @@ import type {
   DealDetail,
   FeatureFlags,
   Page,
+  PasskeyCredential,
   ReferenceValue,
   ReferenceValueState,
   RevealedCredentials,
@@ -174,6 +176,7 @@ export interface WorkSurfaceProps {
   cards: Card[];
   cardsPage: Page;
   cardCriteria: CardSearchCriteria;
+  cardSummary?: CardInventorySummary | null;
   deals: Deal[];
   auditEvents: AuditEvent[];
   auditLoading: boolean;
@@ -225,6 +228,9 @@ export interface WorkSurfaceProps {
   onImportBackup: AsyncApiHandler<ApiPayload, ApiResponse<{ summary: ImportSummary }>>;
   onChangeUnlockSecret: AsyncApiHandler<ApiPayload, ApiResponse<unknown>>;
   onGenerateRecoveryCodes: AsyncApiHandler<{ currentUnlockSecret: string }, { codes: string[]; activeCount: number }>;
+  onLoadPasskeys: () => Promise<ApiResponse<PasskeyCredential[]>>;
+  onRegisterPasskey: AsyncApiHandler<{ name?: string }, ApiResponse<{ passkey: PasskeyCredential }>>;
+  onDeletePasskey: (passkeyId: string) => Promise<ApiResponse<{ deleted: boolean; passkeyId: string }>>;
   onLoadReferenceValues: () => Promise<ReferenceValueState>;
   onUpsertReferenceValues: (values?: ReferenceValue[]) => Promise<ReferenceValue[]>;
   onCreateDeal: AsyncApiHandler<ApiPayload, unknown>;

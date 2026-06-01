@@ -1,6 +1,6 @@
 import { useState, type ChangeEvent, type FormEvent } from 'react';
-import { AlertTriangle, Bell, Download, Lock, RefreshCw, ShieldCheck } from 'lucide-react';
-import type { ApiResponse, AuthUser, DataPolicy, SupportPolicy, UserInvite } from '../shared/domain';
+import { AlertTriangle, Bell, Download, KeyRound, Lock, RefreshCw, ShieldCheck, Trash2 } from 'lucide-react';
+import type { ApiResponse, AuthUser, DataPolicy, PasskeyCredential, SupportPolicy, UserInvite } from '../shared/domain';
 import type { ApiPayload, AsyncApiHandler, CountSummary, NotificationTestSummary, PortableExportPayload } from './appTypes';
 import { errorMessage, formatDateTime, formatDisplayValue } from './display';
 import { downloadJsonFile } from './fileHelpers';
@@ -309,6 +309,124 @@ export function RecoveryCodesPanel({
         </div>
       ) : null}
     </form>
+  );
+}
+
+export function PasskeyPanel({
+  passkeyCount,
+  onLoadPasskeys,
+  onRegisterPasskey,
+  onDeletePasskey,
+}: {
+  passkeyCount?: number | undefined;
+  onLoadPasskeys: () => Promise<ApiResponse<PasskeyCredential[]>>;
+  onRegisterPasskey: AsyncApiHandler<{ name?: string }, ApiResponse<{ passkey: PasskeyCredential }>>;
+  onDeletePasskey: (passkeyId: string) => Promise<ApiResponse<{ deleted: boolean; passkeyId: string }>>;
+}) {
+  const [name, setName] = useState('This device');
+  const [passkeys, setPasskeys] = useState<PasskeyCredential[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  async function loadPasskeys() {
+    setError('');
+    setLoading(true);
+    try {
+      const response = await onLoadPasskeys();
+      setPasskeys(response.data || []);
+      setLoaded(true);
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function registerPasskey(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError('');
+    setSuccess('');
+    setSubmitting(true);
+    try {
+      const response = await onRegisterPasskey({ name: name.trim() || 'Passkey' });
+      setPasskeys((current) => [response.data.passkey, ...current.filter((item) => item.id !== response.data.passkey.id)]);
+      setLoaded(true);
+      setName('This device');
+      setSuccess('Passkey added. You can now use it from the unlock screen.');
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function deletePasskey(passkeyId: string) {
+    setError('');
+    setSuccess('');
+    setSubmitting(true);
+    try {
+      await onDeletePasskey(passkeyId);
+      setPasskeys((current) => current.filter((passkey) => passkey.id !== passkeyId));
+      setSuccess('Passkey removed.');
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="settings-form passkey-panel">
+      <p className="muted-text">
+        Registered passkeys: {passkeyCount ?? passkeys.length}. Keep your unlock secret and recovery codes as the fallback.
+      </p>
+      <form className="inline-settings-form" onSubmit={registerPasskey}>
+        <label>
+          <span>Passkey name</span>
+          <input value={name} onChange={(event) => setName(event.target.value)} />
+        </label>
+        <div className="backup-actions">
+          <button type="submit" className="primary-action" disabled={submitting}>
+            <KeyRound aria-hidden="true" size={17} />
+            {submitting ? 'Adding...' : 'Add passkey'}
+          </button>
+          <button type="button" className="secondary-action" onClick={loadPasskeys} disabled={loading || submitting}>
+            <RefreshCw aria-hidden="true" size={17} />
+            {loading ? 'Loading...' : 'Show passkeys'}
+          </button>
+        </div>
+      </form>
+      {loaded && passkeys.length > 0 ? (
+        <div className="passkey-list">
+          {passkeys.map((passkey) => (
+            <div className="passkey-item" key={passkey.id}>
+              <span>
+                <strong>{passkey.name || 'Passkey'}</strong>
+                <small>
+                  Added {formatDateTime(passkey.createdAt)} · Last used {formatDateTime(passkey.lastUsedAt)}
+                </small>
+              </span>
+              <button
+                type="button"
+                className="table-action danger"
+                onClick={() => void deletePasskey(passkey.id)}
+                disabled={submitting}
+                aria-label={`Delete ${passkey.name || 'passkey'}`}
+              >
+                <Trash2 aria-hidden="true" size={15} />
+                Delete
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {loaded && passkeys.length === 0 ? <p className="muted-text">No passkeys registered yet.</p> : null}
+      <FieldError message={error} />
+      {success ? <p className="success-copy">{success}</p> : null}
+    </div>
   );
 }
 

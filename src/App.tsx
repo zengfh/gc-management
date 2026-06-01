@@ -1,5 +1,11 @@
 import { useEffect, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
+import {
+  startAuthentication,
+  startRegistration,
+  type PublicKeyCredentialCreationOptionsJSON,
+  type PublicKeyCredentialRequestOptionsJSON,
+} from '@simplewebauthn/browser';
 import { apiFetch } from './api';
 import { SetupScreen, UnlockScreen } from './authScreens';
 import { defaultFeatureFlags } from './defaults';
@@ -17,6 +23,7 @@ import type {
   ApiResponse,
   AuthState,
   FeatureFlags,
+  PasskeyCredential,
 } from '../shared/domain';
 
 function authFeatures(auth: AuthState | null | undefined): FeatureFlags {
@@ -133,6 +140,28 @@ export default function App() {
     await inventory.loadInventory();
   }
 
+  async function handlePasskeyLogin({ email }: { email: string }) {
+    const optionsResponse = await apiFetch<ApiResponse<{ options: PublicKeyCredentialRequestOptionsJSON }>>(
+      '/api/auth/passkeys/login/options',
+      {
+        method: 'POST',
+        body: {
+          ...(email ? { email } : {}),
+        },
+      },
+    );
+    const response = await startAuthentication({ optionsJSON: optionsResponse.data.options });
+    const verifyResponse = await apiFetch<ApiResponse<AuthState>>('/api/auth/passkeys/login/verify', {
+      method: 'POST',
+      body: {
+        ...(email ? { email } : {}),
+        response,
+      },
+    });
+    setAuth(verifyResponse.data);
+    await inventory.loadInventory();
+  }
+
   async function handleAcceptInvite(payload: { email: string; inviteCode: string; unlockSecret: string }) {
     const response = await apiFetch<ApiResponse<AuthState>>('/api/auth/accept-invite', {
       method: 'POST',
@@ -147,6 +176,61 @@ export default function App() {
       method: 'POST',
       body: payload,
     });
+  }
+
+  async function handleLoadPasskeys() {
+    return apiFetch<ApiResponse<PasskeyCredential[]>>('/api/auth/passkeys');
+  }
+
+  async function handleRegisterPasskey(payload: { name?: string }) {
+    const optionsResponse = await apiFetch<ApiResponse<{ options: PublicKeyCredentialCreationOptionsJSON }>>(
+      '/api/auth/passkeys/register/options',
+      {
+        method: 'POST',
+        body: {},
+        csrfToken: authenticatedAuth().csrfToken,
+      },
+    );
+    const response = await startRegistration({ optionsJSON: optionsResponse.data.options });
+    const verifyResponse = await apiFetch<ApiResponse<{ passkey: PasskeyCredential }>>(
+      '/api/auth/passkeys/register/verify',
+      {
+        method: 'POST',
+        body: {
+          name: payload.name,
+          response,
+        },
+        csrfToken: authenticatedAuth().csrfToken,
+      },
+    );
+    setAuth((current) => current
+      ? {
+          ...current,
+          passkeys: {
+            count: (current.passkeys?.count || 0) + 1,
+          },
+        }
+      : current);
+    return verifyResponse;
+  }
+
+  async function handleDeletePasskey(passkeyId: string) {
+    const response = await apiFetch<ApiResponse<{ deleted: boolean; passkeyId: string }>>(
+      `/api/auth/passkeys/${passkeyId}`,
+      {
+        method: 'DELETE',
+        csrfToken: authenticatedAuth().csrfToken,
+      },
+    );
+    setAuth((current) => current
+      ? {
+          ...current,
+          passkeys: {
+            count: Math.max((current.passkeys?.count || 1) - 1, 0),
+          },
+        }
+      : current);
+    return response;
   }
 
   async function handleLogout() {
@@ -201,6 +285,7 @@ export default function App() {
     return (
       <UnlockScreen
         onLogin={handleLogin}
+        onPasskeyLogin={handlePasskeyLogin}
         onAcceptInvite={handleAcceptInvite}
         onRecoverAccess={handleRecoverAccess}
       />
@@ -213,6 +298,7 @@ export default function App() {
       cards={inventory.cards}
       cardsPage={inventory.cardsPage}
       cardCriteria={inventory.cardCriteria}
+      cardSummary={inventory.cardSummary}
       deals={inventory.deals}
       auditEvents={audit.auditEvents}
       auditLoading={audit.auditLoading}
@@ -264,6 +350,9 @@ export default function App() {
       onImportBackup={backup.importBackup}
       onChangeUnlockSecret={handleChangeUnlockSecret}
       onGenerateRecoveryCodes={handleGenerateRecoveryCodes}
+      onLoadPasskeys={handleLoadPasskeys}
+      onRegisterPasskey={handleRegisterPasskey}
+      onDeletePasskey={handleDeletePasskey}
       onLoadReferenceValues={referenceValues.loadReferenceValues}
       onUpsertReferenceValues={referenceValues.upsertReferenceValues}
       onCreateDeal={inventory.createDeal}

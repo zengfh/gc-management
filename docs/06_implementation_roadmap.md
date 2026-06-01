@@ -301,7 +301,7 @@ Major initiatives:
 - Postgres migration.
 - Multi-tenant account isolation.
 - RBAC.
-- MFA or stronger account security.
+- MFA or stronger account security; private-use passkey convenience unlock is implemented, but commercial MFA policy remains future work.
 - One-time invite acceptance. Completed 2026-05-14 for the single-account hosted model.
 - Recovery-code-based unlock-secret reset. Completed 2026-05-14 for the single-account hosted model.
 - Billing and subscription management.

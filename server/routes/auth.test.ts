@@ -125,6 +125,27 @@ describe('auth routes', () => {
     });
   }, 30_000);
 
+  it('exposes passkey registration options after unlock and rejects passkey login before registration', async () => {
+    const setupResponse = await setupOwner();
+    const csrfToken = setupResponse.body.data.csrfToken;
+
+    const listResponse = await agent.get('/api/auth/passkeys');
+    expect(listResponse.status).toBe(200);
+    expect(listResponse.body.data).toEqual([]);
+
+    const optionsResponse = await postWithCsrf('/api/auth/passkeys/register/options', csrfToken).send({});
+    expect(optionsResponse.status).toBe(200);
+    expect(optionsResponse.body.data.options).toMatchObject({
+      rp: expect.objectContaining({ name: 'Gift Card Manager' }),
+      challenge: expect.any(String),
+    });
+
+    await postWithCsrf('/api/auth/logout', csrfToken);
+    const loginOptions = await agent.post('/api/auth/passkeys/login/options').send({});
+    expect(loginOptions.status).toBe(401);
+    expect(loginOptions.body.error.code).toBe('PASSKEY_NOT_CONFIGURED');
+  }, 30_000);
+
   it('changes the unlock secret without rotating the data encryption key', async () => {
     const setupResponse = await setupOwner();
 

@@ -41,6 +41,19 @@ export interface AuthState {
   recoveryCodes?: {
     activeCount?: number;
   };
+  passkeys?: {
+    count?: number;
+  };
+}
+
+export interface PasskeyCredential {
+  id: string;
+  name?: string | null;
+  createdAt?: string | null;
+  lastUsedAt?: string | null;
+  transports?: string[];
+  deviceType?: string | null;
+  backedUp?: boolean;
 }
 
 export interface UserInvite {
@@ -207,6 +220,30 @@ export interface DealDetail {
   cards?: Card[];
 }
 
+export interface CardInventorySummary {
+  activeRemainingCents: number;
+  activeCostBasisCents: number;
+  activeGrossMarginCents: number;
+  availableFaceCents: number;
+  reservedRemainingCents: number;
+  inUseRemainingCents: number;
+  soldProceedsCents: number;
+  soldCostBasisCents: number;
+  realizedProfitCents: number;
+  expiringSoonRemainingCents: number;
+  prepaidRemainingCents: number;
+  staleReservationCount: number;
+  trackedCards: number;
+  activeCards: number;
+  availableCards: number;
+  reservedCards: number;
+  inUseCards: number;
+  soldCards: number;
+  usedUpCards: number;
+  voidCards: number;
+  updatedAt?: string;
+}
+
 export interface ReferenceValue {
   id?: string | number;
   type: ReferenceValueType;
@@ -236,6 +273,7 @@ export interface CardSearchCriteria {
   brand?: string;
   source?: string;
   dealId?: string;
+  dealName?: string;
   expiresBefore?: string;
   text?: string;
   sortBy?: string;

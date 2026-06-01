@@ -93,6 +93,7 @@ Recommended product copy:
 - Keep DEK in process memory only after successful login/unlock.
 - On server restart, DEK is gone and user must log in again.
 - On unlock secret change, rotate salt and rewrap DEK; card data does not need rewriting.
+- Passkey login is a convenience unlock path, not the only recovery path. Registered passkeys store the WebAuthn public key and a separate DEK copy encrypted by a stable server-side passkey wrap secret (`GC_PASSKEY_WRAP_SECRET`, falling back to `SESSION_SECRET`). If that server secret is rotated without migration, passkey unlock can fail; the unlock secret and recovery codes remain the authoritative recovery mechanisms.
 
 ### 5.2 Field Encryption
 
@@ -170,6 +171,14 @@ All authenticated state-changing endpoints require:
 - Failure returns 403 with no side effects.
 
 Sensitive export endpoints also require CSRF protection even if they primarily return data.
+
+### 7.2.1 Passkeys
+
+- Passkey registration requires an already unlocked session and CSRF protection.
+- Passkey login uses WebAuthn challenge/response and regenerates the server session before loading DEK material into memory.
+- Store only WebAuthn public key material, counters, non-sensitive transport metadata, and the server-wrapped DEK convenience copy.
+- Do not treat a passkey as secret recovery. Device/browser loss must fall back to unlock secret or one-time recovery codes.
+- Production deployments should set a stable `GC_PASSKEY_WRAP_SECRET` before users register passkeys; rotating `SESSION_SECRET` alone must not unexpectedly invalidate passkeys.
 
 ### 7.3 Reauthentication for Sensitive Actions
 

@@ -139,6 +139,8 @@ Example:
 | AUTH-011 | Integration | Multiple active users | Login requires email; disabled users cannot log in |
 | AUTH-012 | Integration | Role-based access | Operators can mutate inventory but not admin settings; viewers are read-only and cannot reveal credentials |
 | AUTH-013 | UI | Viewer session | Settings, Backup, Import, Add Deal, and credential reveal controls are hidden |
+| AUTH-014 | Integration/UI | Passkey registration options | Unlocked Settings can request WebAuthn registration options; passkey list returns only metadata, never private key material |
+| AUTH-015 | Integration/UI | Passkey login | A registered passkey verifies WebAuthn authentication, regenerates session, loads DEK memory state, and exposes normal authenticated UI |
 
 ### 7.2 CSRF and Session Security
 
@@ -188,6 +190,7 @@ Example:
 | CARD-016 | Integration | Create network prepaid from month/year expiration | List-level expiration date is populated as the first day of that month |
 | CARD-017 | UI | Compact cards list actions | Remaining appears immediately after status; source, purchase cost, and reservation column are hidden from the main Cards table; Details is an explicit row action; lifecycle actions are near the left side; source/cost/reservation metadata remain visible in Card Detail |
 | CARD-018 | UI/API | Default active Cards filter | Initial Cards load and Clear Search request `activeOnly=true`; sold, used-up, and void cards are hidden by default but can be shown by selecting their Status filter |
+| CARD-019 | UI/API | Duplicate Deal filter names | Multiple deals named `Bulk Import` render as one counted Deal filter option; selecting it queries by normalized `dealName` and returns all matching deals' cards |
 
 ### 7.4.1 Dashboard Inventory UX
 
@@ -197,6 +200,7 @@ Example:
 | DASH-002 | UI/API | Click Expiring 30d metric | Navigates to Cards and calls card search with `activeOnly=true`, `expiresBefore`, and expiration sort |
 | DASH-003 | UI/API | Click Prepaid cash metric | Navigates to Cards and calls card search with `activeOnly=true` and `cardType=prepaid` |
 | DASH-004 | UI | Dashboard lower content | Shows expiration alerts and recent activity instead of a full card-detail table |
+| DASH-005 | Integration | Dashboard summary independent of Cards filter | Sold proceeds, realized P&L, active remaining, and active cost basis come from `/api/cards` summary or `/api/cards/summary`; values stay correct when the list is active-only or prepaid-only |
 
 ### 7.5 Lifecycle and Money Accuracy
 

@@ -135,6 +135,54 @@ function referenceOptionsWithCards(
   return options;
 }
 
+function normalizeDealFilterName(value: string): string {
+  return value.trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+function dealFilterOptions(deals: Deal[]) {
+  const groups = new Map<string, { name: string; ids: string[] }>();
+  for (const deal of deals) {
+    const name = String(deal.name || '').trim() || 'Unnamed deal';
+    const key = normalizeDealFilterName(name);
+    const current = groups.get(key);
+    if (current) {
+      current.ids.push(String(deal.id));
+    } else {
+      groups.set(key, { name, ids: [String(deal.id)] });
+    }
+  }
+
+  return Array.from(groups.values())
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((group) => {
+      if (group.ids.length === 1) {
+        const id = group.ids[0] || '';
+        return {
+          value: id,
+          label: group.name,
+          dealId: id,
+          dealName: '',
+        };
+      }
+      return {
+        value: `name:${group.name}`,
+        label: `${group.name} (${group.ids.length} deals)`,
+        dealId: '',
+        dealName: group.name,
+      };
+    });
+}
+
+function parseDealFilter(value: string) {
+  if (value.startsWith('name:')) {
+    return { dealId: '', dealName: value.slice('name:'.length) };
+  }
+  if (value.startsWith('id:')) {
+    return { dealId: value.slice('id:'.length), dealName: '' };
+  }
+  return { dealId: value, dealName: '' };
+}
+
 function SortableHeader({
   field,
   label,
@@ -624,12 +672,19 @@ export function CardSearchForm({
   const [status, setStatus] = useState(initialCriteria.status || '');
   const [cardType, setCardType] = useState(initialCriteria.cardType || '');
   const [brand, setBrand] = useState(String(initialCriteria.brand || ''));
-  const [dealId, setDealId] = useState(String(initialCriteria.dealId || ''));
+  const [dealFilter, setDealFilter] = useState(
+    initialCriteria.dealName
+      ? `name:${initialCriteria.dealName}`
+      : initialCriteria.dealId
+        ? String(initialCriteria.dealId)
+        : '',
+  );
   const [expiresBefore, setExpiresBefore] = useState(String(initialCriteria.expiresBefore || ''));
   const [text, setText] = useState(String(initialCriteria.text || ''));
   const [sortValue, setSortValue] = useState(initialSortValue);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const dealOptions = dealFilterOptions(deals);
   const brandOptions = referenceOptionsWithCards(
     referenceValues?.[referenceValueTypes.cardBrand] || [],
     cards.map((card) => card.brand),
@@ -642,6 +697,7 @@ export function CardSearchForm({
     setSubmitting(true);
     const [sortBy, sortDir] = sortValue ? sortValue.split(':') : [];
     const sortCriteria = sortBy && sortDir ? { sortBy, sortDir } : {};
+    const dealCriteria = parseDealFilter(dealFilter);
     try {
       await onSearchCards({
         cardNumber,
@@ -650,7 +706,7 @@ export function CardSearchForm({
         activeOnly: status ? '' : true,
         brand,
         source: '',
-        dealId,
+        ...dealCriteria,
         expiresBefore,
         text,
         ...sortCriteria,
@@ -668,7 +724,7 @@ export function CardSearchForm({
     setStatus('');
     setCardType('');
     setBrand('');
-    setDealId('');
+    setDealFilter('');
     setExpiresBefore('');
     setText('');
     setSortValue('');
@@ -682,6 +738,7 @@ export function CardSearchForm({
         brand: '',
         source: '',
         dealId: '',
+        dealName: '',
         expiresBefore: '',
         text: '',
         sortBy: '',
@@ -735,11 +792,11 @@ export function CardSearchForm({
       />
       <label>
         <span>Deal</span>
-        <select value={dealId} onChange={(event) => setDealId(event.target.value)}>
+        <select value={dealFilter} onChange={(event) => setDealFilter(event.target.value)}>
           <option value="">All deals</option>
-          {deals.map((deal) => (
-            <option key={deal.id} value={deal.id}>
-              {deal.name}
+          {dealOptions.map((deal) => (
+            <option key={deal.value} value={deal.value}>
+              {deal.label}
             </option>
           ))}
         </select>
