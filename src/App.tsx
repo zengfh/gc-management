@@ -23,6 +23,8 @@ import type {
   ApiResponse,
   AuthState,
   FeatureFlags,
+  McpToken,
+  McpTokenSettings,
   PasskeyCredential,
 } from '../shared/domain';
 
@@ -233,6 +235,25 @@ export default function App() {
     return response;
   }
 
+  async function handleLoadMcpTokens() {
+    return apiFetch<ApiResponse<McpTokenSettings>>('/api/mcp/tokens');
+  }
+
+  async function handleCreateMcpToken(payload: ApiPayload) {
+    return apiFetch<ApiResponse<McpToken>>('/api/mcp/tokens', {
+      method: 'POST',
+      body: payload,
+      csrfToken: authenticatedAuth().csrfToken,
+    });
+  }
+
+  async function handleRevokeMcpToken(tokenId: string) {
+    return apiFetch<ApiResponse<{ revoked: boolean; tokenId: string }>>(`/api/mcp/tokens/${tokenId}`, {
+      method: 'DELETE',
+      csrfToken: authenticatedAuth().csrfToken,
+    });
+  }
+
   async function handleLogout() {
     if (auth?.csrfToken) {
       await apiFetch<ApiResponse<unknown>>('/api/auth/logout', {
@@ -353,6 +374,9 @@ export default function App() {
       onLoadPasskeys={handleLoadPasskeys}
       onRegisterPasskey={handleRegisterPasskey}
       onDeletePasskey={handleDeletePasskey}
+      onLoadMcpTokens={handleLoadMcpTokens}
+      onCreateMcpToken={handleCreateMcpToken}
+      onRevokeMcpToken={handleRevokeMcpToken}
       onLoadReferenceValues={referenceValues.loadReferenceValues}
       onUpsertReferenceValues={referenceValues.upsertReferenceValues}
       onCreateDeal={inventory.createDeal}

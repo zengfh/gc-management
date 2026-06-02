@@ -55,6 +55,7 @@ import {
   ChangeUnlockSecretForm,
   DataOperationsPanel,
   DataPolicyForm,
+  McpTokenPanel,
   PasskeyPanel,
   RecoveryCodesPanel,
   SupportPolicyForm,
@@ -346,6 +347,9 @@ export function WorkSurface({
   onLoadPasskeys,
   onRegisterPasskey,
   onDeletePasskey,
+  onLoadMcpTokens,
+  onCreateMcpToken,
+  onRevokeMcpToken,
   onLoadReferenceValues,
   onUpsertReferenceValues,
   onCreateDeal,
@@ -1111,6 +1115,14 @@ export function WorkSurface({
                   onLoadPasskeys={onLoadPasskeys}
                   onRegisterPasskey={onRegisterPasskey}
                   onDeletePasskey={onDeletePasskey}
+                />
+              </section>
+              <section className="backup-block">
+                <h3>MCP Agent Access</h3>
+                <McpTokenPanel
+                  onLoadMcpTokens={onLoadMcpTokens}
+                  onCreateMcpToken={onCreateMcpToken}
+                  onRevokeMcpToken={onRevokeMcpToken}
                 />
               </section>
             </div>

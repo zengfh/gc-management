@@ -56,6 +56,37 @@ export interface PasskeyCredential {
   backedUp?: boolean;
 }
 
+export type McpScope =
+  | 'cards:read'
+  | 'cards:create'
+  | 'cards:update'
+  | 'cards:delete'
+  | 'cards:lifecycle'
+  | 'cards:reveal'
+  | 'deals:read'
+  | 'deals:write'
+  | 'reference:read'
+  | 'reference:write';
+
+export interface McpToken {
+  id: string;
+  name: string;
+  tokenHint: string;
+  scopes: McpScope[];
+  expiresAt?: string | null;
+  revokedAt?: string | null;
+  lastUsedAt?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  token?: string;
+}
+
+export interface McpTokenSettings {
+  tokens: McpToken[];
+  scopes: McpScope[];
+  presets: Record<string, McpScope[]>;
+}
+
 export interface UserInvite {
   id: string;
   email: string;

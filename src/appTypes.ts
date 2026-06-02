@@ -15,6 +15,8 @@ import type {
   Deal,
   DealDetail,
   FeatureFlags,
+  McpToken,
+  McpTokenSettings,
   Page,
   PasskeyCredential,
   ReferenceValue,
@@ -231,6 +233,9 @@ export interface WorkSurfaceProps {
   onLoadPasskeys: () => Promise<ApiResponse<PasskeyCredential[]>>;
   onRegisterPasskey: AsyncApiHandler<{ name?: string }, ApiResponse<{ passkey: PasskeyCredential }>>;
   onDeletePasskey: (passkeyId: string) => Promise<ApiResponse<{ deleted: boolean; passkeyId: string }>>;
+  onLoadMcpTokens: () => Promise<ApiResponse<McpTokenSettings>>;
+  onCreateMcpToken: AsyncApiHandler<ApiPayload, ApiResponse<McpToken>>;
+  onRevokeMcpToken: (tokenId: string) => Promise<ApiResponse<{ revoked: boolean; tokenId: string }>>;
   onLoadReferenceValues: () => Promise<ReferenceValueState>;
   onUpsertReferenceValues: (values?: ReferenceValue[]) => Promise<ReferenceValue[]>;
   onCreateDeal: AsyncApiHandler<ApiPayload, unknown>;

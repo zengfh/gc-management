@@ -29,6 +29,7 @@ Files:
 21. `16_release_5_1_production_hosting_status.md` - Production-style hosting research, implementation status, hosted VPS runtime, and remaining hosting work.
 22. `17_product_use_readiness_status.md` - Product-use identity lifecycle hardening, research inputs, and remaining commercial SaaS blockers.
 23. `18_typescript_migration_status.md` - TypeScript migration status, compiled backend runtime, shared domain types, app module splitting, and strict type-hardening status.
+24. `mcp_server_usage.md` - MCP server setup, token scopes, tool list, client configuration examples, and security guidance for Codex/Hermes-style agents.
 
 Scope note:
 

@@ -2112,7 +2112,9 @@ tbody tr:hover td {
 .settings-form .one-time-secret,
 .settings-form .recovery-code-grid,
 .settings-form .inline-settings-form,
-.settings-form .passkey-list {
+.settings-form .passkey-list,
+.settings-form .scope-grid,
+.settings-form .nested-settings-form {
   grid-column: 1 / -1;
 }
 
@@ -2209,6 +2211,27 @@ tbody tr:hover td {
   grid-template-columns: minmax(180px, 1fr) auto;
   gap: 12px;
   align-items: end;
+}
+
+.nested-settings-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(180px, 1fr));
+  gap: 14px;
+  padding-top: 0;
+}
+
+.scope-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-muted);
+}
+
+.scope-check {
+  min-height: 32px;
 }
 
 .passkey-list {
@@ -2605,6 +2628,8 @@ tbody tr:hover td {
   }
 
   .settings-form,
+  .nested-settings-form,
+  .scope-grid,
   .settings-summary-grid {
     grid-template-columns: 1fr;
   }

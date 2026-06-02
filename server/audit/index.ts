@@ -3,7 +3,7 @@ import type Database from 'better-sqlite3';
 interface AuditEventInput {
   accountId: number;
   userId?: number | null;
-  requestId?: string | null;
+  requestId?: string | null | undefined;
   entityType: string;
   entityId?: number | string | null;
   action: string;

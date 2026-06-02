@@ -22,6 +22,8 @@ import { createBackupRouter } from './routes/backup.js';
 import { createCardsRouter } from './routes/cards.js';
 import { createAdminRouter } from './routes/admin.js';
 import { createDealsRouter } from './routes/deals.js';
+import { createMcpRouter } from './routes/mcp.js';
+import { createMcpTokensRouter } from './routes/mcpTokens.js';
 import { createObservabilityRouter } from './routes/observability.js';
 import { createReferenceValuesRouter } from './routes/referenceValues.js';
 import { createSettingsRouter } from './routes/settings.js';
@@ -213,6 +215,7 @@ export function createApp({ db, logger = console, serveStatic, staticDir = defau
         '/api/auth/passkeys/login/verify',
         '/api/auth/accept-invite',
         '/api/auth/recover',
+        '/api/mcp',
       ],
     }),
   );
@@ -235,6 +238,8 @@ export function createApp({ db, logger = console, serveStatic, staticDir = defau
     app.use('/api/backup', createBackupRouter({ db }));
     app.use('/api/cards', createCardsRouter({ db }));
     app.use('/api/deals', createDealsRouter({ db }));
+    app.use('/api/mcp', createMcpRouter({ db }));
+    app.use('/api/mcp/tokens', createMcpTokensRouter({ db }));
     app.use('/api/observability', createObservabilityRouter({ metrics }));
     app.use('/api/reference-values', createReferenceValuesRouter({ db }));
     app.use('/api/settings', createSettingsRouter({ db }));

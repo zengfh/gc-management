@@ -1,6 +1,16 @@
 import { useState, type ChangeEvent, type FormEvent } from 'react';
-import { AlertTriangle, Bell, Download, KeyRound, Lock, RefreshCw, ShieldCheck, Trash2 } from 'lucide-react';
-import type { ApiResponse, AuthUser, DataPolicy, PasskeyCredential, SupportPolicy, UserInvite } from '../shared/domain';
+import { AlertTriangle, Bell, Bot, Copy, Download, KeyRound, Lock, RefreshCw, ShieldCheck, Trash2 } from 'lucide-react';
+import type {
+  ApiResponse,
+  AuthUser,
+  DataPolicy,
+  McpScope,
+  McpToken,
+  McpTokenSettings,
+  PasskeyCredential,
+  SupportPolicy,
+  UserInvite,
+} from '../shared/domain';
 import type { ApiPayload, AsyncApiHandler, CountSummary, NotificationTestSummary, PortableExportPayload } from './appTypes';
 import { errorMessage, formatDateTime, formatDisplayValue } from './display';
 import { downloadJsonFile } from './fileHelpers';
@@ -424,6 +434,247 @@ export function PasskeyPanel({
         </div>
       ) : null}
       {loaded && passkeys.length === 0 ? <p className="muted-text">No passkeys registered yet.</p> : null}
+      <FieldError message={error} />
+      {success ? <p className="success-copy">{success}</p> : null}
+    </div>
+  );
+}
+
+const mcpScopeLabels: Record<McpScope, string> = {
+  'cards:read': 'Read cards',
+  'cards:create': 'Create cards',
+  'cards:update': 'Update cards',
+  'cards:delete': 'Delete cards',
+  'cards:lifecycle': 'Reserve/use/sell/void',
+  'cards:reveal': 'Reveal credentials',
+  'deals:read': 'Read deals',
+  'deals:write': 'Write deals',
+  'reference:read': 'Read hints',
+  'reference:write': 'Write hints',
+};
+
+const presetLabels: Record<string, string> = {
+  readOnly: 'Read only',
+  readAndReveal: 'Read + reveal',
+  inventoryOperator: 'Inventory operator',
+  fullVaultAgent: 'Full vault agent',
+};
+
+function presetLabel(preset: string) {
+  return presetLabels[preset] || formatDisplayValue(preset);
+}
+
+export function McpTokenPanel({
+  onLoadMcpTokens,
+  onCreateMcpToken,
+  onRevokeMcpToken,
+}: {
+  onLoadMcpTokens: () => Promise<ApiResponse<McpTokenSettings>>;
+  onCreateMcpToken: AsyncApiHandler<ApiPayload, ApiResponse<McpToken>>;
+  onRevokeMcpToken: (tokenId: string) => Promise<ApiResponse<{ revoked: boolean; tokenId: string }>>;
+}) {
+  const [settings, setSettings] = useState<McpTokenSettings>({ tokens: [], scopes: [], presets: {} });
+  const [loaded, setLoaded] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [name, setName] = useState('Codex vault agent');
+  const [preset, setPreset] = useState('readAndReveal');
+  const [selectedScopes, setSelectedScopes] = useState<Set<McpScope>>(new Set());
+  const [expiresAt, setExpiresAt] = useState('');
+  const [currentUnlockSecret, setCurrentUnlockSecret] = useState('');
+  const [createdToken, setCreatedToken] = useState('');
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+
+  async function loadTokens() {
+    setError('');
+    setLoading(true);
+    try {
+      const response = await onLoadMcpTokens();
+      setSettings(response.data);
+      setLoaded(true);
+      if (selectedScopes.size === 0) {
+        const defaultScopes = response.data.presets[preset] || response.data.presets.readAndReveal || [];
+        setSelectedScopes(new Set(defaultScopes));
+      }
+      return response;
+    } catch (caught) {
+      setError(errorMessage(caught));
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function submitCreate(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError('');
+    setSuccess('');
+    setCreatedToken('');
+    setSubmitting(true);
+    try {
+      const response = await onCreateMcpToken({
+        name,
+        scopes: [...selectedScopes],
+        expiresAt: expiresAt || null,
+        currentUnlockSecret,
+      });
+      setSettings((current) => ({
+        ...current,
+        tokens: [response.data, ...current.tokens.filter((token) => token.id !== response.data.id)],
+      }));
+      setLoaded(true);
+      setCurrentUnlockSecret('');
+      setCreatedToken(response.data.token || '');
+      setSuccess('MCP token created. The full token is shown once.');
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function revokeToken(tokenId: string) {
+    setError('');
+    setSuccess('');
+    setSubmitting(true);
+    try {
+      await onRevokeMcpToken(tokenId);
+      setSettings((current) => ({
+        ...current,
+        tokens: current.tokens.map((token) =>
+          token.id === tokenId ? { ...token, revokedAt: new Date().toISOString() } : token),
+      }));
+      setSuccess('MCP token revoked.');
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  function applyPreset(nextPreset: string) {
+    setPreset(nextPreset);
+    setSelectedScopes(new Set(settings.presets[nextPreset] || []));
+  }
+
+  function toggleScope(scope: McpScope, checked: boolean) {
+    setSelectedScopes((current) => {
+      const next = new Set(current);
+      if (checked) {
+        next.add(scope);
+      } else {
+        next.delete(scope);
+      }
+      return next;
+    });
+    setPreset('custom');
+  }
+
+  async function copyCreatedToken() {
+    if (!createdToken || !navigator.clipboard) {
+      return;
+    }
+    await navigator.clipboard.writeText(createdToken);
+    setSuccess('MCP token copied.');
+  }
+
+  const presets = Object.keys(settings.presets);
+  const scopes = settings.scopes.length ? settings.scopes : Object.keys(mcpScopeLabels) as McpScope[];
+
+  return (
+    <div className="settings-form mcp-token-panel">
+      <p className="muted-text">
+        MCP tokens let external agents call the vault over <code>/api/mcp</code>. Tokens with reveal or write scopes can expose or change real card data.
+      </p>
+      <div className="backup-actions">
+        <button type="button" className="secondary-action" onClick={() => void loadTokens()} disabled={loading || submitting}>
+          <RefreshCw aria-hidden="true" size={17} />
+          {loading ? 'Loading...' : 'Show MCP tokens'}
+        </button>
+      </div>
+      <form className="settings-form nested-settings-form" onSubmit={submitCreate}>
+        <label>
+          <span>Token name</span>
+          <input value={name} onChange={(event) => setName(event.target.value)} required />
+        </label>
+        <label>
+          <span>Permission preset</span>
+          <select value={preset} onChange={(event) => applyPreset(event.target.value)}>
+            {presets.map((item) => (
+              <option key={item} value={item}>{presetLabel(item)}</option>
+            ))}
+            <option value="custom">Custom</option>
+          </select>
+        </label>
+        <div className="scope-grid" aria-label="MCP token scopes">
+          {scopes.map((scope) => (
+            <label className="check-row scope-check" key={scope}>
+              <input
+                type="checkbox"
+                checked={selectedScopes.has(scope)}
+                onChange={(event) => toggleScope(scope, event.target.checked)}
+              />
+              <span>{mcpScopeLabels[scope] || scope}</span>
+            </label>
+          ))}
+        </div>
+        <label>
+          <span>Expires at</span>
+          <input type="datetime-local" value={expiresAt} onChange={(event) => setExpiresAt(event.target.value)} />
+        </label>
+        <label>
+          <span>Confirm unlock secret</span>
+          <input
+            type="password"
+            autoComplete="current-password"
+            value={currentUnlockSecret}
+            onChange={(event) => setCurrentUnlockSecret(event.target.value)}
+            required
+          />
+        </label>
+        <div className="backup-actions">
+          <button type="submit" className="primary-action" disabled={submitting || selectedScopes.size === 0}>
+            <Bot aria-hidden="true" size={17} />
+            {submitting ? 'Creating...' : 'Create MCP token'}
+          </button>
+        </div>
+      </form>
+      {createdToken ? (
+        <div className="one-time-secret" role="status">
+          <span>Token shown once</span>
+          <code>{createdToken}</code>
+          <button type="button" className="table-action" onClick={() => void copyCreatedToken()}>
+            <Copy aria-hidden="true" size={15} />
+            Copy
+          </button>
+        </div>
+      ) : null}
+      {loaded && settings.tokens.length > 0 ? (
+        <div className="passkey-list">
+          {settings.tokens.map((token) => (
+            <div className="passkey-item" key={token.id}>
+              <span>
+                <strong>{token.name}</strong>
+                <small>
+                  {token.tokenHint} · {token.revokedAt ? 'Revoked' : 'Active'} · Last used {formatDateTime(token.lastUsedAt)}
+                </small>
+                <small>{token.scopes.map((scope) => mcpScopeLabels[scope] || scope).join(', ')}</small>
+              </span>
+              <button
+                type="button"
+                className="table-action danger"
+                onClick={() => void revokeToken(token.id)}
+                disabled={submitting || Boolean(token.revokedAt)}
+              >
+                <Trash2 aria-hidden="true" size={15} />
+                Revoke
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {loaded && settings.tokens.length === 0 ? <p className="muted-text">No MCP tokens created yet.</p> : null}
       <FieldError message={error} />
       {success ? <p className="success-copy">{success}</p> : null}
     </div>
