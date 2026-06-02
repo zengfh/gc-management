@@ -82,6 +82,8 @@ const navItems: Array<{ id: ViewId; label: string; icon: LucideIcon }> = [
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
 
+const mcpDocsUrl = 'https://github.com/zengfh/gc-management/blob/feat/sota-ui-redesign/docs/mcp_server_usage.md';
+
 const adminRoleSet = new Set(['owner', 'admin']);
 const operatorRoleSet = new Set(['owner', 'admin', 'operator']);
 
@@ -720,6 +722,17 @@ export function WorkSurface({
             );
           })}
         </nav>
+        <a
+          className="nav-item nav-doc-link"
+          href={mcpDocsUrl}
+          target="_blank"
+          rel="noreferrer"
+          aria-label="Open MCP server usage documentation"
+        >
+          <ScrollText aria-hidden="true" size={18} />
+          MCP Docs
+          <ArrowUpRight aria-hidden="true" size={14} />
+        </a>
         <button type="button" className="nav-item logout-button" onClick={onLogout}>
           <LogOut aria-hidden="true" size={18} />
           Logout
