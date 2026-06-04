@@ -479,13 +479,27 @@ function normalizeHeader(value: unknown) {
   return String(value).toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
+const normalizedAliasesSetCache = new WeakMap<string[], Set<string>>();
+const normalizedRecordKeysCache = new WeakMap<Record<string, unknown>, Array<[string, string]>>();
+
 function csvValue(record: Record<string, unknown>, aliases: string[]) {
-  const normalizedAliases = aliases.map(normalizeHeader);
-  const entry = Object.entries(record).find(([key]) => normalizedAliases.includes(normalizeHeader(key)));
+  let normalizedAliasesSet = normalizedAliasesSetCache.get(aliases);
+  if (!normalizedAliasesSet) {
+    normalizedAliasesSet = new Set(aliases.map(normalizeHeader));
+    normalizedAliasesSetCache.set(aliases, normalizedAliasesSet);
+  }
+
+  let normalizedRecord = normalizedRecordKeysCache.get(record);
+  if (!normalizedRecord) {
+    normalizedRecord = Object.entries(record).map(([key]) => [key, normalizeHeader(key)]);
+    normalizedRecordKeysCache.set(record, normalizedRecord);
+  }
+
+  const entry = normalizedRecord.find(([, normalizedKey]) => normalizedAliasesSet!.has(normalizedKey));
   if (!entry) {
     return '';
   }
-  return String(entry[1] ?? '').trim();
+  return String(record[entry[0]] ?? '').trim();
 }
 
 function csvCustomCredentialFields(record: Record<string, unknown>): CsvCustomCredentialField[] {
