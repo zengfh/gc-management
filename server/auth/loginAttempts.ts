@@ -93,7 +93,7 @@ export function createSqliteLoginAttemptStore({
         `INSERT INTO auth_login_attempts (key, failures, resetAt, updatedAt)
          VALUES (?, ?, ?, ?)
          ON CONFLICT(key) DO UPDATE SET
-           failures = excluded.failures,
+           failures = auth_login_attempts.failures + 1,
            resetAt = excluded.resetAt,
            updatedAt = excluded.updatedAt`,
       ).run(key, failures, resetAt, new Date(now()).toISOString());

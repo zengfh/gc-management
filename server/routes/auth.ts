@@ -375,7 +375,7 @@ export function createAuthRouter({
       }
       loginAttempts.recordSuccess(inviteKey);
 
-      if (activeUserEmailExists(db, matchedInvite.accountId, normalizedEmail)) {
+      if (activeUserEmailExists(db, matchedInvite.accountId, matchedInvite.email)) {
         throw conflict('USER_EMAIL_EXISTS', 'A user with this email already exists.');
       }
 
@@ -624,7 +624,7 @@ export function createAuthRouter({
 
       let matchedCode: RecoveryCodeRow | null = null;
       for (const candidate of candidates) {
-        if (await bcrypt.compare(normalizedCode, candidate.codeHash)) {
+        if (candidate.codeHash && await bcrypt.compare(normalizedCode, candidate.codeHash)) {
           matchedCode = candidate;
           break;
         }
