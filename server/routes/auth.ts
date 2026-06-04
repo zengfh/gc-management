@@ -1,7 +1,7 @@
-import bcrypt from 'bcryptjs';
-import { Router, type Request } from 'express';
-import type Database from 'better-sqlite3';
-import { nanoid } from 'nanoid';
+import bcrypt from "bcryptjs";
+import { Router, type Request } from "express";
+import type Database from "better-sqlite3";
+import { nanoid } from "nanoid";
 import {
   deriveBlindIndexKey,
   deriveKEK,
@@ -9,27 +9,30 @@ import {
   generateSalt,
   unwrapDEK,
   wrapDEK,
-} from '../security/crypto.js';
-import { getPublicFeatureFlags } from '../config/featureFlags.js';
-import { validateUnlockSecret } from '../security/unlockSecret.js';
+} from "../security/crypto.js";
+import { getPublicFeatureFlags } from "../config/featureFlags.js";
+import { validateUnlockSecret } from "../security/unlockSecret.js";
 import {
   clearUnlockedSession,
   getUnlockedSession,
   unlockSession,
-} from '../auth/unlockStore.js';
-import { clearUserSessions } from '../auth/sessionRevocation.js';
-import { createLoginAttemptStore } from '../auth/loginAttempts.js';
-import { generateOneTimeSecret, normalizeOneTimeSecret } from '../auth/oneTimeSecrets.js';
-import { verifyFreshUnlockSecret } from '../auth/verifyUnlockSecret.js';
+} from "../auth/unlockStore.js";
+import { clearUserSessions } from "../auth/sessionRevocation.js";
+import { createLoginAttemptStore } from "../auth/loginAttempts.js";
+import {
+  generateOneTimeSecret,
+  normalizeOneTimeSecret,
+} from "../auth/oneTimeSecrets.js";
+import { verifyFreshUnlockSecret } from "../auth/verifyUnlockSecret.js";
 import {
   asyncHandler,
   badRequest,
   conflict,
   rateLimited,
   unauthorized,
-} from '../http/errors.js';
-import { objectResponse } from '../http/response.js';
-import type { Role } from '../auth/roles.js';
+} from "../http/errors.js";
+import { objectResponse } from "../http/response.js";
+import type { Role } from "../auth/roles.js";
 
 type LoginAttemptStore = ReturnType<typeof createLoginAttemptStore>;
 
@@ -70,7 +73,9 @@ interface RecoveryCodeRow {
   encryptedDEK: string;
 }
 
-const bcryptCost = Number(process.env.BCRYPT_COST || (process.env.NODE_ENV === 'test' ? 4 : 12));
+const bcryptCost = Number(
+  process.env.BCRYPT_COST || (process.env.NODE_ENV === "test" ? 4 : 12),
+);
 
 function nowIso() {
   return new Date().toISOString();
@@ -117,11 +122,16 @@ function getPrimaryUser(db: Database.Database): AuthUserRow | undefined {
 }
 
 function normalizeEmail(email: unknown): string | null {
-  const normalized = String(email || '').trim().toLowerCase();
+  const normalized = String(email || "")
+    .trim()
+    .toLowerCase();
   return normalized || null;
 }
 
-function getLoginUser(db: Database.Database, email: unknown): AuthUserRow | undefined {
+function getLoginUser(
+  db: Database.Database,
+  email: unknown,
+): AuthUserRow | undefined {
   const normalizedEmail = normalizeEmail(email);
   if (normalizedEmail) {
     return db
@@ -136,15 +146,25 @@ function getLoginUser(db: Database.Database, email: unknown): AuthUserRow | unde
       .get(normalizedEmail) as AuthUserRow | undefined;
   }
 
-  const userCount = (db.prepare('SELECT COUNT(*) AS count FROM users WHERE disabledAt IS NULL').get() as CountRow).count;
+  const userCount = (
+    db
+      .prepare("SELECT COUNT(*) AS count FROM users WHERE disabledAt IS NULL")
+      .get() as CountRow
+  ).count;
   if (userCount > 1) {
-    throw badRequest('EMAIL_REQUIRED', 'Email is required when multiple users exist.');
+    throw badRequest(
+      "EMAIL_REQUIRED",
+      "Email is required when multiple users exist.",
+    );
   }
   return getPrimaryUser(db);
 }
 
 function setupComplete(db: Database.Database) {
-  return (db.prepare('SELECT COUNT(*) AS count FROM users').get() as CountRow).count > 0;
+  return (
+    (db.prepare("SELECT COUNT(*) AS count FROM users").get() as CountRow)
+      .count > 0
+  );
 }
 
 function ensureCsrfToken(req: Request) {
@@ -164,23 +184,26 @@ function activeRecoveryCodeCount(
   userId: number,
   timestamp = nowIso(),
 ) {
-  return (db
-    .prepare(
-      `SELECT COUNT(*) AS count
+  return (
+    db
+      .prepare(
+        `SELECT COUNT(*) AS count
        FROM user_recovery_codes
        WHERE accountId = ?
          AND userId = ?
          AND usedAt IS NULL
          AND revokedAt IS NULL
          AND (expiresAt IS NULL OR expiresAt > ?)`,
-    )
-    .get(accountId, userId, timestamp) as CountRow).count;
+      )
+      .get(accountId, userId, timestamp) as CountRow
+  ).count;
 }
 
 function authStatus(db: Database.Database, req: Request) {
   const sessionUserId = req.session?.userId;
   const sessionAccountId = req.session?.accountId;
-  const sessionValid = sessionUserId !== undefined && sessionAccountId !== undefined;
+  const sessionValid =
+    sessionUserId !== undefined && sessionAccountId !== undefined;
   const unlocked = sessionValid ? getUnlockedSession(req.sessionID) : null;
   return {
     setupComplete: setupComplete(db),
@@ -194,7 +217,8 @@ function authStatus(db: Database.Database, req: Request) {
             accountId: sessionAccountId,
             role: req.session.role || unlocked?.role || null,
             email: req.session.email || unlocked?.email || null,
-            displayName: req.session.displayName || unlocked?.displayName || null,
+            displayName:
+              req.session.displayName || unlocked?.displayName || null,
           },
         }
       : {}),
@@ -202,7 +226,11 @@ function authStatus(db: Database.Database, req: Request) {
     ...(sessionValid
       ? {
           recoveryCodes: {
-            activeCount: activeRecoveryCodeCount(db, sessionAccountId, sessionUserId),
+            activeCount: activeRecoveryCodeCount(
+              db,
+              sessionAccountId,
+              sessionUserId,
+            ),
           },
         }
       : {}),
@@ -210,14 +238,21 @@ function authStatus(db: Database.Database, req: Request) {
 }
 
 function genericInviteError() {
-  return unauthorized('INVALID_INVITE', 'Invite code is invalid or expired.');
+  return unauthorized("INVALID_INVITE", "Invite code is invalid or expired.");
 }
 
 function genericRecoveryError() {
-  return unauthorized('INVALID_RECOVERY_CODE', 'Recovery code is invalid or expired.');
+  return unauthorized(
+    "INVALID_RECOVERY_CODE",
+    "Recovery code is invalid or expired.",
+  );
 }
 
-function loadInviteCandidates(db: Database.Database, email: string, timestamp: string): InviteRow[] {
+function loadInviteCandidates(
+  db: Database.Database,
+  email: string,
+  timestamp: string,
+): InviteRow[] {
   return db
     .prepare(
       `SELECT *
@@ -231,28 +266,41 @@ function loadInviteCandidates(db: Database.Database, email: string, timestamp: s
     .all(email, timestamp) as InviteRow[];
 }
 
-function activeUserEmailExists(db: Database.Database, accountId: number, email: string): AuthUserRow | undefined {
+function activeUserEmailExists(
+  db: Database.Database,
+  accountId: number,
+  email: string,
+): AuthUserRow | undefined {
   return db
-    .prepare('SELECT id FROM users WHERE accountId = ? AND LOWER(email) = LOWER(?) AND disabledAt IS NULL')
+    .prepare(
+      "SELECT id FROM users WHERE accountId = ? AND LOWER(email) = LOWER(?) AND disabledAt IS NULL",
+    )
     .get(accountId, email) as AuthUserRow | undefined;
 }
 
-function loadRecoveryUser(db: Database.Database, email: unknown): AuthUserRow | null {
+function loadRecoveryUser(
+  db: Database.Database,
+  email: unknown,
+): AuthUserRow | null {
   const normalizedEmail = normalizeEmail(email);
   if (normalizedEmail) {
-    return db
-      .prepare(
-        `SELECT users.*
+    return (
+      (db
+        .prepare(
+          `SELECT users.*
          FROM users
          WHERE LOWER(users.email) = ?
            AND users.disabledAt IS NULL
          ORDER BY users.id
          LIMIT 1`,
-      )
-      .get(normalizedEmail) as AuthUserRow | undefined || null;
+        )
+        .get(normalizedEmail) as AuthUserRow | undefined) || null
+    );
   }
 
-  const activeUsers = db.prepare('SELECT * FROM users WHERE disabledAt IS NULL ORDER BY id').all() as AuthUserRow[];
+  const activeUsers = db
+    .prepare("SELECT * FROM users WHERE disabledAt IS NULL ORDER BY id")
+    .all() as AuthUserRow[];
   const onlyActiveUser = activeUsers[0];
   return activeUsers.length === 1 && onlyActiveUser ? onlyActiveUser : null;
 }
@@ -266,23 +314,27 @@ export function createAuthRouter({
 }) {
   const router = Router();
 
-  router.get('/status', (req, res) => {
+  router.get("/status", (req, res) => {
     res.json(objectResponse(authStatus(db, req)));
   });
 
   router.post(
-    '/setup',
+    "/setup",
     asyncHandler(async (req, res) => {
       if (setupComplete(db)) {
-        throw conflict('SETUP_EXISTS', 'Setup has already been completed.');
+        throw conflict("SETUP_EXISTS", "Setup has already been completed.");
       }
 
-      const { unlockSecret, displayName = 'Owner', email = null } = req.body || {};
+      const {
+        unlockSecret,
+        displayName = "Owner",
+        email = null,
+      } = req.body || {};
       const validation = validateUnlockSecret(unlockSecret);
       if (!validation.valid) {
         throw badRequest(
-          'WEAK_UNLOCK_SECRET',
-          'Unlock secret does not meet strength requirements.',
+          "WEAK_UNLOCK_SECRET",
+          "Unlock secret does not meet strength requirements.",
           validation.fieldErrors,
         );
       }
@@ -304,26 +356,34 @@ export function createAuthRouter({
             id, accountId, email, displayName, role, unlockSecretHash,
             encryptionSalt, encryptedDEK, keyVersion, createdAt, updatedAt
           ) VALUES (1, 1, ?, ?, 'owner', ?, ?, ?, 1, ?, ?)`,
-        ).run(normalizeEmail(email), displayName, unlockSecretHash, encryptionSalt, encryptedDEK, timestamp, timestamp);
+        ).run(
+          normalizeEmail(email),
+          displayName,
+          unlockSecretHash,
+          encryptionSalt,
+          encryptedDEK,
+          timestamp,
+          timestamp,
+        );
         db.prepare(
           `INSERT INTO audit_log (
             accountId, userId, requestId, entityType, entityId, action, metadata, timestamp
           ) VALUES (1, 1, ?, 'auth', 1, 'auth.setup', ?, ?)`,
-        ).run(req.requestId, JSON.stringify({ mode: 'local' }), timestamp);
+        ).run(req.requestId, JSON.stringify({ mode: "local" }), timestamp);
       });
 
       createSetup();
       await regenerateSession(req);
       req.session.userId = 1;
       req.session.accountId = 1;
-      req.session.role = 'owner';
+      req.session.role = "owner";
       req.session.email = normalizeEmail(email);
       req.session.displayName = displayName;
       ensureCsrfToken(req);
       unlockSession(req.sessionID, {
         userId: 1,
         accountId: 1,
-        role: 'owner',
+        role: "owner",
         email: normalizeEmail(email),
         displayName,
         dek,
@@ -336,7 +396,7 @@ export function createAuthRouter({
   );
 
   router.post(
-    '/accept-invite',
+    "/accept-invite",
     asyncHandler(async (req, res) => {
       const { email, inviteCode, unlockSecret } = req.body || {};
       const normalizedEmail = normalizeEmail(email);
@@ -344,16 +404,19 @@ export function createAuthRouter({
         throw genericInviteError();
       }
 
-      const inviteKey = `invite:${req.ip || 'unknown'}:${normalizedEmail}`;
+      const inviteKey = `invite:${req.ip || "unknown"}:${normalizedEmail}`;
       if (loginAttempts.isBlocked(inviteKey)) {
-        throw rateLimited('INVITE_RATE_LIMITED', 'Too many failed invite attempts. Try again later.');
+        throw rateLimited(
+          "INVITE_RATE_LIMITED",
+          "Too many failed invite attempts. Try again later.",
+        );
       }
 
       const validation = validateUnlockSecret(unlockSecret);
       if (!validation.valid) {
         throw badRequest(
-          'WEAK_UNLOCK_SECRET',
-          'Unlock secret does not meet strength requirements.',
+          "WEAK_UNLOCK_SECRET",
+          "Unlock secret does not meet strength requirements.",
           validation.fieldErrors,
         );
       }
@@ -362,11 +425,14 @@ export function createAuthRouter({
       const normalizedInviteCode = normalizeOneTimeSecret(inviteCode);
       const candidates = loadInviteCandidates(db, normalizedEmail, timestamp);
       let matchedInvite: InviteRow | null = null;
-      for (const candidate of candidates) {
-        if (await bcrypt.compare(normalizedInviteCode, candidate.inviteCodeHash)) {
-          matchedInvite = candidate;
-          break;
-        }
+      const results = await Promise.all(
+        candidates.map((candidate) =>
+          bcrypt.compare(normalizedInviteCode, candidate.inviteCodeHash),
+        ),
+      );
+      const index = results.findIndex((result) => result);
+      if (index !== -1) {
+        matchedInvite = candidates[index] ?? null;
       }
 
       if (!matchedInvite) {
@@ -376,10 +442,16 @@ export function createAuthRouter({
       loginAttempts.recordSuccess(inviteKey);
 
       if (activeUserEmailExists(db, matchedInvite.accountId, normalizedEmail)) {
-        throw conflict('USER_EMAIL_EXISTS', 'A user with this email already exists.');
+        throw conflict(
+          "USER_EMAIL_EXISTS",
+          "A user with this email already exists.",
+        );
       }
 
-      const inviteKek = deriveKEK(normalizedInviteCode, matchedInvite.encryptionSalt);
+      const inviteKek = deriveKEK(
+        normalizedInviteCode,
+        matchedInvite.encryptionSalt,
+      );
       const dek = unwrapDEK(matchedInvite.encryptedDEK, inviteKek);
       const userSalt = generateSalt();
       const userKek = deriveKEK(unlockSecret, userSalt);
@@ -405,13 +477,12 @@ export function createAuthRouter({
             timestamp,
             timestamp,
           );
-        const created = db.prepare('SELECT * FROM users WHERE id = ?').get(info.lastInsertRowid) as AuthUserRow;
-        db.prepare('UPDATE user_invites SET usedAt = ?, acceptedByUserId = ?, updatedAt = ? WHERE id = ?').run(
-          timestamp,
-          created.id,
-          timestamp,
-          matchedInvite.id,
-        );
+        const created = db
+          .prepare("SELECT * FROM users WHERE id = ?")
+          .get(info.lastInsertRowid) as AuthUserRow;
+        db.prepare(
+          "UPDATE user_invites SET usedAt = ?, acceptedByUserId = ?, updatedAt = ? WHERE id = ?",
+        ).run(timestamp, created.id, timestamp, matchedInvite.id);
         db.prepare(
           `INSERT INTO audit_log (
             accountId, userId, requestId, entityType, entityId, action, metadata, timestamp
@@ -450,26 +521,34 @@ export function createAuthRouter({
   );
 
   router.post(
-    '/login',
+    "/login",
     asyncHandler(async (req, res) => {
       const { email, unlockSecret } = req.body || {};
       const user = getLoginUser(db, email);
       if (!user) {
         throw unauthorized(
-          setupComplete(db) ? 'INVALID_UNLOCK_SECRET' : 'SETUP_REQUIRED',
-          setupComplete(db) ? 'Invalid unlock secret.' : 'Setup has not been completed.',
+          setupComplete(db) ? "INVALID_UNLOCK_SECRET" : "SETUP_REQUIRED",
+          setupComplete(db)
+            ? "Invalid unlock secret."
+            : "Setup has not been completed.",
         );
       }
 
-      const loginKey = `${req.ip || 'unknown'}:${user.id}`;
+      const loginKey = `${req.ip || "unknown"}:${user.id}`;
       if (loginAttempts.isBlocked(loginKey)) {
-        throw rateLimited('LOGIN_RATE_LIMITED', 'Too many failed login attempts. Try again later.');
+        throw rateLimited(
+          "LOGIN_RATE_LIMITED",
+          "Too many failed login attempts. Try again later.",
+        );
       }
 
-      const passwordMatches = await bcrypt.compare(unlockSecret || '', user.unlockSecretHash);
+      const passwordMatches = await bcrypt.compare(
+        unlockSecret || "",
+        user.unlockSecretHash,
+      );
       if (!passwordMatches) {
         loginAttempts.recordFailure(loginKey);
-        throw unauthorized('INVALID_UNLOCK_SECRET', 'Invalid unlock secret.');
+        throw unauthorized("INVALID_UNLOCK_SECRET", "Invalid unlock secret.");
       }
       loginAttempts.recordSuccess(loginKey);
 
@@ -493,7 +572,9 @@ export function createAuthRouter({
         dek,
         blindIndexKey: deriveBlindIndexKey(dek),
       });
-      db.prepare('UPDATE users SET lastLoginAt = ?, updatedAt = ? WHERE id = ?').run(nowIso(), nowIso(), user.id);
+      db.prepare(
+        "UPDATE users SET lastLoginAt = ?, updatedAt = ? WHERE id = ?",
+      ).run(nowIso(), nowIso(), user.id);
       await saveSession(req);
 
       res.json(objectResponse(authStatus(db, req)));
@@ -501,11 +582,11 @@ export function createAuthRouter({
   );
 
   router.post(
-    '/logout',
+    "/logout",
     asyncHandler(async (req, res) => {
       clearUnlockedSession(req.sessionID);
       await destroySession(req);
-      res.clearCookie('gc.sid');
+      res.clearCookie("gc.sid");
       res.json(
         objectResponse({
           setupComplete: setupComplete(db),
@@ -518,18 +599,20 @@ export function createAuthRouter({
   );
 
   router.post(
-    '/recovery-codes',
+    "/recovery-codes",
     asyncHandler(async (req, res) => {
       const unlocked = getUnlockedSession(req.sessionID);
       if (!req.session?.userId || !unlocked) {
-        throw unauthorized('LOCKED', 'Encrypted data is locked.');
+        throw unauthorized("LOCKED", "Encrypted data is locked.");
       }
 
       const { currentUnlockSecret } = req.body || {};
       await verifyFreshUnlockSecret(db, unlocked, currentUnlockSecret);
 
       const timestamp = nowIso();
-      const codes = Array.from({ length: 10 }, () => generateOneTimeSecret('GC-REC'));
+      const codes = Array.from({ length: 10 }, () =>
+        generateOneTimeSecret("GC-REC"),
+      );
       db.transaction(() => {
         db.prepare(
           `UPDATE user_recovery_codes
@@ -576,30 +659,38 @@ export function createAuthRouter({
         objectResponse({
           codes,
           generatedAt: timestamp,
-          activeCount: activeRecoveryCodeCount(db, unlocked.accountId, unlocked.userId, timestamp),
+          activeCount: activeRecoveryCodeCount(
+            db,
+            unlocked.accountId,
+            unlocked.userId,
+            timestamp,
+          ),
         }),
       );
     }),
   );
 
   router.post(
-    '/recover',
+    "/recover",
     asyncHandler(async (req, res) => {
       const { email, recoveryCode, newUnlockSecret } = req.body || {};
       if (!recoveryCode) {
         throw genericRecoveryError();
       }
 
-      const recoveryKey = `recovery:${req.ip || 'unknown'}:${normalizeEmail(email) || 'single-user'}`;
+      const recoveryKey = `recovery:${req.ip || "unknown"}:${normalizeEmail(email) || "single-user"}`;
       if (loginAttempts.isBlocked(recoveryKey)) {
-        throw rateLimited('RECOVERY_RATE_LIMITED', 'Too many failed recovery attempts. Try again later.');
+        throw rateLimited(
+          "RECOVERY_RATE_LIMITED",
+          "Too many failed recovery attempts. Try again later.",
+        );
       }
 
       const validation = validateUnlockSecret(newUnlockSecret);
       if (!validation.valid) {
         throw badRequest(
-          'WEAK_UNLOCK_SECRET',
-          'Unlock secret does not meet strength requirements.',
+          "WEAK_UNLOCK_SECRET",
+          "Unlock secret does not meet strength requirements.",
           validation.fieldErrors,
         );
       }
@@ -608,7 +699,7 @@ export function createAuthRouter({
       const timestamp = nowIso();
       const normalizedCode = normalizeOneTimeSecret(recoveryCode);
       const candidates = user
-        ? db
+        ? (db
             .prepare(
               `SELECT *
                FROM user_recovery_codes
@@ -619,7 +710,7 @@ export function createAuthRouter({
                  AND (expiresAt IS NULL OR expiresAt > ?)
                ORDER BY createdAt DESC`,
             )
-            .all(user.accountId, user.id, timestamp) as RecoveryCodeRow[]
+            .all(user.accountId, user.id, timestamp) as RecoveryCodeRow[])
         : [];
 
       let matchedCode: RecoveryCodeRow | null = null;
@@ -648,8 +739,17 @@ export function createAuthRouter({
           `UPDATE users
            SET unlockSecretHash = ?, encryptionSalt = ?, encryptedDEK = ?, updatedAt = ?
            WHERE id = ? AND accountId = ?`,
-        ).run(unlockSecretHash, encryptionSalt, encryptedDEK, timestamp, user.id, user.accountId);
-        db.prepare('UPDATE user_recovery_codes SET usedAt = ? WHERE id = ?').run(timestamp, matchedCode.id);
+        ).run(
+          unlockSecretHash,
+          encryptionSalt,
+          encryptedDEK,
+          timestamp,
+          user.id,
+          user.accountId,
+        );
+        db.prepare(
+          "UPDATE user_recovery_codes SET usedAt = ? WHERE id = ?",
+        ).run(timestamp, matchedCode.id);
         db.prepare(
           `INSERT INTO audit_log (
             accountId, userId, requestId, entityType, entityId, action, timestamp
@@ -663,30 +763,35 @@ export function createAuthRouter({
   );
 
   router.post(
-    '/change-unlock-secret',
+    "/change-unlock-secret",
     asyncHandler(async (req, res) => {
       const unlocked = getUnlockedSession(req.sessionID);
       if (!req.session?.userId || !unlocked) {
-        throw unauthorized('LOCKED', 'Encrypted data is locked.');
+        throw unauthorized("LOCKED", "Encrypted data is locked.");
       }
 
       const { oldUnlockSecret, newUnlockSecret } = req.body || {};
       const user = db
-        .prepare('SELECT * FROM users WHERE id = ? AND accountId = ?')
-        .get(req.session.userId, req.session.accountId) as AuthUserRow | undefined;
+        .prepare("SELECT * FROM users WHERE id = ? AND accountId = ?")
+        .get(req.session.userId, req.session.accountId) as
+        | AuthUserRow
+        | undefined;
       if (!user) {
-        throw unauthorized('LOCKED', 'Encrypted data is locked.');
+        throw unauthorized("LOCKED", "Encrypted data is locked.");
       }
-      const passwordMatches = await bcrypt.compare(oldUnlockSecret || '', user.unlockSecretHash);
+      const passwordMatches = await bcrypt.compare(
+        oldUnlockSecret || "",
+        user.unlockSecretHash,
+      );
       if (!passwordMatches) {
-        throw unauthorized('INVALID_UNLOCK_SECRET', 'Invalid unlock secret.');
+        throw unauthorized("INVALID_UNLOCK_SECRET", "Invalid unlock secret.");
       }
 
       const validation = validateUnlockSecret(newUnlockSecret);
       if (!validation.valid) {
         throw badRequest(
-          'WEAK_UNLOCK_SECRET',
-          'Unlock secret does not meet strength requirements.',
+          "WEAK_UNLOCK_SECRET",
+          "Unlock secret does not meet strength requirements.",
           validation.fieldErrors,
         );
       }
