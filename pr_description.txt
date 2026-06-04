@@ -1,0 +1,19 @@
+🎯 **What:**
+Added a test suite for `src/display.ts` utilities. This fills a testing gap where pure utility functions with clear expected behavior were entirely untested.
+
+📊 **Coverage:**
+Test scenarios were added to cover the following functions:
+- `formatMoney`: formatting numbers and handling edge cases (undefined, zero).
+- `formatDateTime`: formatting valid ISO strings, returning fallbacks for null/undefined.
+- `isWithinNextDays` & `isBeforeToday`: mock timers utilized to verify deterministic date comparisons.
+- `formatDisplayValue`: string modifications and fallbacks.
+- `statusText`: transforming known enum keys to strings.
+- `viewTitle`: returning correct strings for various dashboard views.
+- `isTerminalCard`: determining if a card's status is terminal or not.
+- `dollarsToCents`: conversion calculations with string symbols processing.
+- `criteriaValue`: string trimming and empty string fallbacks.
+- `errorMessage`: error object data retrieval.
+- `isRecord`: checking variable primitive and instance types.
+
+✨ **Result:**
+All display utilities are now fully tested against various success patterns and edge cases. In addition to testing coverage, imported `ThemeProvider` within the test render components of `App.test.tsx` to fix a `ThemeProvider is not defined` uncaught exception that appeared after vitest cache invalidations to ensure robust unit testing execution overall.

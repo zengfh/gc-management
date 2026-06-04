@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
+import { ThemeProvider } from './ThemeProvider';
 import { mixedAiImportText } from './testFixtures/bulkImportSamples';
 
 function fetchMock() {
@@ -86,7 +87,7 @@ describe('App', () => {
       .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }));
 
     const user = userEvent.setup();
-    render(<App />);
+    render(<ThemeProvider><App /></ThemeProvider>);
 
     expect(await screen.findByRole('heading', { name: /create unlock secret/i })).toBeInTheDocument();
 
@@ -138,7 +139,7 @@ describe('App', () => {
       .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }));
 
     const user = userEvent.setup();
-    render(<App />);
+    render(<ThemeProvider><App /></ThemeProvider>);
 
     expect(await screen.findByRole('heading', { name: /unlock card data/i })).toBeInTheDocument();
 
@@ -184,7 +185,7 @@ describe('App', () => {
       .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }));
 
     const user = userEvent.setup();
-    render(<App />);
+    render(<ThemeProvider><App /></ThemeProvider>);
 
     await screen.findByRole('heading', { name: /unlock card data/i });
     await user.click(screen.getByRole('button', { name: /^show invite form$/i }));
@@ -223,7 +224,7 @@ describe('App', () => {
       .mockResolvedValueOnce(jsonResponse({ data: { reset: true } }));
 
     const user = userEvent.setup();
-    render(<App />);
+    render(<ThemeProvider><App /></ThemeProvider>);
 
     await screen.findByRole('heading', { name: /unlock card data/i });
     await user.click(screen.getByRole('button', { name: /^show recovery form$/i }));
@@ -262,7 +263,7 @@ describe('App', () => {
       ),
     );
 
-    render(<App />);
+    render(<ThemeProvider><App /></ThemeProvider>);
 
     expect(await screen.findByText(/unexpected server error/i)).toBeInTheDocument();
     expect(screen.getByText(/req_visible123/i)).toBeInTheDocument();
@@ -312,7 +313,7 @@ describe('App', () => {
         }),
       );
 
-    render(<App />);
+    render(<ThemeProvider><App /></ThemeProvider>);
 
     expect(await screen.findByRole('heading', { name: /dashboard/i })).toBeInTheDocument();
     expect(screen.getByRole('navigation', { name: /primary/i })).toBeInTheDocument();
@@ -388,7 +389,7 @@ describe('App', () => {
       )
       .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }));
 
-    render(<App />);
+    render(<ThemeProvider><App /></ThemeProvider>);
 
     await screen.findByRole('heading', { name: /dashboard/i });
     expect(screen.getByText(/^Active remaining$/i).closest('.metric')).toHaveTextContent('$135.00');
@@ -437,7 +438,7 @@ describe('App', () => {
       .mockResolvedValueOnce(jsonResponse({ data: allCards, page: { total: 2, limit: 50, offset: 0, hasMore: false } }));
 
     const user = userEvent.setup();
-    render(<App />);
+    render(<ThemeProvider><App /></ThemeProvider>);
 
     await screen.findByRole('heading', { name: /dashboard/i });
     expect(screen.getByText(/^Active remaining$/i).closest('.metric')).toHaveTextContent('$75.00');
@@ -482,7 +483,7 @@ describe('App', () => {
       );
 
     const user = userEvent.setup();
-    render(<App />);
+    render(<ThemeProvider><App /></ThemeProvider>);
 
     await screen.findByRole('heading', { name: /dashboard/i });
     await user.click(screen.getByRole('button', { name: /^audit log$/i }));
@@ -543,7 +544,7 @@ describe('App', () => {
       );
 
     const user = userEvent.setup();
-    render(<App />);
+    render(<ThemeProvider><App /></ThemeProvider>);
 
     await screen.findByRole('heading', { name: /dashboard/i });
     await user.click(screen.getByRole('button', { name: /^audit log$/i }));
@@ -600,7 +601,7 @@ describe('App', () => {
 
     try {
       const user = userEvent.setup();
-      render(<App />);
+      render(<ThemeProvider><App /></ThemeProvider>);
 
       await screen.findByRole('heading', { name: /dashboard/i });
       await user.click(screen.getByRole('button', { name: /^backup$/i }));
@@ -677,7 +678,7 @@ describe('App', () => {
 
     try {
       const user = userEvent.setup();
-      render(<App />);
+      render(<ThemeProvider><App /></ThemeProvider>);
 
       await screen.findByRole('heading', { name: /dashboard/i });
       await user.click(screen.getByRole('button', { name: /^backup$/i }));
@@ -735,7 +736,7 @@ describe('App', () => {
 
     try {
       const user = userEvent.setup();
-      render(<App />);
+      render(<ThemeProvider><App /></ThemeProvider>);
 
       await screen.findByRole('heading', { name: /dashboard/i });
       await user.click(screen.getByRole('button', { name: /^backup$/i }));
@@ -822,7 +823,7 @@ describe('App', () => {
       );
 
     const user = userEvent.setup();
-    render(<App />);
+    render(<ThemeProvider><App /></ThemeProvider>);
 
     await screen.findByRole('heading', { name: /dashboard/i });
     await user.click(screen.getByRole('button', { name: /^backup$/i }));
@@ -877,7 +878,7 @@ describe('App', () => {
 
     try {
       const user = userEvent.setup();
-      render(<App />);
+      render(<ThemeProvider><App /></ThemeProvider>);
 
       await screen.findByRole('heading', { name: /dashboard/i });
       await user.click(screen.getByRole('button', { name: /^backup$/i }));
@@ -918,7 +919,7 @@ describe('App', () => {
       .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }));
 
     const user = userEvent.setup();
-    render(<App />);
+    render(<ThemeProvider><App /></ThemeProvider>);
 
     await screen.findByRole('heading', { name: /dashboard/i });
     await user.click(screen.getByRole('button', { name: /^backup$/i }));
@@ -1008,7 +1009,7 @@ describe('App', () => {
       );
 
     const user = userEvent.setup();
-    render(<App />);
+    render(<ThemeProvider><App /></ThemeProvider>);
 
     await screen.findByRole('heading', { name: /dashboard/i });
     await user.click(screen.getByRole('button', { name: /^backup$/i }));
@@ -1118,7 +1119,7 @@ describe('App', () => {
       .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }));
 
     const user = userEvent.setup();
-    render(<App />);
+    render(<ThemeProvider><App /></ThemeProvider>);
 
     await screen.findByRole('heading', { name: /dashboard/i });
     await user.click(screen.getByRole('button', { name: /^backup$/i }));
@@ -1236,7 +1237,7 @@ describe('App', () => {
       .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }));
 
     const user = userEvent.setup();
-    render(<App />);
+    render(<ThemeProvider><App /></ThemeProvider>);
 
     await screen.findByRole('heading', { name: /dashboard/i });
     await user.click(screen.getByRole('button', { name: /^backup$/i }));
@@ -1306,7 +1307,7 @@ describe('App', () => {
       .mockResolvedValueOnce(jsonResponse({ data: { changed: true } }));
 
     const user = userEvent.setup();
-    render(<App />);
+    render(<ThemeProvider><App /></ThemeProvider>);
 
     await screen.findByRole('heading', { name: /dashboard/i });
     await user.click(screen.getByRole('button', { name: /^settings$/i }));
@@ -1379,7 +1380,7 @@ describe('App', () => {
       );
 
     const user = userEvent.setup();
-    render(<App />);
+    render(<ThemeProvider><App /></ThemeProvider>);
 
     await screen.findByRole('heading', { name: /dashboard/i });
     await user.click(screen.getByRole('button', { name: /^settings$/i }));
@@ -1442,7 +1443,7 @@ describe('App', () => {
       .mockResolvedValueOnce(dataPolicyResponse());
 
     const user = userEvent.setup();
-    render(<App />);
+    render(<ThemeProvider><App /></ThemeProvider>);
 
     await screen.findByRole('heading', { name: /dashboard/i });
     await user.click(screen.getByRole('button', { name: /^settings$/i }));
@@ -1521,7 +1522,7 @@ describe('App', () => {
       );
 
     const user = userEvent.setup();
-    render(<App />);
+    render(<ThemeProvider><App /></ThemeProvider>);
 
     await screen.findByRole('heading', { name: /dashboard/i });
     await user.click(screen.getByRole('button', { name: /^settings$/i }));
@@ -1618,7 +1619,7 @@ describe('App', () => {
       }));
 
     const user = userEvent.setup();
-    render(<App />);
+    render(<ThemeProvider><App /></ThemeProvider>);
 
     await screen.findByRole('heading', { name: /dashboard/i });
     await user.click(screen.getByRole('button', { name: /^settings$/i }));
@@ -1711,7 +1712,7 @@ describe('App', () => {
       .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
       .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }));
 
-    render(<App />);
+    render(<ThemeProvider><App /></ThemeProvider>);
 
     expect(await screen.findByRole('heading', { name: /dashboard/i })).toBeInTheDocument();
     expect(screen.getByText(/viewer a/i)).toBeInTheDocument();
@@ -1805,7 +1806,7 @@ describe('App', () => {
 
     const user = userEvent.setup();
     const writeText = vi.spyOn(window.navigator.clipboard, 'writeText');
-    render(<App />);
+    render(<ThemeProvider><App /></ThemeProvider>);
 
     await screen.findByRole('heading', { name: /dashboard/i });
     await user.click(screen.getByRole('button', { name: /open target details/i }));
@@ -1922,7 +1923,7 @@ describe('App', () => {
       );
 
     const user = userEvent.setup();
-    render(<App />);
+    render(<ThemeProvider><App /></ThemeProvider>);
 
     await screen.findByRole('heading', { name: /dashboard/i });
     await user.click(screen.getByRole('button', { name: /open starbucks details/i }));
@@ -1993,7 +1994,7 @@ describe('App', () => {
       );
 
     const user = userEvent.setup();
-    render(<App />);
+    render(<ThemeProvider><App /></ThemeProvider>);
 
     await screen.findByRole('heading', { name: /dashboard/i });
     await user.click(screen.getByRole('button', { name: /add deal/i }));
@@ -2109,7 +2110,7 @@ describe('App', () => {
       );
 
     const user = userEvent.setup();
-    render(<App />);
+    render(<ThemeProvider><App /></ThemeProvider>);
 
     await screen.findByRole('heading', { name: /dashboard/i });
     await user.click(screen.getByRole('button', { name: /^bulk import$/i }));
@@ -2682,7 +2683,7 @@ describe('App', () => {
       );
 
     const user = userEvent.setup();
-    render(<App />);
+    render(<ThemeProvider><App /></ThemeProvider>);
 
     await screen.findByRole('heading', { name: /dashboard/i });
     await user.click(screen.getByRole('button', { name: /add deal/i }));
@@ -2782,7 +2783,7 @@ describe('App', () => {
       );
 
     const user = userEvent.setup();
-    render(<App />);
+    render(<ThemeProvider><App /></ThemeProvider>);
 
     await screen.findByRole('heading', { name: /dashboard/i });
     await user.click(screen.getByRole('button', { name: /add deal/i }));
@@ -2881,7 +2882,7 @@ describe('App', () => {
       );
 
     const user = userEvent.setup();
-    render(<App />);
+    render(<ThemeProvider><App /></ThemeProvider>);
 
     await screen.findByRole('heading', { name: /dashboard/i });
     await user.click(screen.getByRole('button', { name: /add deal/i }));
@@ -2993,7 +2994,7 @@ describe('App', () => {
       );
 
     const user = userEvent.setup();
-    render(<App />);
+    render(<ThemeProvider><App /></ThemeProvider>);
 
     await screen.findByRole('heading', { name: /dashboard/i });
     await user.click(screen.getByRole('button', { name: /add deal/i }));
@@ -3121,7 +3122,7 @@ describe('App', () => {
       );
 
     const user = userEvent.setup();
-    render(<App />);
+    render(<ThemeProvider><App /></ThemeProvider>);
 
     await screen.findByRole('heading', { name: /dashboard/i });
     await user.click(screen.getByRole('button', { name: /^deals$/i }));
@@ -3205,7 +3206,7 @@ describe('App', () => {
       );
 
     const user = userEvent.setup();
-    render(<App />);
+    render(<ThemeProvider><App /></ThemeProvider>);
 
     await screen.findByRole('heading', { name: /dashboard/i });
     await user.click(screen.getByRole('button', { name: /^deals$/i }));
@@ -3310,7 +3311,7 @@ describe('App', () => {
       );
 
     const user = userEvent.setup();
-    render(<App />);
+    render(<ThemeProvider><App /></ThemeProvider>);
 
     await screen.findByRole('heading', { name: /dashboard/i });
     await user.click(screen.getByRole('button', { name: /^deals$/i }));
@@ -3389,7 +3390,7 @@ describe('App', () => {
       );
 
     const user = userEvent.setup();
-    render(<App />);
+    render(<ThemeProvider><App /></ThemeProvider>);
 
     await screen.findByRole('heading', { name: /dashboard/i });
     await user.click(screen.getByRole('button', { name: /^cards$/i }));
@@ -3472,7 +3473,7 @@ describe('App', () => {
       );
 
     const user = userEvent.setup();
-    render(<App />);
+    render(<ThemeProvider><App /></ThemeProvider>);
 
     await screen.findByRole('heading', { name: /dashboard/i });
     await user.click(screen.getByRole('button', { name: /^cards$/i }));
@@ -3578,7 +3579,7 @@ describe('App', () => {
       );
 
     const user = userEvent.setup();
-    render(<App />);
+    render(<ThemeProvider><App /></ThemeProvider>);
 
     await screen.findByRole('heading', { name: /dashboard/i });
     await user.click(screen.getByRole('button', { name: /^cards$/i }));
@@ -3659,7 +3660,7 @@ describe('App', () => {
       );
 
     const user = userEvent.setup();
-    render(<App />);
+    render(<ThemeProvider><App /></ThemeProvider>);
 
     await screen.findByRole('heading', { name: /dashboard/i });
     await user.click(screen.getByRole('button', { name: /^cards$/i }));
@@ -3745,7 +3746,7 @@ describe('App', () => {
       );
 
     const user = userEvent.setup();
-    render(<App />);
+    render(<ThemeProvider><App /></ThemeProvider>);
 
     await screen.findByRole('heading', { name: /dashboard/i });
     await user.click(screen.getByRole('button', { name: /^cards$/i }));
@@ -3821,7 +3822,7 @@ describe('App', () => {
       );
 
     const user = userEvent.setup();
-    render(<App />);
+    render(<ThemeProvider><App /></ThemeProvider>);
 
     await screen.findByRole('heading', { name: /dashboard/i });
     await user.click(screen.getByRole('button', { name: /^cards$/i }));
@@ -3905,7 +3906,7 @@ describe('App', () => {
       );
 
     const user = userEvent.setup();
-    render(<App />);
+    render(<ThemeProvider><App /></ThemeProvider>);
 
     await screen.findByRole('heading', { name: /dashboard/i });
     await user.click(screen.getByRole('button', { name: /^cards$/i }));
@@ -4088,7 +4089,7 @@ describe('App', () => {
       );
 
     const user = userEvent.setup();
-    render(<App />);
+    render(<ThemeProvider><App /></ThemeProvider>);
 
     await screen.findByRole('heading', { name: /dashboard/i });
     await user.click(screen.getByRole('button', { name: /^cards$/i }));
@@ -4193,7 +4194,7 @@ describe('App', () => {
       );
 
     const user = userEvent.setup();
-    render(<App />);
+    render(<ThemeProvider><App /></ThemeProvider>);
 
     await screen.findByRole('heading', { name: /dashboard/i });
     await user.click(screen.getByRole('button', { name: /^cards$/i }));
@@ -4262,7 +4263,7 @@ describe('App', () => {
       );
 
     const user = userEvent.setup();
-    render(<App />);
+    render(<ThemeProvider><App /></ThemeProvider>);
 
     await screen.findByRole('heading', { name: /dashboard/i });
     await user.click(screen.getByRole('button', { name: /^cards$/i }));
@@ -4365,7 +4366,7 @@ describe('App', () => {
       );
 
     const user = userEvent.setup();
-    render(<App />);
+    render(<ThemeProvider><App /></ThemeProvider>);
 
     await screen.findByRole('heading', { name: /dashboard/i });
     await user.click(screen.getByRole('button', { name: /^cards$/i }));
@@ -4437,7 +4438,7 @@ describe('App', () => {
       .mockResolvedValueOnce(jsonResponse({}, 204));
 
     const user = userEvent.setup();
-    render(<App />);
+    render(<ThemeProvider><App /></ThemeProvider>);
 
     await screen.findByRole('heading', { name: /dashboard/i });
     await user.click(screen.getByRole('button', { name: /^cards$/i }));
@@ -4521,7 +4522,7 @@ describe('App', () => {
       );
 
     const user = userEvent.setup();
-    render(<App />);
+    render(<ThemeProvider><App /></ThemeProvider>);
 
     await screen.findByRole('heading', { name: /dashboard/i });
     await user.click(screen.getByRole('button', { name: /^cards$/i }));
@@ -4596,7 +4597,7 @@ describe('App', () => {
       .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }));
 
     const user = userEvent.setup();
-    render(<App />);
+    render(<ThemeProvider><App /></ThemeProvider>);
 
     await screen.findByRole('heading', { name: /dashboard/i });
     await user.click(screen.getByRole('button', { name: /^cards$/i }));
