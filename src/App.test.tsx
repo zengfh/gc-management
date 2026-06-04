@@ -2318,7 +2318,7 @@ describe('App', () => {
     });
 
     const user = userEvent.setup();
-    render(<App />);
+    render(<ThemeProvider><App /></ThemeProvider>);
 
     await screen.findByRole('heading', { name: /dashboard/i });
     await user.click(within(screen.getByRole('navigation', { name: /primary/i })).getByRole('button', { name: /^ai import$/i }));
@@ -2516,7 +2516,7 @@ describe('App', () => {
     });
 
     const user = userEvent.setup();
-    render(<App />);
+    render(<ThemeProvider><App /></ThemeProvider>);
 
     await screen.findByRole('heading', { name: /dashboard/i });
     await user.click(within(screen.getByRole('navigation', { name: /primary/i })).getByRole('button', { name: /^ai import$/i }));
@@ -2607,7 +2607,7 @@ describe('App', () => {
     });
 
     const user = userEvent.setup();
-    render(<App />);
+    render(<ThemeProvider><App /></ThemeProvider>);
 
     await screen.findByRole('heading', { name: /dashboard/i });
     await user.click(screen.getByRole('button', { name: /^bulk import$/i }));
@@ -4015,7 +4015,7 @@ describe('App', () => {
       );
 
     const user = userEvent.setup();
-    render(<App />);
+    render(<ThemeProvider><App /></ThemeProvider>);
 
     await screen.findByRole('heading', { name: /dashboard/i });
     await user.click(screen.getByRole('button', { name: /^cards$/i }));

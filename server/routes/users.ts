@@ -238,10 +238,10 @@ export function createUsersRouter({ db }: { db: Database.Database }) {
       await verifyFreshUnlockSecret(db, req.auth, body.currentUnlockSecret);
       const email = normalizeEmail(body.email);
       const timestamp = nowIso();
-      if (activeUserWithEmail(db, req.auth.accountId, email)) {
+      if (email && activeUserWithEmail(db, req.auth.accountId, email)) {
         throw conflict('USER_EMAIL_EXISTS', 'A user with this email already exists.');
       }
-      if (activeInviteWithEmail(db, req.auth.accountId, email, timestamp)) {
+      if (email && activeInviteWithEmail(db, req.auth.accountId, email, timestamp)) {
         throw conflict('INVITE_EXISTS', 'An active invite already exists for this email.');
       }
 
