@@ -3389,6 +3389,56 @@ describe('App', () => {
     );
   });
 
+  it('keeps secondary card actions in an overflow menu', async () => {
+    fetchMock()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            setupComplete: true,
+            sessionValid: true,
+            dekLoaded: true,
+            csrfToken: 'csrf_ready',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            {
+              id: 1,
+              brand: 'Target',
+              status: 'available',
+              faceValueCents: 5000,
+              remainingBalanceCents: 5000,
+              purchaseCostCents: 4500,
+              cardNumberLast4: '1111',
+            },
+          ],
+          page: { total: 1, limit: 50, offset: 0, hasMore: false },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }));
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+
+    await screen.findByRole('heading', { name: /dashboard/i });
+    await user.click(screen.getByRole('button', { name: /^cards$/i }));
+
+    const row = screen.getByRole('row', { name: /target/i });
+    expect(within(row).getByRole('button', { name: /open target details/i })).toBeInTheDocument();
+    expect(within(row).getByRole('button', { name: /reserve target/i })).toBeInTheDocument();
+    expect(within(row).queryByRole('button', { name: /sell target/i })).not.toBeInTheDocument();
+    expect(within(row).queryByRole('button', { name: /void target/i })).not.toBeInTheDocument();
+    expect(within(row).queryByRole('button', { name: /delete target/i })).not.toBeInTheDocument();
+
+    await user.click(within(row).getByRole('button', { name: /more actions for target/i }));
+
+    expect(screen.getByRole('button', { name: /sell target/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /void target/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /delete target/i })).toBeInTheDocument();
+  });
+
   it('records card usage from the card table action', async () => {
     fetchMock()
       .mockResolvedValueOnce(
@@ -3448,6 +3498,7 @@ describe('App', () => {
 
     await screen.findByRole('heading', { name: /dashboard/i });
     await user.click(screen.getByRole('button', { name: /^cards$/i }));
+    await user.click(screen.getByRole('button', { name: /more actions for target/i }));
     await user.click(screen.getByRole('button', { name: /use target/i }));
 
     expect(screen.getByRole('heading', { name: /record usage/i })).toBeInTheDocument();
@@ -3718,6 +3769,7 @@ describe('App', () => {
 
     await screen.findByRole('heading', { name: /dashboard/i });
     await user.click(screen.getByRole('button', { name: /^cards$/i }));
+    await user.click(screen.getByRole('button', { name: /more actions for target/i }));
     await user.click(screen.getByRole('button', { name: /sell target/i }));
 
     const dialog = screen.getByRole('dialog', { name: /sell card/i });
@@ -3880,6 +3932,7 @@ describe('App', () => {
 
     await screen.findByRole('heading', { name: /dashboard/i });
     await user.click(screen.getByRole('button', { name: /^cards$/i }));
+    await user.click(screen.getByRole('button', { name: /more actions for target/i }));
     await user.click(screen.getByRole('button', { name: /void target/i }));
 
     const dialog = screen.getByRole('dialog', { name: /void card/i });
@@ -4496,6 +4549,7 @@ describe('App', () => {
 
     await screen.findByRole('heading', { name: /dashboard/i });
     await user.click(screen.getByRole('button', { name: /^cards$/i }));
+    await user.click(screen.getByRole('button', { name: /more actions for target/i }));
     await user.click(screen.getByRole('button', { name: /delete target/i }));
 
     const dialog = await screen.findByRole('dialog', { name: /delete card/i });

@@ -1,5 +1,5 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
-import { ArrowDown, ArrowUp, ArrowUpDown, ArrowUpRight, CreditCard, ScrollText, Search, Tag, type LucideIcon } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown, ArrowUpRight, CreditCard, MoreHorizontal, ScrollText, Search, Tag, type LucideIcon } from 'lucide-react';
 import type {
   AuditCriteria,
   AuditEvent,
@@ -257,6 +257,8 @@ export function CardsTable({
   onReserveCard: (card: Card) => void;
   onUnreserveCard: (card: Card) => void;
 }) {
+  const [openActionMenuCardId, setOpenActionMenuCardId] = useState<string | null>(null);
+
   if (cards.length === 0) {
     return (
       <div className="empty-state">
@@ -266,14 +268,51 @@ export function CardsTable({
     );
   }
 
+  function closeActionMenu() {
+    setOpenActionMenuCardId(null);
+  }
+
+  function actionButton({
+    key,
+    label,
+    ariaLabel,
+    onClick,
+    danger = false,
+    primary = false,
+  }: {
+    key: string;
+    label: string;
+    ariaLabel: string;
+    onClick: () => void;
+    danger?: boolean;
+    primary?: boolean;
+  }) {
+    return (
+      <button
+        key={key}
+        type="button"
+        className={`table-action${primary ? ' primary' : ''}${danger ? ' danger' : ''}`}
+        aria-label={ariaLabel}
+        onClick={() => {
+          closeActionMenu();
+          onClick();
+        }}
+      >
+        {label}
+      </button>
+    );
+  }
+
   return (
-    <div className="table-wrap" tabIndex={0}>
-      <table>
+    <div className="table-wrap" tabIndex={0} aria-label="Scrollable card inventory table">
+      <table className="cards-table">
+        <caption className="visually-hidden">Card inventory</caption>
         <thead>
           <tr>
             {selectedCardIds && onToggleCardSelected ? (
-              <th aria-label="Select cards">
+              <th scope="col" aria-label="Select cards">
                 <input
+                  aria-label="Select all visible cards"
                   type="checkbox"
                   checked={cards.length > 0 && cards.every((card) => selectedCardIds.has(String(card.id)))}
                   onChange={(event) => onToggleAllCardsSelected?.(event.target.checked)}
@@ -283,138 +322,141 @@ export function CardsTable({
             <SortableHeader field="brand" label="Card" sortBy={sortBy} sortDir={sortDir} onSortCards={onSortCards} />
             <SortableHeader field="status" label="Status" sortBy={sortBy} sortDir={sortDir} onSortCards={onSortCards} />
             <SortableHeader field="remainingBalanceCents" label="Remaining" numeric sortBy={sortBy} sortDir={sortDir} onSortCards={onSortCards} />
-            <th>Actions</th>
-            <th>Credential</th>
+            <th scope="col">Actions</th>
+            <th scope="col">Credential</th>
             <SortableHeader field="expirationDate" label="Expiration" sortBy={sortBy} sortDir={sortDir} onSortCards={onSortCards} />
             <SortableHeader field="faceValueCents" label="Face" numeric sortBy={sortBy} sortDir={sortDir} onSortCards={onSortCards} />
             <SortableHeader field="updatedAt" label="Updated" sortBy={sortBy} sortDir={sortDir} onSortCards={onSortCards} />
           </tr>
         </thead>
         <tbody>
-          {cards.map((card) => (
-            <tr key={card.id}>
-              {selectedCardIds && onToggleCardSelected ? (
-                <td>
-                  <input
-                    type="checkbox"
-                    checked={selectedCardIds.has(String(card.id))}
-                    aria-label={`Select ${card.brand}`}
-                    onChange={(event) => onToggleCardSelected(String(card.id), event.target.checked)}
-                  />
+          {cards.map((card) => {
+            const cardId = String(card.id);
+            const visibleActions = [
+              actionButton({
+                key: 'details',
+                label: 'Details',
+                ariaLabel: `Open ${card.brand} details`,
+                primary: true,
+                onClick: () => onViewCard(card),
+              }),
+            ];
+            const overflowActions: ReactNode[] = [];
+
+            if (canManage && card.status === 'available') {
+              visibleActions.push(actionButton({
+                key: 'reserve',
+                label: 'Reserve',
+                ariaLabel: `Reserve ${card.brand}`,
+                onClick: () => onReserveCard(card),
+              }));
+              overflowActions.push(
+                actionButton({ key: 'use', label: 'Use', ariaLabel: `Use ${card.brand}`, onClick: () => onUseCard(card) }),
+                actionButton({ key: 'sell', label: 'Sell', ariaLabel: `Sell ${card.brand}`, onClick: () => onSellCard(card) }),
+                actionButton({ key: 'void', label: 'Void', ariaLabel: `Void ${card.brand}`, danger: true, onClick: () => onVoidCard(card) }),
+                actionButton({ key: 'delete', label: 'Delete', ariaLabel: `Delete ${card.brand}`, danger: true, onClick: () => onDeleteCard(card) }),
+              );
+            }
+            if (canManage && card.status === 'reserved') {
+              visibleActions.push(actionButton({
+                key: 'unreserve',
+                label: 'Unreserve',
+                ariaLabel: `Unreserve ${card.brand}`,
+                onClick: () => onUnreserveCard(card),
+              }));
+              overflowActions.push(
+                actionButton({ key: 'sell', label: 'Sell', ariaLabel: `Sell ${card.brand}`, onClick: () => onSellCard(card) }),
+                actionButton({ key: 'void', label: 'Void', ariaLabel: `Void ${card.brand}`, danger: true, onClick: () => onVoidCard(card) }),
+              );
+            }
+            if (canManage && card.status === 'in_use') {
+              visibleActions.push(actionButton({
+                key: 'use',
+                label: 'Use',
+                ariaLabel: `Use ${card.brand}`,
+                onClick: () => onUseCard(card),
+              }));
+              overflowActions.push(
+                actionButton({ key: 'undo-use', label: 'Undo use', ariaLabel: `Undo usage ${card.brand}`, onClick: () => onUndoUsage(card) }),
+                actionButton({ key: 'sell', label: 'Sell', ariaLabel: `Sell ${card.brand}`, onClick: () => onSellCard(card) }),
+                actionButton({ key: 'void', label: 'Void', ariaLabel: `Void ${card.brand}`, danger: true, onClick: () => onVoidCard(card) }),
+              );
+            }
+            if (canManage && card.status === 'used_up') {
+              visibleActions.push(actionButton({
+                key: 'undo-use',
+                label: 'Undo use',
+                ariaLabel: `Undo usage ${card.brand}`,
+                onClick: () => onUndoUsage(card),
+              }));
+            }
+            if (canManage && card.status === 'sold') {
+              visibleActions.push(actionButton({
+                key: 'undo-sale',
+                label: 'Undo sale',
+                ariaLabel: `Undo sale ${card.brand}`,
+                onClick: () => onUndoSale(card),
+              }));
+            }
+
+            const menuOpen = openActionMenuCardId === cardId;
+            return (
+              <tr key={card.id}>
+                {selectedCardIds && onToggleCardSelected ? (
+                  <td data-label="Select">
+                    <input
+                      type="checkbox"
+                      checked={selectedCardIds.has(cardId)}
+                      aria-label={`Select ${card.brand}`}
+                      onChange={(event) => onToggleCardSelected(cardId, event.target.checked)}
+                    />
+                  </td>
+                ) : null}
+                <td data-label="Card">
+                  <div className="card-summary-cell" aria-label={`${card.brand} ${formatDisplayCardType(card.cardType)}`}>
+                    <strong aria-hidden="true">{card.brand}</strong>
+                    <span aria-hidden="true">{formatDisplayCardType(card.cardType)}</span>
+                  </div>
                 </td>
-              ) : null}
-              <td>
-                <div className="card-summary-cell" aria-label={`${card.brand} ${formatDisplayCardType(card.cardType)}`}>
-                  <strong aria-hidden="true">{card.brand}</strong>
-                  <span aria-hidden="true">{formatDisplayCardType(card.cardType)}</span>
-                </div>
-              </td>
-              <td>
-                <StatusBadge status={card.status} />
-              </td>
-              <td className="numeric">{formatMoney(card.remainingBalanceCents)}</td>
-              <td>
-                <div className="row-actions card-row-actions">
-                  <button
-                    type="button"
-                    className="table-action primary"
-                    aria-label={`Open ${card.brand} details`}
-                    onClick={() => onViewCard(card)}
-                  >
-                    Details
-                  </button>
-                  {canManage && card.status === 'available' ? (
-                    <button
-                      type="button"
-                      className="table-action"
-                      aria-label={`Reserve ${card.brand}`}
-                      onClick={() => onReserveCard(card)}
-                    >
-                      Reserve
-                    </button>
-                  ) : null}
-                  {canManage && card.status === 'reserved' ? (
-                    <button
-                      type="button"
-                      className="table-action"
-                      aria-label={`Unreserve ${card.brand}`}
-                      onClick={() => onUnreserveCard(card)}
-                    >
-                      Unreserve
-                    </button>
-                  ) : null}
-                  {canManage && ['available', 'in_use'].includes(card.status) ? (
-                    <button
-                      type="button"
-                      className="table-action"
-                      aria-label={`Use ${card.brand}`}
-                      onClick={() => onUseCard(card)}
-                    >
-                      Use
-                    </button>
-                  ) : null}
-                  {canManage && ['in_use', 'used_up'].includes(card.status) ? (
-                    <button
-                      type="button"
-                      className="table-action"
-                      aria-label={`Undo usage ${card.brand}`}
-                      onClick={() => onUndoUsage(card)}
-                    >
-                      Undo use
-                    </button>
-                  ) : null}
-                  {canManage && ['available', 'reserved', 'in_use'].includes(card.status) ? (
-                    <button
-                      type="button"
-                      className="table-action"
-                      aria-label={`Sell ${card.brand}`}
-                      onClick={() => onSellCard(card)}
-                    >
-                      Sell
-                    </button>
-                  ) : null}
-                  {canManage && card.status === 'sold' ? (
-                    <button
-                      type="button"
-                      className="table-action"
-                      aria-label={`Undo sale ${card.brand}`}
-                      onClick={() => onUndoSale(card)}
-                    >
-                      Undo sale
-                    </button>
-                  ) : null}
-                  {canManage && ['available', 'reserved', 'in_use'].includes(card.status) ? (
-                    <button
-                      type="button"
-                      className="table-action danger"
-                      aria-label={`Void ${card.brand}`}
-                      onClick={() => onVoidCard(card)}
-                    >
-                      Void
-                    </button>
-                  ) : null}
-                  {canManage && card.status === 'available' ? (
-                    <button
-                      type="button"
-                      className="table-action danger"
-                      aria-label={`Delete ${card.brand}`}
-                      onClick={() => onDeleteCard(card)}
-                    >
-                      Delete
-                    </button>
-                  ) : null}
-                </div>
-              </td>
-              <td className="mono credential-cell">
-                {credentialsVisible
-                  ? revealedCredentialText(revealedCredentialsByCardId[String(card.id)]) || credentialSummaryText(card)
-                  : credentialSummaryText(card)}
-              </td>
-              <td>{card.expirationDate || 'Not recorded'}</td>
-              <td className="numeric">{formatMoney(card.faceValueCents)}</td>
-              <td>{card.updatedAt ? new Date(card.updatedAt).toLocaleDateString() : 'Not recorded'}</td>
-            </tr>
-          ))}
+                <td data-label="Status">
+                  <StatusBadge status={card.status} />
+                </td>
+                <td data-label="Remaining" className="numeric">{formatMoney(card.remainingBalanceCents)}</td>
+                <td data-label="Actions">
+                  <div className="row-actions card-row-actions">
+                    {visibleActions}
+                    {overflowActions.length > 0 ? (
+                      <span className="card-action-overflow">
+                        <button
+                          type="button"
+                          className="table-action icon-table-action"
+                          aria-label={`More actions for ${card.brand}`}
+                          aria-expanded={menuOpen}
+                          aria-controls={`card-actions-${cardId}`}
+                          onClick={() => setOpenActionMenuCardId(menuOpen ? null : cardId)}
+                        >
+                          <MoreHorizontal aria-hidden="true" size={16} />
+                        </button>
+                        {menuOpen ? (
+                          <span className="row-action-menu" id={`card-actions-${cardId}`}>
+                            {overflowActions}
+                          </span>
+                        ) : null}
+                      </span>
+                    ) : null}
+                  </div>
+                </td>
+                <td data-label="Credential" className="mono credential-cell">
+                  {credentialsVisible
+                    ? revealedCredentialText(revealedCredentialsByCardId[cardId]) || credentialSummaryText(card)
+                    : credentialSummaryText(card)}
+                </td>
+                <td data-label="Expiration">{card.expirationDate || 'Not recorded'}</td>
+                <td data-label="Face" className="numeric">{formatMoney(card.faceValueCents)}</td>
+                <td data-label="Updated">{card.updatedAt ? new Date(card.updatedAt).toLocaleDateString() : 'Not recorded'}</td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
