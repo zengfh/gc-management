@@ -24,6 +24,7 @@ interface AiParsedCard {
   credentialProfile: 'claim_code' | 'claim_link' | 'merchant_number_pin' | 'barcode' | 'network_prepaid' | 'custom';
   primaryCode: string;
   secondaryCode?: string;
+  requiredRedemptionFields?: string[];
   expirationMonth?: string;
   expirationYear?: string;
   billingZip?: string;
@@ -45,6 +46,7 @@ export interface AiImportRow {
   credentialProfile: AiParsedCard['credentialProfile'];
   primaryCode: string;
   secondaryCode: string;
+  requiredRedemptionFields: string[];
   expirationMonth: string;
   expirationYear: string;
   billingZip: string;
@@ -96,6 +98,109 @@ class AiProviderError extends Error {
 
 const looseString = z.union([z.string(), z.number(), z.null()]).optional()
   .transform((value) => (value == null ? '' : String(value).trim()));
+
+const redemptionFieldAliases: Record<string, string | string[]> = {
+  primarycode: 'primary_code',
+  primary_code: 'primary_code',
+  code: 'primary_code',
+  claimcode: 'primary_code',
+  claim_code: 'primary_code',
+  redemptioncode: 'primary_code',
+  redemption_code: 'primary_code',
+  giftcode: 'primary_code',
+  gift_code: 'primary_code',
+  claimlink: 'primary_code',
+  claim_link: 'primary_code',
+  claimurl: 'primary_code',
+  claim_url: 'primary_code',
+  url: 'primary_code',
+  link: 'primary_code',
+  cardnumber: 'card_number',
+  card_number: 'card_number',
+  number: 'card_number',
+  accountnumber: 'card_number',
+  account_number: 'card_number',
+  pan: 'card_number',
+  pin: 'pin',
+  password: 'pin',
+  passcode: 'pin',
+  secondarycode: 'pin',
+  secondary_code: 'pin',
+  accesscode: 'pin',
+  access_code: 'pin',
+  barcode: 'barcode_value',
+  barcodevalue: 'barcode_value',
+  barcode_value: 'barcode_value',
+  expmonth: 'expiration_month',
+  exp_month: 'expiration_month',
+  expirationmonth: 'expiration_month',
+  expiration_month: 'expiration_month',
+  expyear: 'expiration_year',
+  exp_year: 'expiration_year',
+  expirationyear: 'expiration_year',
+  expiration_year: 'expiration_year',
+  cvv: 'network_security_code',
+  cvc: 'network_security_code',
+  cid: 'network_security_code',
+  securitycode: 'network_security_code',
+  security_code: 'network_security_code',
+  networksecuritycode: 'network_security_code',
+  network_security_code: 'network_security_code',
+  billingzip: 'billing_postal_code',
+  billing_zip: 'billing_postal_code',
+  billingpostalcode: 'billing_postal_code',
+  billing_postal_code: 'billing_postal_code',
+  postalcode: 'billing_postal_code',
+  postal_code: 'billing_postal_code',
+  zip: 'billing_postal_code',
+  cardnumberpin: ['card_number', 'pin'],
+  card_number_pin: ['card_number', 'pin'],
+  numberpin: ['card_number', 'pin'],
+  codepin: ['primary_code', 'pin'],
+  code_pin: ['primary_code', 'pin'],
+};
+
+const defaultRequiredRedemptionFieldsByProfile: Record<AiParsedCard['credentialProfile'], string[]> = {
+  claim_code: ['primary_code'],
+  claim_link: ['primary_code'],
+  merchant_number_pin: ['card_number', 'pin'],
+  barcode: ['barcode_value'],
+  network_prepaid: ['card_number', 'expiration_month', 'expiration_year', 'network_security_code'],
+  custom: ['primary_code', 'card_number', 'pin', 'access_code', 'barcode_value'],
+};
+
+function parseRequiredRedemptionFields(value: unknown): string[] {
+  const rawValues = Array.isArray(value)
+    ? value.flatMap((entry) => String(entry || '').split(/[,;|\n/]+|\s+\+\s+|\s+and\s+/i))
+    : String(value || '').split(/[,;|\n/]+|\s+\+\s+|\s+and\s+/i);
+  const fields: string[] = [];
+  for (const rawValue of rawValues) {
+    const normalized = rawValue
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '');
+    if (!normalized) {
+      continue;
+    }
+    const compacted = normalized.replace(/_/g, '');
+    const alias = redemptionFieldAliases[normalized] || redemptionFieldAliases[compacted];
+    const canonicalFields = Array.isArray(alias) ? alias : alias ? [alias] : [];
+    for (const field of canonicalFields) {
+      if (!fields.includes(field)) {
+        fields.push(field);
+      }
+    }
+  }
+  return fields;
+}
+
+const looseRequiredRedemptionFields = z.union([
+  z.array(z.union([z.string(), z.number()])),
+  z.string(),
+  z.number(),
+  z.null(),
+]).optional().transform(parseRequiredRedemptionFields);
 
 function moneyText(value: string): string {
   return value.replace(/^\$/, '').replace(/,/g, '').trim();
@@ -175,6 +280,9 @@ const aiCardSchema = z.object({
   pin: looseString,
   password: looseString,
   accessCode: looseString,
+  requiredRedemptionFields: looseRequiredRedemptionFields,
+  requiredFields: looseRequiredRedemptionFields,
+  redemptionFields: looseRequiredRedemptionFields,
   expirationMonth: looseString,
   expirationYear: looseString,
   expiration: looseString,
@@ -211,6 +319,11 @@ const aiCardSchema = z.object({
     credentialProfile,
     primaryCode,
     secondaryCode,
+    requiredRedemptionFields: row.requiredRedemptionFields.length > 0
+      ? row.requiredRedemptionFields
+      : row.requiredFields.length > 0
+        ? row.requiredFields
+        : row.redemptionFields,
     expirationMonth: firstPresent(row.expirationMonth, expiration.expirationMonth),
     expirationYear: firstPresent(row.expirationYear, expiration.expirationYear),
     billingZip: firstPresent(row.billingZip, row.zip, row.postalCode),
@@ -676,6 +789,7 @@ function safePreviousRows(previousRows: unknown[] | undefined): unknown[] {
       credentialProfile: draft.credentialProfile || '',
       primaryCode: draft.primaryCode || '',
       secondaryCode: draft.secondaryCode || '',
+      requiredRedemptionFields: Array.isArray(draft.requiredRedemptionFields) ? draft.requiredRedemptionFields : [],
       notes: draft.notes || '',
       rawLine: draft.rawLine || '',
     };
@@ -687,7 +801,7 @@ function aiPrompt(text: string, options: AiImportPromptOptions = {}): string {
   const existingSources = (options.existingSources || []).map((source) => source.trim()).filter(Boolean).slice(0, 120);
   const lines = [
     'Extract gift card inventory from the user text.',
-    'Return ONLY strict JSON with this shape: {"cards":[{"brand":"","faceValue":"","credentialProfile":"claim_code|claim_link|merchant_number_pin|barcode|network_prepaid|custom","primaryCode":"","secondaryCode":"","notes":"","source":"","rawLine":"","confidence":0.0}]}',
+    'Return ONLY strict JSON with this shape: {"cards":[{"brand":"","faceValue":"","credentialProfile":"claim_code|claim_link|merchant_number_pin|barcode|network_prepaid|custom","primaryCode":"","secondaryCode":"","requiredRedemptionFields":["primary_code"],"notes":"","source":"","rawLine":"","confidence":0.0}]}',
     existingBrands.length > 0
       ? `Existing indexed brands, use exact spelling/casing when the user text appears to refer to one of these: ${existingBrands.join(', ')}.`
       : '',
@@ -702,6 +816,9 @@ function aiPrompt(text: string, options: AiImportPromptOptions = {}): string {
     '- For claim-link cards, use credentialProfile "claim_link" and put the full HTTP/HTTPS URL exactly as written in primaryCode. Never alter URL casing.',
     '- For merchant cards with a number plus a secondary PIN, use credentialProfile "merchant_number_pin", primaryCode as card number, secondaryCode as PIN.',
     '- Treat issuer terms such as access number, passcode, or password as PIN and put them in secondaryCode.',
+    '- Return requiredRedemptionFields as only fields needed to redeem/use the card, using these field keys: primary_code, card_number, pin, barcode_value, expiration_month, expiration_year, network_security_code, or billing_postal_code.',
+    '- Do not include fields in requiredRedemptionFields just because they were present. Include only fields the customer must enter or provide at redemption/checkout.',
+    '- DoorDash/Uber/Instacart/Amazon/Apple one-code cards usually require only ["primary_code"]. Best Buy-style card-number-plus-PIN cards usually require ["card_number","pin"]. Network prepaid cards should include only the number plus checkout fields that are actually required.',
     '- If a brand and value header applies to multiple following code-only rows, inherit that brand and value for each row until a new brand/value row or table header appears.',
     '- A row like "Card Code/PIN" is a header, not a gift card.',
     '- If a trailing date is not clearly an expiration field supported by the app, keep it in notes as memo text.',
@@ -889,6 +1006,7 @@ function normalizeAiCard(card: AiParsedCard): AiParsedCard | null {
     const removedPin = next.secondaryCode;
     next.credentialProfile = 'claim_code';
     next.secondaryCode = '';
+    next.requiredRedemptionFields = ['primary_code'];
     if (removedPin) {
       next.notes = [next.notes, `AI supplied an extra PIN for ${next.brand}; removed because this brand is treated as code-only.`]
         .filter(Boolean)
@@ -897,6 +1015,11 @@ function normalizeAiCard(card: AiParsedCard): AiParsedCard | null {
   }
 
   return next;
+}
+
+function requiredRedemptionFieldsForCard(card: AiParsedCard): string[] {
+  const explicit = card.requiredRedemptionFields || [];
+  return explicit.length > 0 ? explicit : defaultRequiredRedemptionFieldsByProfile[card.credentialProfile];
 }
 
 function removeExpirationOnlyNote(notes: string | undefined): string {
@@ -1072,6 +1195,7 @@ function toRows(
     credentialProfile: card.credentialProfile,
     primaryCode: card.primaryCode,
     secondaryCode: card.secondaryCode || '',
+    requiredRedemptionFields: requiredRedemptionFieldsForCard(card),
     expirationMonth: card.expirationMonth || '',
     expirationYear: card.expirationYear || '',
     billingZip: card.billingZip || '',

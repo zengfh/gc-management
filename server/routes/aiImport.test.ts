@@ -562,6 +562,51 @@ describe('AI import routes', () => {
     );
   });
 
+  it('asks AI for required redemption fields and returns normalized metadata', async () => {
+    process.env.GC_AI_CUSTOM_PROVIDER_NAME = 'hankzeng-gpt-5.5';
+    process.env.GC_AI_CUSTOM_API_KEY = 'test-custom-key';
+    process.env.GC_AI_CUSTOM_BASE_URL = 'https://sub2api.example/v1';
+    process.env.GC_AI_CUSTOM_MODEL = 'gpt-5.5';
+    process.env.GC_AI_CUSTOM_WIRE_API = 'responses';
+    delete process.env.GC_AI_GOOGLE_API_KEY;
+    delete process.env.GC_AI_OPENROUTER_API_KEY;
+    delete process.env.GC_AI_GROQ_API_KEY;
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response(JSON.stringify({
+      output_text: JSON.stringify({
+        cards: [
+          {
+            brand: 'Best Buy',
+            faceValue: '50',
+            credentialProfile: 'merchant_number_pin',
+            primaryCode: 'BB-CARD-50',
+            secondaryCode: '1234',
+            requiredRedemptionFields: ['card number', 'PIN'],
+            confidence: 0.95,
+          },
+        ],
+      }),
+    })));
+    const csrfToken = await setupOwner();
+
+    const response = await postWithCsrf('/api/ai-import/analyze', csrfToken).send({
+      text: 'Best Buy 50 BB-CARD-50 PIN 1234',
+      modelSelection: 'custom:gpt-5.5',
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.rows[0]).toMatchObject({
+      brand: 'Best Buy',
+      credentialProfile: 'merchant_number_pin',
+      primaryCode: 'BB-CARD-50',
+      secondaryCode: '1234',
+      requiredRedemptionFields: ['card_number', 'pin'],
+    });
+    const body = JSON.parse(vi.mocked(globalThis.fetch).mock.calls[0][1].body);
+    const prompt = body.input[1].content;
+    expect(prompt).toContain('requiredRedemptionFields');
+    expect(prompt).toMatch(/only fields needed to redeem/i);
+  });
+
   it('passes indexed references to AI import and canonicalizes returned brand casing', async () => {
     process.env.GC_AI_CUSTOM_PROVIDER_NAME = 'hankzeng-gpt-5.5';
     process.env.GC_AI_CUSTOM_API_KEY = 'test-custom-key';

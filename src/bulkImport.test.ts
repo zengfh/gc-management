@@ -258,4 +258,28 @@ describe('bulk gift-card import parser', () => {
       ],
     });
   });
+
+  it('marks only required redemption fields copyable when CSV provides redemption metadata', () => {
+    const row = firstRow(
+      'brand,value,profile,card_number,exp_month,exp_year,cvv,zip,required_redemption_fields\n'
+      + 'Visa,100,network_prepaid,4111111111111111,08,2028,123,94105,card_number|security_code',
+    );
+    const payload = bulkImportRowToDealPayload(row);
+
+    expect(row.requiredRedemptionFields).toEqual(['card_number', 'network_security_code']);
+    expect(payload.cards).toEqual([
+      expect.objectContaining({
+        brand: 'Visa',
+        credentials: expect.objectContaining({
+          fields: expect.arrayContaining([
+            expect.objectContaining({ fieldKind: 'card_number', copyable: true }),
+            expect.objectContaining({ fieldKind: 'expiration_month', copyable: false }),
+            expect.objectContaining({ fieldKind: 'expiration_year', copyable: false }),
+            expect.objectContaining({ fieldKind: 'network_security_code', copyable: true }),
+            expect.objectContaining({ fieldKind: 'billing_postal_code', copyable: false }),
+          ]),
+        }),
+      }),
+    ]);
+  });
 });

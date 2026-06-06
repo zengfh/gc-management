@@ -1,4 +1,4 @@
-import type { CredentialProfile, ReferenceValueState } from '../shared/domain';
+import type { CredentialFieldKind, CredentialProfile, ReferenceValueState } from '../shared/domain';
 import type { ApiPayload } from './appTypes';
 import { inferCredentialProfileForBrand, inferNetworkFromBrand } from './credentialHelpers';
 import { dollarsToCents } from './display';
@@ -22,6 +22,7 @@ export interface BulkImportDraft {
   barcodeFormat: string;
   source: string;
   notes: string;
+  requiredRedemptionFields: string[];
   warnings: string[];
 }
 
@@ -34,6 +35,7 @@ interface BulkImportContext {
   brand: string;
   faceValue: string;
   credentialProfile: BulkImportProfile;
+  requiredRedemptionFields: string[];
 }
 
 const builtInBrandAliases: Array<{ aliases: string[]; brand: string }> = [
@@ -118,6 +120,84 @@ const headerAliases: Record<string, keyof BulkImportDraft | 'profile' | 'code' |
   source: 'source',
   notes: 'notes',
   note: 'notes',
+  requiredredemptionfields: 'requiredRedemptionFields',
+  required_redemption_fields: 'requiredRedemptionFields',
+  redemptionfields: 'requiredRedemptionFields',
+  redemption_fields: 'requiredRedemptionFields',
+  requiredfields: 'requiredRedemptionFields',
+  required_fields: 'requiredRedemptionFields',
+  requiredtoredeem: 'requiredRedemptionFields',
+  required_to_redeem: 'requiredRedemptionFields',
+};
+
+const redemptionFieldAliases: Record<string, string | string[]> = {
+  primarycode: 'primary_code',
+  primary_code: 'primary_code',
+  code: 'primary_code',
+  claimcode: 'primary_code',
+  claim_code: 'primary_code',
+  redemptioncode: 'primary_code',
+  redemption_code: 'primary_code',
+  giftcode: 'primary_code',
+  gift_code: 'primary_code',
+  claimlink: 'primary_code',
+  claim_link: 'primary_code',
+  claimurl: 'primary_code',
+  claim_url: 'primary_code',
+  url: 'primary_code',
+  link: 'primary_code',
+  cardnumber: 'card_number',
+  card_number: 'card_number',
+  number: 'card_number',
+  accountnumber: 'card_number',
+  account_number: 'card_number',
+  pan: 'card_number',
+  pin: 'pin',
+  password: 'pin',
+  passcode: 'pin',
+  secondarycode: 'pin',
+  secondary_code: 'pin',
+  accesscode: 'pin',
+  access_code: 'pin',
+  barcode: 'barcode_value',
+  barcodevalue: 'barcode_value',
+  barcode_value: 'barcode_value',
+  expmonth: 'expiration_month',
+  exp_month: 'expiration_month',
+  expirationmonth: 'expiration_month',
+  expiration_month: 'expiration_month',
+  expyear: 'expiration_year',
+  exp_year: 'expiration_year',
+  expirationyear: 'expiration_year',
+  expiration_year: 'expiration_year',
+  cvv: 'network_security_code',
+  cvc: 'network_security_code',
+  cid: 'network_security_code',
+  securitycode: 'network_security_code',
+  security_code: 'network_security_code',
+  networksecuritycode: 'network_security_code',
+  network_security_code: 'network_security_code',
+  billingzip: 'billing_postal_code',
+  billing_zip: 'billing_postal_code',
+  billingpostalcode: 'billing_postal_code',
+  billing_postal_code: 'billing_postal_code',
+  postalcode: 'billing_postal_code',
+  postal_code: 'billing_postal_code',
+  zip: 'billing_postal_code',
+  cardnumberpin: ['card_number', 'pin'],
+  card_number_pin: ['card_number', 'pin'],
+  numberpin: ['card_number', 'pin'],
+  codepin: ['primary_code', 'pin'],
+  code_pin: ['primary_code', 'pin'],
+};
+
+const defaultRequiredRedemptionFieldsByProfile: Record<BulkImportProfile, string[]> = {
+  claim_code: ['primary_code'],
+  claim_link: ['primary_code'],
+  merchant_number_pin: ['card_number', 'pin'],
+  barcode: ['barcode_value'],
+  network_prepaid: ['card_number', 'expiration_month', 'expiration_year', 'network_security_code'],
+  custom: ['primary_code', 'card_number', 'pin', 'access_code', 'barcode_value'],
 };
 
 function compact(value: string): string {
@@ -216,6 +296,32 @@ function canonicalProfile(value: string): BulkImportProfile | null {
     return 'custom';
   }
   return null;
+}
+
+function parseRequiredRedemptionFields(value: unknown): string[] {
+  const rawValues = Array.isArray(value)
+    ? value.flatMap((entry) => String(entry || '').split(/[,;|\n/]+|\s+\+\s+|\s+and\s+/i))
+    : String(value || '').split(/[,;|\n/]+|\s+\+\s+|\s+and\s+/i);
+  const fields: string[] = [];
+  for (const rawValue of rawValues) {
+    const normalized = rawValue
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '');
+    if (!normalized) {
+      continue;
+    }
+    const compacted = normalized.replace(/_/g, '');
+    const alias = redemptionFieldAliases[normalized] || redemptionFieldAliases[compacted];
+    const canonicalFields = Array.isArray(alias) ? alias : alias ? [alias] : [];
+    for (const field of canonicalFields) {
+      if (!fields.includes(field)) {
+        fields.push(field);
+      }
+    }
+  }
+  return fields;
 }
 
 function looksLikeClaimLink(value: string): boolean {
@@ -324,6 +430,10 @@ function draftFromHeader(fields: string[], headers: string[], lineNumber: number
       draft.credentialProfile = canonicalProfile(value) || draft.credentialProfile;
       return;
     }
+    if (target === 'requiredRedemptionFields') {
+      draft.requiredRedemptionFields = parseRequiredRedemptionFields(value);
+      return;
+    }
     if (
       target === 'brand'
       || target === 'faceValue'
@@ -363,6 +473,7 @@ function emptyDraft(lineNumber: number, rawLine: string): BulkImportDraft {
     barcodeFormat: 'code128',
     source: '',
     notes: '',
+    requiredRedemptionFields: [],
     warnings: [],
   };
 }
@@ -433,6 +544,7 @@ function applyContinuationContext(draft: BulkImportDraft, fields: string[], cont
     brand: context.brand,
     faceValue: context.faceValue,
     credentialProfile: 'claim_code',
+    requiredRedemptionFields: context.requiredRedemptionFields,
     primaryCode: fields.join(' ').trim() || draft.primaryCode,
     secondaryCode: '',
     notes: '',
@@ -447,6 +559,7 @@ function nextContinuationContext(row: BulkImportDraft): BulkImportContext | null
     brand: row.brand,
     faceValue: row.faceValue,
     credentialProfile: row.credentialProfile,
+    requiredRedemptionFields: row.requiredRedemptionFields,
   };
 }
 
@@ -580,19 +693,39 @@ export function bulkImportRowsToDealPayload(rows: BulkImportDraft[]): ApiPayload
   };
 }
 
+function requiredRedemptionFieldSet(row: Pick<BulkImportDraft, 'credentialProfile' | 'requiredRedemptionFields'>): Set<string> {
+  const explicit = row.requiredRedemptionFields.filter(Boolean);
+  return new Set(explicit.length > 0 ? explicit : defaultRequiredRedemptionFieldsByProfile[row.credentialProfile]);
+}
+
+function isRequiredRedemptionField(
+  row: Pick<BulkImportDraft, 'credentialProfile' | 'requiredRedemptionFields'>,
+  fieldKey: string,
+  fieldKind: CredentialFieldKind,
+): boolean {
+  const requiredFields = requiredRedemptionFieldSet(row);
+  if (requiredFields.has(fieldKey) || requiredFields.has(fieldKind)) {
+    return true;
+  }
+  return fieldKind === 'card_number' && requiredFields.has('primary_code');
+}
+
 function bulkImportRowToCardPayload(row: BulkImportDraft): ApiPayload {
   const profile = row.credentialProfile;
   const faceValueCents = dollarsToCents(row.faceValue);
   if (!faceValueCents) {
     throw new Error(`Line ${row.lineNumber} needs a face value.`);
   }
-  const credentialFields = [];
+  const credentialFields: Array<Record<string, unknown> & { fieldKey: string; fieldKind: CredentialFieldKind }> = [];
+  const copyable = (fieldKey: string, fieldKind: CredentialFieldKind) =>
+    isRequiredRedemptionField(row, fieldKey, fieldKind);
   if (row.credentialProfile === 'claim_code') {
     credentialFields.push({
       fieldKey: 'primary_code',
       label: 'Redemption code',
       fieldKind: 'primary_code',
       value: row.primaryCode.trim(),
+      copyable: copyable('primary_code', 'primary_code'),
     });
   } else if (row.credentialProfile === 'claim_link') {
     credentialFields.push({
@@ -600,6 +733,7 @@ function bulkImportRowToCardPayload(row: BulkImportDraft): ApiPayload {
       label: 'Claim link',
       fieldKind: 'primary_code',
       value: row.primaryCode.trim(),
+      copyable: copyable('claim_link', 'primary_code'),
     });
   } else if (row.credentialProfile === 'barcode') {
     credentialFields.push({
@@ -608,6 +742,7 @@ function bulkImportRowToCardPayload(row: BulkImportDraft): ApiPayload {
       fieldKind: 'barcode_value',
       value: row.primaryCode.trim(),
       barcodeFormat: row.barcodeFormat || 'code128',
+      copyable: copyable('barcode_value', 'barcode_value'),
     });
   } else {
     credentialFields.push({
@@ -615,6 +750,7 @@ function bulkImportRowToCardPayload(row: BulkImportDraft): ApiPayload {
       label: 'Card number',
       fieldKind: 'card_number',
       value: row.primaryCode.trim(),
+      copyable: copyable('card_number', 'card_number'),
     });
     if (row.secondaryCode.trim()) {
       credentialFields.push({
@@ -622,6 +758,7 @@ function bulkImportRowToCardPayload(row: BulkImportDraft): ApiPayload {
         label: 'PIN',
         fieldKind: 'pin',
         value: row.secondaryCode.trim(),
+        copyable: copyable('pin', 'pin'),
       });
     }
     if (profile === 'network_prepaid') {
@@ -631,6 +768,7 @@ function bulkImportRowToCardPayload(row: BulkImportDraft): ApiPayload {
           label: 'Exp. month',
           fieldKind: 'expiration_month',
           value: row.expirationMonth.trim(),
+          copyable: copyable('expiration_month', 'expiration_month'),
         });
       }
       if (row.expirationYear.trim()) {
@@ -639,6 +777,7 @@ function bulkImportRowToCardPayload(row: BulkImportDraft): ApiPayload {
           label: 'Exp. year',
           fieldKind: 'expiration_year',
           value: row.expirationYear.trim(),
+          copyable: copyable('expiration_year', 'expiration_year'),
         });
       }
       if (row.billingZip.trim()) {
@@ -647,6 +786,7 @@ function bulkImportRowToCardPayload(row: BulkImportDraft): ApiPayload {
           label: 'Billing ZIP',
           fieldKind: 'billing_postal_code',
           value: row.billingZip.trim(),
+          copyable: copyable('billing_postal_code', 'billing_postal_code'),
         });
       }
       const networkSecurityCode = row.networkSecurityCode || '';
@@ -656,6 +796,7 @@ function bulkImportRowToCardPayload(row: BulkImportDraft): ApiPayload {
           label: 'Security code',
           fieldKind: 'network_security_code',
           value: networkSecurityCode.trim(),
+          copyable: copyable('network_security_code', 'network_security_code'),
         });
       }
     }
