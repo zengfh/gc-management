@@ -1,5 +1,5 @@
-import type { Card, CredentialField, RevealedCredentials } from '../shared/domain';
-import { formatMoney, statusLabels } from './display';
+import type { Card, CredentialField, CredentialProfile, RevealedCredentials } from '../shared/domain';
+import { formatMoney } from './display';
 
 export interface ReserveSummaryColumn {
   key: string;
@@ -21,26 +21,33 @@ export type RevealedCredentialsByCardId = Record<string, RevealedCredentials | n
 
 export const baseReserveSummaryColumns: ReserveSummaryColumn[] = [
   { key: 'brand', label: 'Brand' },
-  { key: 'status', label: 'Status' },
-  { key: 'faceValue', label: 'Face value' },
   { key: 'remainingBalance', label: 'Remaining balance' },
-  { key: 'expiration', label: 'Expiration' },
-  { key: 'source', label: 'Source' },
-  { key: 'cardType', label: 'Card type' },
-  { key: 'network', label: 'Network' },
-  { key: 'credentialProfile', label: 'Credential profile' },
-  { key: 'cardNumberLast4', label: 'Card number last 4' },
-  { key: 'reservedFor', label: 'Reserved for' },
-  { key: 'reservedUntil', label: 'Reserved until' },
-  { key: 'reservedNotes', label: 'Reservation notes' },
-  { key: 'notes', label: 'Card notes' },
-  { key: 'cardId', label: 'Card ID' },
-  { key: 'dealId', label: 'Deal ID' },
 ];
+
+const defaultRedemptionKindsByProfile: Record<CredentialProfile, Set<string>> = {
+  claim_code: new Set(['primary_code', 'pin', 'access_code']),
+  claim_link: new Set(['primary_code']),
+  merchant_number_pin: new Set(['card_number', 'primary_code', 'pin', 'access_code']),
+  barcode: new Set(['barcode_value', 'pin', 'access_code']),
+  network_prepaid: new Set(['card_number', 'expiration_month', 'expiration_year', 'network_security_code', 'billing_postal_code']),
+  custom: new Set(['primary_code', 'card_number', 'pin', 'access_code', 'barcode_value']),
+};
 
 function normalizeCell(value: unknown): string {
   if (value === null || value === undefined) return '';
   return String(value).replace(/[\t\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function profileFrom(card: Card, credentials?: RevealedCredentials | null): CredentialProfile | 'custom' {
+  const profile = credentials?.credentials?.profile || card.credentialProfile || 'custom';
+  return (
+    profile === 'claim_code'
+    || profile === 'claim_link'
+    || profile === 'merchant_number_pin'
+    || profile === 'barcode'
+    || profile === 'network_prepaid'
+    || profile === 'custom'
+  ) ? profile : 'custom';
 }
 
 function credentialColumnKey(field: Pick<CredentialField, 'fieldKey' | 'fieldKind' | 'label'>): string {
@@ -89,6 +96,13 @@ function credentialFields(credentials?: RevealedCredentials | null): CredentialF
   return fields.filter((field) => field.value !== null && field.value !== undefined && String(field.value).length > 0);
 }
 
+function isRedemptionField(profile: CredentialProfile | 'custom', field: CredentialField): boolean {
+  if (field.copyable === false) {
+    return false;
+  }
+  return defaultRedemptionKindsByProfile[profile].has(field.fieldKind);
+}
+
 export function buildReserveSummary(
   cards: Card[],
   revealedCredentialsByCardId: RevealedCredentialsByCardId = {},
@@ -99,8 +113,10 @@ export function buildReserveSummary(
 
   for (const card of cards) {
     const cardId = String(card.id);
+    const credentials = revealedCredentialsByCardId[cardId];
+    const profile = profileFrom(card, credentials);
     const values: Record<string, string> = {};
-    for (const field of credentialFields(revealedCredentialsByCardId[cardId])) {
+    for (const field of credentialFields(credentials).filter((candidate) => isRedemptionField(profile, candidate))) {
       const key = credentialColumnKey(field);
       if (!credentialColumns.has(key)) {
         credentialColumns.set(key, { key, label: credentialColumnLabel(field) });
@@ -114,21 +130,7 @@ export function buildReserveSummary(
   const rows = cards.map((card) => {
     const values: Record<string, string> = {
       brand: normalizeCell(card.brand),
-      status: normalizeCell(statusLabels[card.status] || card.status),
-      faceValue: formatMoney(card.faceValueCents),
       remainingBalance: formatMoney(card.remainingBalanceCents),
-      expiration: normalizeCell(card.expirationDate),
-      source: normalizeCell(card.source),
-      cardType: normalizeCell(card.cardType),
-      network: normalizeCell(card.network),
-      credentialProfile: normalizeCell(card.credentialProfile),
-      cardNumberLast4: normalizeCell(card.cardNumberLast4),
-      reservedFor: normalizeCell(card.reservedFor),
-      reservedUntil: normalizeCell(card.reservedUntil),
-      reservedNotes: normalizeCell(card.reservedNotes),
-      notes: normalizeCell(card.notes),
-      cardId: normalizeCell(card.id),
-      dealId: normalizeCell((card as Card & { dealId?: string | number | null }).dealId),
       ...credentialValuesByCardId.get(String(card.id)),
     };
     if (unavailableCredentialCardIds.has(String(card.id))) {

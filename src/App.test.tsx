@@ -4721,24 +4721,34 @@ describe('App', () => {
 
     const summary = await screen.findByRole('region', { name: /reserved cards summary/i });
     expect(within(summary).getByRole('columnheader', { name: /^brand$/i })).toBeInTheDocument();
+    expect(within(summary).getByRole('columnheader', { name: /^remaining balance$/i })).toBeInTheDocument();
     expect(within(summary).getByRole('columnheader', { name: /^card number$/i })).toBeInTheDocument();
     expect(within(summary).getByRole('columnheader', { name: /^pin$/i })).toBeInTheDocument();
     expect(within(summary).getByRole('columnheader', { name: /^code$/i })).toBeInTheDocument();
     expect(within(summary).getByRole('cell', { name: 'TARGET-CARD-1111' })).toBeInTheDocument();
     expect(within(summary).getByRole('cell', { name: 'TARGET-PIN' })).toBeInTheDocument();
     expect(within(summary).getByRole('cell', { name: 'AMZN-CODE-2222' })).toBeInTheDocument();
-    expect(within(summary).getAllByRole('cell', { name: 'Dealer A' })).toHaveLength(2);
+    expect(within(summary).queryByRole('columnheader', { name: /^status$/i })).not.toBeInTheDocument();
+    expect(within(summary).queryByRole('columnheader', { name: /^face value$/i })).not.toBeInTheDocument();
+    expect(within(summary).queryByRole('columnheader', { name: /^source$/i })).not.toBeInTheDocument();
+    expect(within(summary).queryByRole('columnheader', { name: /^expiration$/i })).not.toBeInTheDocument();
+    expect(within(summary).queryByRole('columnheader', { name: /^billing zip$/i })).not.toBeInTheDocument();
+    expect(within(summary).queryByRole('cell', { name: 'Dealer A' })).not.toBeInTheDocument();
+    expect(within(summary).queryByRole('cell', { name: '94107' })).not.toBeInTheDocument();
 
     await user.click(within(summary).getByRole('button', { name: /^copy all info$/i }));
 
     expect(writeText).toHaveBeenCalledTimes(1);
     const copied = writeText.mock.calls[0]?.[0] as string;
     expect(copied.split('\n')).toHaveLength(3);
-    expect(copied).toContain('Brand\tStatus\tFace value\tRemaining balance');
-    expect(copied).toContain('Target\tReserved\t$50.00\t$50.00');
-    expect(copied).toContain('TARGET-CARD-1111\tTARGET-PIN\t94107');
-    expect(copied).toContain('Amazon\tReserved\t$25.00\t$25.00');
+    expect(copied).toContain('Brand\tRemaining balance\tCard number\tPIN\tCode');
+    expect(copied).toContain('Target\t$50.00\tTARGET-CARD-1111\tTARGET-PIN');
+    expect(copied).toContain('Amazon\t$25.00');
     expect(copied).toContain('AMZN-CODE-2222');
+    expect(copied).not.toContain('Status');
+    expect(copied).not.toContain('Face value');
+    expect(copied).not.toContain('Dealer A');
+    expect(copied).not.toContain('94107');
     expect(await within(summary).findByText(/copied 2 cards/i)).toBeInTheDocument();
   });
 
@@ -4842,8 +4852,9 @@ describe('App', () => {
     await user.click(screen.getByRole('button', { name: /^apply reserve$/i }));
 
     const summary = await screen.findByRole('region', { name: /reserved cards summary/i });
-    expect(within(summary).getByRole('row', { name: /target.*reserved/i })).toBeInTheDocument();
-    expect(within(summary).getByRole('row', { name: /amazon.*reserved/i })).toBeInTheDocument();
+    expect(within(summary).getByRole('row', { name: /target.*\$50\.00.*target-card-1111/i })).toBeInTheDocument();
+    expect(within(summary).getByRole('row', { name: /amazon.*\$25\.00.*unavailable/i })).toBeInTheDocument();
+    expect(within(summary).queryByRole('columnheader', { name: /^status$/i })).not.toBeInTheDocument();
     expect(within(summary).getByRole('cell', { name: 'TARGET-CARD-1111' })).toBeInTheDocument();
     expect(within(summary).getByRole('cell', { name: /unavailable/i })).toBeInTheDocument();
   });
