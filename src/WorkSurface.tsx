@@ -87,6 +87,7 @@ const mcpDocsUrl = 'https://github.com/zengfh/gc-management/blob/feat/sota-ui-re
 
 const adminRoleSet = new Set(['owner', 'admin']);
 const operatorRoleSet = new Set(['owner', 'admin', 'operator']);
+type BulkCardAction = 'reserve' | 'unreserve' | 'use' | 'sell' | 'void';
 
 function authRole(auth: AuthState | null | undefined): string {
   return auth?.user?.role || 'owner';
@@ -180,12 +181,12 @@ function BulkCardActionPanel({
   onSubmit,
   onClear,
 }: {
-  action: 'reserve' | 'use' | 'sell' | 'void' | null;
+  action: BulkCardAction | null;
   selectedCount: number;
   submitting: boolean;
   error: string;
   message: string;
-  onSelectAction: (action: 'reserve' | 'use' | 'sell' | 'void') => void;
+  onSelectAction: (action: BulkCardAction) => void;
   onSubmit: (payload?: Record<string, unknown>) => Promise<void>;
   onClear: () => void;
 }) {
@@ -229,6 +230,10 @@ function BulkCardActionPanel({
       });
       return;
     }
+    if (action === 'unreserve') {
+      await onSubmit({});
+      return;
+    }
     await onSubmit({ reason: form.reason || null });
   }
 
@@ -241,6 +246,7 @@ function BulkCardActionPanel({
       <div className="bulk-action-toolbar">
         <strong>{selectedCount} selected</strong>
         <button type="button" className="table-action" onClick={() => onSelectAction('reserve')}>Reserve</button>
+        <button type="button" className="table-action" onClick={() => onSelectAction('unreserve')}>Unreserve</button>
         <button type="button" className="table-action" onClick={() => onSelectAction('use')}>Use remaining</button>
         <button type="button" className="table-action" onClick={() => onSelectAction('sell')}>Sell remaining</button>
         <button type="button" className="table-action danger" onClick={() => onSelectAction('void')}>Void</button>
@@ -279,6 +285,9 @@ function BulkCardActionPanel({
           {action === 'void' ? (
             <input placeholder="Void reason" value={form.reason} onChange={(event) => updateField('reason', event.target.value)} />
           ) : null}
+          {action === 'unreserve' ? (
+            <p className="bulk-action-note">Release the selected reserved cards back to available inventory.</p>
+          ) : null}
           <button type="submit" className="primary-action compact" disabled={submitting}>
             {submitting ? 'Applying...' : `Apply ${action}`}
           </button>
@@ -308,10 +317,10 @@ function ReservedCardsSummaryPanel({
       <div className="reserved-summary-header">
         <div>
           <h3 id="reserved-summary-title">Reserved cards summary</h3>
-          <p>These are the cards reserved by the last bulk reserve action. Copy uses one card per row with tabs between fields.</p>
+          <p>These are the cards reserved by the last bulk reserve action. Copy includes brand, remaining balance, and required redemption fields only, with one card per tab-separated row.</p>
         </div>
         <div className="reserved-summary-actions">
-          <button type="button" className="primary-action" onClick={onCopy}>Copy all info</button>
+          <button type="button" className="primary-action" onClick={onCopy}>Copy redemption info</button>
           <button type="button" className="table-action" onClick={onClear}>Dismiss</button>
         </div>
       </div>
@@ -441,7 +450,7 @@ export function WorkSurface({
   const [showArchivedDeals, setShowArchivedDeals] = useState(false);
   const [cardCredentialsVisible, setCardCredentialsVisible] = useState(false);
   const [selectedCardIds, setSelectedCardIds] = useState<Set<string>>(new Set());
-  const [bulkAction, setBulkAction] = useState<'reserve' | 'use' | 'sell' | 'void' | null>(null);
+  const [bulkAction, setBulkAction] = useState<BulkCardAction | null>(null);
   const [bulkMessage, setBulkMessage] = useState('');
   const [bulkError, setBulkError] = useState('');
   const [bulkSubmitting, setBulkSubmitting] = useState(false);
@@ -705,6 +714,7 @@ export function WorkSurface({
     try {
       const eligibleCards = selectedCards.filter((card) => {
         if (bulkAction === 'reserve') return card.status === 'available';
+        if (bulkAction === 'unreserve') return card.status === 'reserved';
         if (bulkAction === 'use') return ['available', 'in_use'].includes(card.status) && card.remainingBalanceCents > 0;
         if (bulkAction === 'sell' || bulkAction === 'void') return ['available', 'reserved', 'in_use'].includes(card.status);
         return false;
@@ -718,6 +728,8 @@ export function WorkSurface({
         if (bulkAction === 'reserve') {
           const response = await onReserveCard(card.id, payload);
           updatedReserveCards.push(response.data);
+        } else if (bulkAction === 'unreserve') {
+          await onUnreserveCard(card);
         } else if (bulkAction === 'use') {
           await onUseCard(card.id, {
             amountCents: card.remainingBalanceCents,

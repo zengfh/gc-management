@@ -694,7 +694,7 @@ export function bulkImportRowsToDealPayload(rows: BulkImportDraft[]): ApiPayload
 }
 
 function requiredRedemptionFieldSet(row: Pick<BulkImportDraft, 'credentialProfile' | 'requiredRedemptionFields'>): Set<string> {
-  const explicit = row.requiredRedemptionFields.filter(Boolean);
+  const explicit = Array.isArray(row.requiredRedemptionFields) ? row.requiredRedemptionFields.filter(Boolean) : [];
   return new Set(explicit.length > 0 ? explicit : defaultRequiredRedemptionFieldsByProfile[row.credentialProfile]);
 }
 

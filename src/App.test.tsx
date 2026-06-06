@@ -4736,7 +4736,7 @@ describe('App', () => {
     expect(within(summary).queryByRole('cell', { name: 'Dealer A' })).not.toBeInTheDocument();
     expect(within(summary).queryByRole('cell', { name: '94107' })).not.toBeInTheDocument();
 
-    await user.click(within(summary).getByRole('button', { name: /^copy all info$/i }));
+    await user.click(within(summary).getByRole('button', { name: /^copy redemption info$/i }));
 
     expect(writeText).toHaveBeenCalledTimes(1);
     const copied = writeText.mock.calls[0]?.[0] as string;
@@ -4955,6 +4955,116 @@ describe('App', () => {
     expect(await screen.findByRole('row', { name: /target.*available/i })).toBeInTheDocument();
     expect(globalThis.fetch).toHaveBeenLastCalledWith(
       '/api/cards/1/unreserve',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({}),
+        headers: expect.objectContaining({
+          'X-CSRF-Token': 'csrf_ready',
+        }),
+      }),
+    );
+  });
+
+  it('bulk unreserves selected reserved cards', async () => {
+    fetchMock()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            setupComplete: true,
+            sessionValid: true,
+            dekLoaded: true,
+            csrfToken: 'csrf_ready',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            {
+              id: 1,
+              brand: 'Target',
+              status: 'reserved',
+              cardType: 'merchant',
+              faceValueCents: 5000,
+              remainingBalanceCents: 5000,
+              purchaseCostCents: 4500,
+              cardNumberLast4: '1111',
+              rowVersion: 2,
+            },
+            {
+              id: 2,
+              brand: 'Amazon',
+              status: 'reserved',
+              cardType: 'merchant',
+              faceValueCents: 2500,
+              remainingBalanceCents: 2500,
+              purchaseCostCents: 2200,
+              cardNumberLast4: '2222',
+              rowVersion: 2,
+            },
+          ],
+          page: { total: 2, limit: 50, offset: 0, hasMore: false },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            id: 1,
+            brand: 'Target',
+            status: 'available',
+            cardType: 'merchant',
+            faceValueCents: 5000,
+            remainingBalanceCents: 5000,
+            purchaseCostCents: 4500,
+            cardNumberLast4: '1111',
+            rowVersion: 3,
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            id: 2,
+            brand: 'Amazon',
+            status: 'available',
+            cardType: 'merchant',
+            faceValueCents: 2500,
+            remainingBalanceCents: 2500,
+            purchaseCostCents: 2200,
+            cardNumberLast4: '2222',
+            rowVersion: 3,
+          },
+        }),
+      );
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+
+    await screen.findByRole('heading', { name: /dashboard/i });
+    await user.click(screen.getByRole('button', { name: /^cards$/i }));
+    await user.click(screen.getByRole('checkbox', { name: /select target/i }));
+    await user.click(screen.getByRole('checkbox', { name: /select amazon/i }));
+    await user.click(screen.getByRole('button', { name: /^unreserve$/i }));
+    await user.click(screen.getByRole('button', { name: /^apply unreserve$/i }));
+
+    expect(await screen.findByText(/2 cards updated/i)).toBeInTheDocument();
+    expect(await screen.findByRole('row', { name: /target.*available/i })).toBeInTheDocument();
+    expect(await screen.findByRole('row', { name: /amazon.*available/i })).toBeInTheDocument();
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(
+      4,
+      '/api/cards/1/unreserve',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({}),
+        headers: expect.objectContaining({
+          'X-CSRF-Token': 'csrf_ready',
+        }),
+      }),
+    );
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(
+      5,
+      '/api/cards/2/unreserve',
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({}),
