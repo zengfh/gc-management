@@ -308,6 +308,7 @@ export function useInventoryController({ csrfToken }: InventoryControllerOptions
     });
     setCards((current) => replaceCardForCurrentCriteria(current, response.data, cardCriteria));
     setCardSummary(null);
+    return response;
   }
 
   return {

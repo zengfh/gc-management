@@ -51,6 +51,7 @@ import type { CardDetailState, DealDetailState, ViewId, WorkSurfaceProps } from 
 import { defaultCardCriteria, defaultFeatureFlags, defaultPage } from './defaults';
 import { errorMessage, formatDisplayValue, formatMoney, isBeforeToday, isWithinNextDays, statusText, viewTitle } from './display';
 import { FieldError } from './formUi';
+import { buildReserveSummary, reserveSummaryToTsv, type ReserveSummary } from './reserveSummary';
 import {
   ChangeUnlockSecretForm,
   DataOperationsPanel,
@@ -289,6 +290,54 @@ function BulkCardActionPanel({
   );
 }
 
+function ReservedCardsSummaryPanel({
+  summary,
+  copyMessage,
+  copyError,
+  onCopy,
+  onClear,
+}: {
+  summary: ReserveSummary;
+  copyMessage: string;
+  copyError: string;
+  onCopy: () => void;
+  onClear: () => void;
+}) {
+  return (
+    <section className="reserved-summary-panel" aria-labelledby="reserved-summary-title">
+      <div className="reserved-summary-header">
+        <div>
+          <h3 id="reserved-summary-title">Reserved cards summary</h3>
+          <p>These are the cards reserved by the last bulk reserve action. Copy uses one card per row with tabs between fields.</p>
+        </div>
+        <div className="reserved-summary-actions">
+          <button type="button" className="primary-action" onClick={onCopy}>Copy all info</button>
+          <button type="button" className="table-action" onClick={onClear}>Dismiss</button>
+        </div>
+      </div>
+      {copyMessage ? <p className="success-copy">{copyMessage}</p> : null}
+      {copyError ? <p className="error-copy">{copyError}</p> : null}
+      <div className="table-wrap reserved-summary-wrap" tabIndex={0}>
+        <table className="reserved-summary-table">
+          <caption>Cards reserved in the last bulk reserve action</caption>
+          <thead>
+            <tr>
+              {summary.columns.map((column) => <th key={column.key} scope="col">{column.label}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {summary.rows.map((row) => (
+              <tr key={String(row.card.id)}>
+                {summary.columns.map((column) => <td key={column.key}>{row.values[column.key] || ''}</td>)}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
 export function WorkSurface({
   auth,
   cards,
@@ -396,6 +445,9 @@ export function WorkSurface({
   const [bulkMessage, setBulkMessage] = useState('');
   const [bulkError, setBulkError] = useState('');
   const [bulkSubmitting, setBulkSubmitting] = useState(false);
+  const [reserveSummary, setReserveSummary] = useState<ReserveSummary | null>(null);
+  const [reserveSummaryCopyMessage, setReserveSummaryCopyMessage] = useState('');
+  const [reserveSummaryCopyError, setReserveSummaryCopyError] = useState('');
   const [revealedCardCredentials, setRevealedCardCredentials] = useState<Record<string, RevealedCredentials>>({});
   const [revealingCardCredentials, setRevealingCardCredentials] = useState(false);
   const [cardCredentialError, setCardCredentialError] = useState('');
@@ -601,6 +653,48 @@ export function WorkSurface({
     setSelectedCardIds(checked ? new Set(cards.map((card) => String(card.id))) : new Set());
   }
 
+
+  async function revealCredentialsForReserveSummary(cardsToReveal: Card[]) {
+    const revealed: Record<string, RevealedCredentials | null> = {};
+    const unavailable = new Set<string>();
+    for (const card of cardsToReveal) {
+      const cardId = String(card.id);
+      if (revealedCardCredentials[cardId]) {
+        revealed[cardId] = revealedCardCredentials[cardId];
+        continue;
+      }
+      try {
+        const response = await onRevealCardCredentials(cardId);
+        revealed[cardId] = response.data;
+      } catch {
+        revealed[cardId] = null;
+        unavailable.add(cardId);
+      }
+    }
+    const successful = Object.entries(revealed).filter((entry): entry is [string, RevealedCredentials] => Boolean(entry[1]));
+    if (successful.length > 0) {
+      setRevealedCardCredentials((current) => ({
+        ...current,
+        ...Object.fromEntries(successful),
+      }));
+    }
+    return { revealed, unavailable };
+  }
+
+  async function copyReserveSummary() {
+    if (!reserveSummary) {
+      return;
+    }
+    setReserveSummaryCopyError('');
+    setReserveSummaryCopyMessage('');
+    try {
+      await navigator.clipboard.writeText(reserveSummaryToTsv(reserveSummary));
+      setReserveSummaryCopyMessage(`Copied ${reserveSummary.rows.length} card${reserveSummary.rows.length === 1 ? '' : 's'}.`);
+    } catch (caught) {
+      setReserveSummaryCopyError(errorMessage(caught));
+    }
+  }
+
   async function submitBulkAction(payload: Record<string, unknown> = {}) {
     if (!bulkAction || selectedCards.length === 0) {
       return;
@@ -619,9 +713,11 @@ export function WorkSurface({
         setBulkError('No selected cards are eligible for this action.');
         return;
       }
+      const updatedReserveCards: Card[] = [];
       for (const card of eligibleCards) {
         if (bulkAction === 'reserve') {
-          await onReserveCard(card.id, payload);
+          const response = await onReserveCard(card.id, payload);
+          updatedReserveCards.push(response.data);
         } else if (bulkAction === 'use') {
           await onUseCard(card.id, {
             amountCents: card.remainingBalanceCents,
@@ -639,6 +735,14 @@ export function WorkSurface({
         } else if (bulkAction === 'void') {
           await onVoidCard(card.id, { reason: payload.reason || 'Bulk void' });
         }
+      }
+      if (bulkAction === 'reserve' && updatedReserveCards.length > 0) {
+        const credentials = await revealCredentialsForReserveSummary(updatedReserveCards);
+        setReserveSummary(buildReserveSummary(updatedReserveCards, credentials.revealed, credentials.unavailable));
+        setReserveSummaryCopyMessage('');
+        setReserveSummaryCopyError('');
+      } else {
+        setReserveSummary(null);
       }
       setBulkMessage(`${eligibleCards.length} card${eligibleCards.length === 1 ? '' : 's'} updated.`);
       setSelectedCardIds(new Set());
@@ -943,6 +1047,15 @@ export function WorkSurface({
                   setBulkAction(null);
                   setBulkError('');
                 }}
+              />
+            ) : null}
+            {reserveSummary ? (
+              <ReservedCardsSummaryPanel
+                summary={reserveSummary}
+                copyMessage={reserveSummaryCopyMessage}
+                copyError={reserveSummaryCopyError}
+                onCopy={() => void copyReserveSummary()}
+                onClear={() => setReserveSummary(null)}
               />
             ) : null}
             <CardsTable

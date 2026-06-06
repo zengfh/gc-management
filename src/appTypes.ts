@@ -254,6 +254,6 @@ export interface WorkSurfaceProps {
   onSellCard: (cardId: string, payload: CardSalePayload) => Promise<unknown>;
   onUndoSale: (cardId: string, payload: ApiPayload) => Promise<unknown>;
   onVoidCard: (cardId: string, payload: ApiPayload) => Promise<unknown>;
-  onReserveCard: (cardId: string, payload: ApiPayload) => Promise<unknown>;
+  onReserveCard: (cardId: string, payload: ApiPayload) => Promise<ApiResponse<Card>>;
   onUnreserveCard: (card: Card) => Promise<unknown>;
 }

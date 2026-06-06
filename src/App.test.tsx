@@ -4568,6 +4568,286 @@ describe('App', () => {
     );
   });
 
+
+  it('shows a copyable reserved cards summary after bulk reserve succeeds', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+
+    fetchMock()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            setupComplete: true,
+            sessionValid: true,
+            dekLoaded: true,
+            csrfToken: 'csrf_ready',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            {
+              id: 1,
+              dealId: 10,
+              brand: 'Target',
+              status: 'available',
+              cardType: 'merchant',
+              network: null,
+              credentialProfile: 'merchant_number_pin',
+              source: 'Raise',
+              expirationDate: '2027-01-31',
+              notes: 'Use online',
+              faceValueCents: 5000,
+              remainingBalanceCents: 5000,
+              purchaseCostCents: 4500,
+              cardNumberLast4: '1111',
+              rowVersion: 1,
+            },
+            {
+              id: 2,
+              dealId: 11,
+              brand: 'Amazon',
+              status: 'available',
+              cardType: 'merchant',
+              network: null,
+              credentialProfile: 'claim_code',
+              source: 'Costco',
+              expirationDate: '2028-02-29',
+              notes: 'Prime order',
+              faceValueCents: 2500,
+              remainingBalanceCents: 2500,
+              purchaseCostCents: 2200,
+              cardNumberLast4: '2222',
+              rowVersion: 1,
+            },
+          ],
+          page: { total: 2, limit: 50, offset: 0, hasMore: false },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            id: 1,
+            dealId: 10,
+            brand: 'Target',
+            status: 'reserved',
+            cardType: 'merchant',
+            network: null,
+            credentialProfile: 'merchant_number_pin',
+            source: 'Raise',
+            expirationDate: '2027-01-31',
+            notes: 'Use online',
+            reservedFor: 'Dealer A',
+            reservedUntil: '2026-06-30',
+            reservedNotes: 'Batch hold',
+            faceValueCents: 5000,
+            remainingBalanceCents: 5000,
+            purchaseCostCents: 4500,
+            cardNumberLast4: '1111',
+            rowVersion: 2,
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            id: 2,
+            dealId: 11,
+            brand: 'Amazon',
+            status: 'reserved',
+            cardType: 'merchant',
+            network: null,
+            credentialProfile: 'claim_code',
+            source: 'Costco',
+            expirationDate: '2028-02-29',
+            notes: 'Prime order',
+            reservedFor: 'Dealer A',
+            reservedUntil: '2026-06-30',
+            reservedNotes: 'Batch hold',
+            faceValueCents: 2500,
+            remainingBalanceCents: 2500,
+            purchaseCostCents: 2200,
+            cardNumberLast4: '2222',
+            rowVersion: 2,
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            credentials: {
+              profile: 'merchant_number_pin',
+              fields: [
+                { fieldKey: 'card_number', label: 'Card number', fieldKind: 'card_number', value: 'TARGET-CARD-1111', copyable: true },
+                { fieldKey: 'pin', label: 'PIN', fieldKind: 'pin', value: 'TARGET-PIN', copyable: true },
+                { fieldKey: 'billing_zip', label: 'Billing ZIP', fieldKind: 'billing_postal_code', value: '94107', copyable: true },
+              ],
+            },
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            credentials: {
+              profile: 'claim_code',
+              fields: [
+                { fieldKey: 'primary_code', label: 'Code', fieldKind: 'primary_code', value: 'AMZN-CODE-2222', copyable: true },
+              ],
+            },
+          },
+        }),
+      );
+
+    const user = userEvent.setup();
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+    render(<ThemeProvider><App /></ThemeProvider>);
+
+    await screen.findByRole('heading', { name: /dashboard/i });
+    await user.click(screen.getByRole('button', { name: /^cards$/i }));
+    await user.click(screen.getByRole('checkbox', { name: /select target/i }));
+    await user.click(screen.getByRole('checkbox', { name: /select amazon/i }));
+    await user.click(screen.getByRole('button', { name: /^reserve$/i }));
+    await user.type(screen.getByPlaceholderText(/^reserved for$/i), 'Dealer A');
+    const reserveForm = screen.getByRole('button', { name: /^apply reserve$/i }).closest('form');
+    const reservedUntilInput = reserveForm?.querySelector('input[type="date"]') as HTMLInputElement;
+    await user.type(reservedUntilInput, '2026-06-30');
+    await user.type(screen.getByPlaceholderText(/^reservation notes$/i), 'Batch hold');
+    await user.click(screen.getByRole('button', { name: /^apply reserve$/i }));
+
+    const summary = await screen.findByRole('region', { name: /reserved cards summary/i });
+    expect(within(summary).getByRole('columnheader', { name: /^brand$/i })).toBeInTheDocument();
+    expect(within(summary).getByRole('columnheader', { name: /^card number$/i })).toBeInTheDocument();
+    expect(within(summary).getByRole('columnheader', { name: /^pin$/i })).toBeInTheDocument();
+    expect(within(summary).getByRole('columnheader', { name: /^code$/i })).toBeInTheDocument();
+    expect(within(summary).getByRole('cell', { name: 'TARGET-CARD-1111' })).toBeInTheDocument();
+    expect(within(summary).getByRole('cell', { name: 'TARGET-PIN' })).toBeInTheDocument();
+    expect(within(summary).getByRole('cell', { name: 'AMZN-CODE-2222' })).toBeInTheDocument();
+    expect(within(summary).getAllByRole('cell', { name: 'Dealer A' })).toHaveLength(2);
+
+    await user.click(within(summary).getByRole('button', { name: /^copy all info$/i }));
+
+    expect(writeText).toHaveBeenCalledTimes(1);
+    const copied = writeText.mock.calls[0]?.[0] as string;
+    expect(copied.split('\n')).toHaveLength(3);
+    expect(copied).toContain('Brand\tStatus\tFace value\tRemaining balance');
+    expect(copied).toContain('Target\tReserved\t$50.00\t$50.00');
+    expect(copied).toContain('TARGET-CARD-1111\tTARGET-PIN\t94107');
+    expect(copied).toContain('Amazon\tReserved\t$25.00\t$25.00');
+    expect(copied).toContain('AMZN-CODE-2222');
+    expect(await within(summary).findByText(/copied 2 cards/i)).toBeInTheDocument();
+  });
+
+  it('keeps the reserved cards summary when one credential reveal fails', async () => {
+    fetchMock()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            setupComplete: true,
+            sessionValid: true,
+            dekLoaded: true,
+            csrfToken: 'csrf_ready',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            {
+              id: 1,
+              brand: 'Target',
+              status: 'available',
+              cardType: 'merchant',
+              faceValueCents: 5000,
+              remainingBalanceCents: 5000,
+              purchaseCostCents: 4500,
+              cardNumberLast4: '1111',
+              rowVersion: 1,
+            },
+            {
+              id: 2,
+              brand: 'Amazon',
+              status: 'available',
+              cardType: 'merchant',
+              faceValueCents: 2500,
+              remainingBalanceCents: 2500,
+              purchaseCostCents: 2200,
+              cardNumberLast4: '2222',
+              rowVersion: 1,
+            },
+          ],
+          page: { total: 2, limit: 50, offset: 0, hasMore: false },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            id: 1,
+            brand: 'Target',
+            status: 'reserved',
+            cardType: 'merchant',
+            reservedFor: 'Dealer B',
+            faceValueCents: 5000,
+            remainingBalanceCents: 5000,
+            purchaseCostCents: 4500,
+            cardNumberLast4: '1111',
+            rowVersion: 2,
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            id: 2,
+            brand: 'Amazon',
+            status: 'reserved',
+            cardType: 'merchant',
+            reservedFor: 'Dealer B',
+            faceValueCents: 2500,
+            remainingBalanceCents: 2500,
+            purchaseCostCents: 2200,
+            cardNumberLast4: '2222',
+            rowVersion: 2,
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            credentials: {
+              profile: 'merchant_number_pin',
+              fields: [
+                { fieldKey: 'card_number', label: 'Card number', fieldKind: 'card_number', value: 'TARGET-CARD-1111', copyable: true },
+              ],
+            },
+          },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ error: { message: 'Unlock required.' } }, 403));
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+
+    await screen.findByRole('heading', { name: /dashboard/i });
+    await user.click(screen.getByRole('button', { name: /^cards$/i }));
+    await user.click(screen.getByRole('checkbox', { name: /select target/i }));
+    await user.click(screen.getByRole('checkbox', { name: /select amazon/i }));
+    await user.click(screen.getByRole('button', { name: /^reserve$/i }));
+    await user.type(screen.getByPlaceholderText(/^reserved for$/i), 'Dealer B');
+    await user.click(screen.getByRole('button', { name: /^apply reserve$/i }));
+
+    const summary = await screen.findByRole('region', { name: /reserved cards summary/i });
+    expect(within(summary).getByRole('row', { name: /target.*reserved/i })).toBeInTheDocument();
+    expect(within(summary).getByRole('row', { name: /amazon.*reserved/i })).toBeInTheDocument();
+    expect(within(summary).getByRole('cell', { name: 'TARGET-CARD-1111' })).toBeInTheDocument();
+    expect(within(summary).getByRole('cell', { name: /unavailable/i })).toBeInTheDocument();
+  });
+
   it('reserves and unreserves a card from row actions', async () => {
     fetchMock()
       .mockResolvedValueOnce(
