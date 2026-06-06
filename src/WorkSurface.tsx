@@ -422,6 +422,7 @@ export function WorkSurface({
   const prepaidRemaining = dashboardSummary.prepaidRemainingCents;
   const staleReservationCount = dashboardSummary.staleReservationCount;
   const selectedCards = cards.filter((card) => selectedCardIds.has(String(card.id)));
+  const dashboardIsEmpty = dashboardSummary.trackedCards === 0;
 
   const primaryMetrics = [
     { label: 'Expiring 30d', value: formatMoney(expiringSoonRemaining), icon: AlertTriangle, onClick: () => void goToCards({ activeOnly: true, expiresBefore: dateInDays(30), sortBy: 'expirationDate', sortDir: 'asc' }) },
@@ -786,6 +787,37 @@ export function WorkSurface({
 
         {activeView === 'dashboard' ? (
           <>
+            {dashboardIsEmpty ? (
+              <section className="dashboard-onboarding" aria-labelledby="dashboard-onboarding-title">
+                <div>
+                  <p className="eyebrow">First run</p>
+                  <h2 id="dashboard-onboarding-title">Start your secure inventory</h2>
+                  <p>
+                    Add one card manually, import a batch, or review backup settings before storing real balances.
+                  </p>
+                </div>
+                <div className="dashboard-onboarding-actions">
+                  {userCanManageInventory ? (
+                    <button type="button" className="primary-action compact" onClick={() => setShowAddDeal(true)}>
+                      <Plus aria-hidden="true" size={17} />
+                      Add first deal
+                    </button>
+                  ) : null}
+                  {userCanManageInventory ? (
+                    <button type="button" className="secondary-action" onClick={() => setShowBulkImport(true)}>
+                      <Upload aria-hidden="true" size={17} />
+                      Bulk import cards
+                    </button>
+                  ) : null}
+                  {userCanManageInventory ? (
+                    <button type="button" className="secondary-action" onClick={() => setActiveView('backup')}>
+                      <DatabaseBackup aria-hidden="true" size={17} />
+                      Set up backup
+                    </button>
+                  ) : null}
+                </div>
+              </section>
+            ) : null}
             <section className="metrics-grid metrics-grid-primary" aria-label="Priority inventory summary">
               {primaryMetrics.map((metric) => (
                 <Metric key={metric.label} {...metric} />

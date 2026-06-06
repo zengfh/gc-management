@@ -357,6 +357,31 @@ describe('App', () => {
     expect(screen.getByRole('button', { name: /^dashboard$/i })).not.toHaveAttribute('aria-current');
   });
 
+  it('shows guided next steps on an empty dashboard', async () => {
+    fetchMock()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            setupComplete: true,
+            sessionValid: true,
+            dekLoaded: true,
+            csrfToken: 'csrf_ready',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }));
+
+    render(<ThemeProvider><App /></ThemeProvider>);
+
+    await screen.findByRole('heading', { name: /dashboard/i });
+
+    expect(screen.getByRole('heading', { name: /start your secure inventory/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^add first deal$/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^bulk import cards$/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^set up backup$/i })).toBeInTheDocument();
+  });
+
   it('renders dashboard P&L and risk metrics from card data', async () => {
     fetchMock()
       .mockResolvedValueOnce(

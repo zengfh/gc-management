@@ -649,6 +649,38 @@ textarea {
   margin-bottom: 16px;
 }
 
+.dashboard-onboarding {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: center;
+  border: 1px solid rgba(79, 70, 229, 0.22);
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(135deg, var(--color-primary-muted), transparent 60%),
+    var(--color-surface);
+  box-shadow: var(--shadow-raised);
+  padding: 20px;
+  margin-bottom: 16px;
+}
+
+.dashboard-onboarding h2 {
+  font-size: 1.24rem;
+}
+
+.dashboard-onboarding p:not(.eyebrow) {
+  margin-top: 8px;
+  color: var(--color-muted-strong);
+  line-height: 1.5;
+}
+
+.dashboard-onboarding-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .metric,
 .content-section {
   border: 1px solid var(--color-border);
@@ -669,6 +701,10 @@ textarea {
     border-color 180ms ease,
     transform 180ms ease,
     box-shadow 180ms ease;
+}
+
+.metric:has(strong:last-child) {
+  position: relative;
 }
 
 .metric:hover {
@@ -727,6 +763,10 @@ textarea {
   font-size: 1.42rem;
 }
 
+.metrics-grid-primary .metric p {
+  color: var(--color-muted-strong);
+}
+
 .metrics-grid-secondary {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
@@ -746,6 +786,10 @@ textarea {
 
 .metrics-grid-secondary .metric strong {
   font-size: 1.02rem;
+}
+
+.metrics-grid-secondary .metric p {
+  font-size: 0.8rem;
 }
 
 .content-section {
