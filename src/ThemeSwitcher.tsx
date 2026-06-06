@@ -12,6 +12,7 @@ export function ThemeSwitcher() {
         onClick={() => setTheme('light')}
         title="Light Mode"
         aria-label="Light Mode"
+        aria-pressed={theme === 'light'}
       >
         <Sun size={16} />
       </button>
@@ -21,6 +22,7 @@ export function ThemeSwitcher() {
         onClick={() => setTheme('auto')}
         title="Auto (System Time)"
         aria-label="Auto (System Time)"
+        aria-pressed={theme === 'auto'}
       >
         <Monitor size={16} />
       </button>
@@ -30,6 +32,7 @@ export function ThemeSwitcher() {
         onClick={() => setTheme('dark')}
         title="Dark Mode"
         aria-label="Dark Mode"
+        aria-pressed={theme === 'dark'}
       >
         <Moon size={16} />
       </button>

@@ -328,6 +328,35 @@ describe('App', () => {
     });
   });
 
+  it('exposes active navigation and theme choices to assistive technology', async () => {
+    fetchMock()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            setupComplete: true,
+            sessionValid: true,
+            dekLoaded: true,
+            csrfToken: 'csrf_ready',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }));
+
+    render(<ThemeProvider><App /></ThemeProvider>);
+
+    await screen.findByRole('heading', { name: /dashboard/i });
+    expect(screen.getByRole('button', { name: /^dashboard$/i })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('button', { name: /^cards$/i })).not.toHaveAttribute('aria-current');
+    expect(screen.getByRole('button', { name: /^auto \(system time\)$/i })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: /^light mode$/i })).toHaveAttribute('aria-pressed', 'false');
+
+    await userEvent.click(screen.getByRole('button', { name: /^cards$/i }));
+
+    expect(screen.getByRole('button', { name: /^cards$/i })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('button', { name: /^dashboard$/i })).not.toHaveAttribute('aria-current');
+  });
+
   it('renders dashboard P&L and risk metrics from card data', async () => {
     fetchMock()
       .mockResolvedValueOnce(

@@ -712,6 +712,7 @@ export function WorkSurface({
                 key={item.id}
                 type="button"
                 className={activeView === item.id ? 'nav-item active' : 'nav-item'}
+                aria-current={activeView === item.id ? 'page' : undefined}
                 onClick={() => {
                   void activateView(item.id);
                 }}
