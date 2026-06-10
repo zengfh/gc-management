@@ -11,12 +11,14 @@ import {
   barcodeFormats,
   buildCredentialModel,
   CredentialValidationError,
+  defaultRedemptionFieldKinds,
   type CredentialFieldKind,
   type CredentialInput,
   credentialFieldKinds,
   credentialProfiles,
   credentialSearchBlindIndexes,
   insertCredentialFields,
+  loadCredentialFields,
   normalizeCredentialBrandForDuplicate,
   normalizeCredentialValue,
   parseCredentialSummary,
@@ -298,6 +300,18 @@ const reserveCardSchema = z
     reservedFor: z.string().trim().nullable().optional(),
     reservedUntil: z.string().trim().nullable().optional(),
     reservedNotes: z.string().trim().nullable().optional(),
+  })
+  .strict();
+
+const redemptionFieldsUpdateSchema = z
+  .object({
+    fieldKeys: z.array(z.string().trim().min(1).max(80)).max(20).default([]),
+  })
+  .strict();
+
+const redemptionFieldsBackfillSchema = z
+  .object({
+    mode: z.enum(['empty', 'all']).default('all'),
   })
   .strict();
 
@@ -1184,6 +1198,20 @@ function createCardAuditValue(card: CardRow) {
   };
 }
 
+function toRedemptionFieldSummary(field: {
+  fieldKey: string;
+  label: string;
+  fieldKind: string;
+  copyable: number;
+}) {
+  return {
+    fieldKey: field.fieldKey,
+    label: field.label,
+    fieldKind: field.fieldKind,
+    copyable: field.copyable === 1,
+  };
+}
+
 function mutationAuditValue(card: CardRow) {
   return {
     brand: card.brand,
@@ -1684,6 +1712,140 @@ export function createCardsRouter({ db }: { db: Database.Database }) {
       audit: audit.map(toAuditResponse),
     };
   }
+
+  router.post(
+    '/redemption-fields/backfill',
+    requireOperatorRole,
+    asyncHandler(async (req, res) => {
+      const body = validateBody(redemptionFieldsBackfillSchema, req.body || {});
+      const timestamp = nowIso();
+      const summary = db.transaction(() => {
+        const cards = db
+          .prepare('SELECT id, credentialProfile FROM cards WHERE accountId = ? ORDER BY id')
+          .all(req.auth.accountId) as Array<{ id: number; credentialProfile?: string | null }>;
+        const updateField = db.prepare(
+          `UPDATE card_credential_fields
+           SET copyable = ?, updatedAt = ?
+           WHERE accountId = ? AND cardId = ? AND fieldKey = ?`,
+        );
+        let updatedCards = 0;
+        let updatedFields = 0;
+
+        for (const card of cards) {
+          const fields = loadCredentialFields(db, req.auth.accountId, card.id);
+          if (fields.length === 0) {
+            continue;
+          }
+          if (body.mode === 'empty' && fields.some((field) => field.copyable === 0)) {
+            continue;
+          }
+          const requiredKinds = defaultRedemptionFieldKinds(card.credentialProfile);
+          let cardUpdated = false;
+          for (const field of fields) {
+            const nextCopyable = requiredKinds.has(field.fieldKind) ? 1 : 0;
+            if (field.copyable === nextCopyable) {
+              continue;
+            }
+            updateField.run(nextCopyable, timestamp, req.auth.accountId, card.id, field.fieldKey);
+            updatedFields += 1;
+            cardUpdated = true;
+          }
+          if (cardUpdated) {
+            updatedCards += 1;
+          }
+        }
+
+        const result = {
+          scannedCards: cards.length,
+          updatedCards,
+          updatedFields,
+        };
+        insertAuditEvent(db, {
+          accountId: req.auth.accountId,
+          userId: req.auth.userId,
+          requestId: req.requestId,
+          entityType: 'card',
+          entityId: null,
+          action: 'card.redemption_fields_backfill',
+          metadata: {
+            mode: body.mode,
+            ...result,
+          },
+          timestamp,
+        });
+        return result;
+      })();
+
+      res.json(objectResponse(summary));
+    }),
+  );
+
+  router.post(
+    '/:cardId/redemption-fields',
+    requireOperatorRole,
+    asyncHandler(async (req, res) => {
+      const cardId = parsePositiveInt(req.params.cardId, 0, { min: 1 });
+      const body = validateBody(redemptionFieldsUpdateSchema, req.body || {});
+      const timestamp = nowIso();
+      const selectedKeys = Array.from(new Set(body.fieldKeys));
+      const result = db.transaction(() => {
+        const card = loadCard(req.auth, cardId);
+        const fields = loadCredentialFields(db, req.auth.accountId, cardId);
+        const existingKeys = new Set(fields.map((field) => field.fieldKey));
+        const unknownKeys = selectedKeys.filter((fieldKey) => !existingKeys.has(fieldKey));
+        if (unknownKeys.length > 0) {
+          throw badRequest('VALIDATION_FAILED', 'Request validation failed.', [
+            {
+              field: 'fieldKeys',
+              code: 'unknown_field_key',
+              message: `Unknown credential field${unknownKeys.length === 1 ? '' : 's'}: ${unknownKeys.join(', ')}.`,
+            },
+          ]);
+        }
+
+        const updateField = db.prepare(
+          `UPDATE card_credential_fields
+           SET copyable = ?, updatedAt = ?
+           WHERE accountId = ? AND cardId = ? AND fieldKey = ?`,
+        );
+        const selected = new Set(selectedKeys);
+        let updatedFields = 0;
+        for (const field of fields) {
+          const nextCopyable = selected.has(field.fieldKey) ? 1 : 0;
+          if (field.copyable === nextCopyable) {
+            continue;
+          }
+          updateField.run(nextCopyable, timestamp, req.auth.accountId, cardId, field.fieldKey);
+          updatedFields += 1;
+        }
+
+        insertAuditEvent(db, {
+          accountId: req.auth.accountId,
+          userId: req.auth.userId,
+          requestId: req.requestId,
+          entityType: 'card',
+          entityId: cardId,
+          action: 'card.redemption_fields_update',
+          metadata: {
+            fieldKeys: selectedKeys,
+            fieldCount: selectedKeys.length,
+            updatedFields,
+          },
+          timestamp,
+        });
+
+        return {
+          card,
+          fields: loadCredentialFields(db, req.auth.accountId, cardId),
+        };
+      })();
+
+      res.json(objectResponse({
+        card: toCardResponse(result.card),
+        fields: result.fields.map(toRedemptionFieldSummary),
+      }));
+    }),
+  );
 
   router.post(
     '/:cardId/reveal',

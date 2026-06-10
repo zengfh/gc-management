@@ -1893,6 +1893,189 @@ describe('App', () => {
     );
   });
 
+  it('edits required redemption fields from card detail after credentials are revealed', async () => {
+    fetchMock()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            setupComplete: true,
+            sessionValid: true,
+            dekLoaded: true,
+            csrfToken: 'csrf_ready',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            {
+              id: 1,
+              brand: 'Best Buy',
+              cardType: 'merchant',
+              credentialProfile: 'merchant_number_pin',
+              status: 'available',
+              faceValueCents: 5000,
+              remainingBalanceCents: 5000,
+              purchaseCostCents: 4500,
+              cardNumberLast4: '1111',
+              rowVersion: 1,
+            },
+          ],
+          page: { total: 1, limit: 50, offset: 0, hasMore: false },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            card: {
+              id: 1,
+              brand: 'Best Buy',
+              cardType: 'merchant',
+              credentialProfile: 'merchant_number_pin',
+              status: 'available',
+              faceValueCents: 5000,
+              remainingBalanceCents: 5000,
+              purchaseCostCents: 4500,
+              cardNumberLast4: '1111',
+              rowVersion: 1,
+            },
+            transactions: [] as unknown[],
+            usages: [] as unknown[],
+            audit: [],
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            credentials: {
+              profile: 'merchant_number_pin',
+              fields: [
+                { fieldKey: 'card_number', label: 'Card number', fieldKind: 'card_number', value: 'BB-CARD-1111', copyable: true },
+                { fieldKey: 'pin', label: 'PIN', fieldKind: 'pin', value: '1234', copyable: true },
+                { fieldKey: 'billing_postal_code', label: 'Billing ZIP', fieldKind: 'billing_postal_code', value: '94107', copyable: true },
+              ],
+            },
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            card: {
+              id: 1,
+              brand: 'Best Buy',
+              cardType: 'merchant',
+              credentialProfile: 'merchant_number_pin',
+              status: 'available',
+              faceValueCents: 5000,
+              remainingBalanceCents: 5000,
+              purchaseCostCents: 4500,
+              cardNumberLast4: '1111',
+              rowVersion: 1,
+            },
+            fields: [
+              { fieldKey: 'card_number', label: 'Card number', fieldKind: 'card_number', copyable: true },
+              { fieldKey: 'pin', label: 'PIN', fieldKind: 'pin', copyable: true },
+              { fieldKey: 'billing_postal_code', label: 'Billing ZIP', fieldKind: 'billing_postal_code', copyable: false },
+            ],
+          },
+        }),
+      );
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+
+    await screen.findByRole('heading', { name: /dashboard/i });
+    await user.click(screen.getByRole('button', { name: /open best buy details/i }));
+    await user.click(await screen.findByRole('button', { name: /^reveal credentials$/i }));
+
+    expect(await screen.findByText('BB-CARD-1111')).toBeInTheDocument();
+    const dialog = screen.getByRole('dialog', { name: /card details/i });
+    const billingZipCheckbox = within(dialog).getByRole('checkbox', {
+      name: /include billing zip in reservation copy/i,
+    });
+    expect(billingZipCheckbox).toBeChecked();
+
+    await user.click(billingZipCheckbox);
+    await user.click(within(dialog).getByRole('button', { name: /^save redemption fields$/i }));
+
+    await screen.findByText(/redemption fields updated/i);
+    expect(globalThis.fetch).toHaveBeenLastCalledWith(
+      '/api/cards/1/redemption-fields',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ fieldKeys: ['card_number', 'pin'] }),
+        headers: expect.objectContaining({
+          'X-CSRF-Token': 'csrf_ready',
+        }),
+      }),
+    );
+    expect(billingZipCheckbox).not.toBeChecked();
+    expect(within(dialog).queryByRole('button', { name: /^copy billing zip$/i })).not.toBeInTheDocument();
+  });
+
+  it('backfills required redemption fields from the card inventory toolbar', async () => {
+    fetchMock()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            setupComplete: true,
+            sessionValid: true,
+            dekLoaded: true,
+            csrfToken: 'csrf_ready',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            {
+              id: 1,
+              brand: 'Best Buy',
+              cardType: 'merchant',
+              status: 'available',
+              faceValueCents: 5000,
+              remainingBalanceCents: 5000,
+              purchaseCostCents: 4500,
+              rowVersion: 1,
+            },
+          ],
+          page: { total: 1, limit: 50, offset: 0, hasMore: false },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [], page: { total: 0, limit: 50, offset: 0, hasMore: false } }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            scannedCards: 1,
+            updatedCards: 1,
+            updatedFields: 1,
+          },
+        }),
+      );
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+
+    await screen.findByRole('heading', { name: /dashboard/i });
+    await user.click(screen.getByRole('button', { name: /^cards$/i }));
+    await user.click(screen.getByRole('button', { name: /^backfill redemption fields$/i }));
+
+    expect(await screen.findByText(/backfilled 1 field on 1 card/i)).toBeInTheDocument();
+    expect(globalThis.fetch).toHaveBeenLastCalledWith(
+      '/api/cards/redemption-fields/backfill',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ mode: 'all' }),
+        headers: expect.objectContaining({
+          'X-CSRF-Token': 'csrf_ready',
+        }),
+      }),
+    );
+  });
+
   it('renders a scannable barcode after credential reveal', async () => {
     fetchMock()
       .mockResolvedValueOnce(

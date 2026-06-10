@@ -119,6 +119,20 @@ const kindByFieldKey: Record<string, CredentialFieldKind> = {
   note: 'metadata',
 };
 
+const defaultRedemptionKindsByProfile: Record<CredentialProfile, CredentialFieldKind[]> = {
+  claim_code: ['primary_code'],
+  claim_link: ['primary_code'],
+  merchant_number_pin: ['card_number', 'pin'],
+  barcode: ['barcode_value'],
+  network_prepaid: ['card_number', 'expiration_month', 'expiration_year', 'network_security_code'],
+  custom: ['primary_code', 'card_number', 'pin', 'access_code', 'barcode_value'],
+};
+
+export function defaultRedemptionFieldKinds(profile: CredentialProfile | string | null | undefined): Set<CredentialFieldKind> {
+  const normalized = normalizeCredentialProfile(profile);
+  return new Set(defaultRedemptionKindsByProfile[normalized] || defaultRedemptionKindsByProfile[defaultProfile]);
+}
+
 const profileSortOrder: Record<CredentialProfile, Partial<Record<CredentialFieldKind, number>>> = {
   claim_code: {
     primary_code: 10,

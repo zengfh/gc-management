@@ -390,6 +390,8 @@ export default function App() {
       onLoadCardDetail={inventory.loadCardDetail}
       onLoadDealDetail={inventory.loadDealDetail}
       onRevealCardCredentials={inventory.revealCardCredentials}
+      onUpdateCardRedemptionFields={inventory.updateCardRedemptionFields}
+      onBackfillRedemptionFields={inventory.backfillRedemptionFields}
       onUseCard={inventory.useCard}
       onUndoUsage={inventory.undoUsage}
       onEditCard={inventory.editCard}

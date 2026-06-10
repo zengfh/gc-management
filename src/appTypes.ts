@@ -120,6 +120,32 @@ export interface CardMutationResult {
   card: Card;
 }
 
+export interface RedemptionFieldSummary {
+  fieldKey: string;
+  label: string;
+  fieldKind: CredentialFieldKind | string;
+  copyable: boolean;
+}
+
+export interface RedemptionFieldsUpdateResult {
+  card: Card;
+  fields: RedemptionFieldSummary[];
+}
+
+export interface RedemptionFieldsBackfillResult {
+  scannedCards: number;
+  updatedCards: number;
+  updatedFields: number;
+}
+
+export interface RedemptionFieldsUpdatePayload extends ApiPayload {
+  fieldKeys: string[];
+}
+
+export interface RedemptionFieldsBackfillPayload extends ApiPayload {
+  mode?: 'empty' | 'all';
+}
+
 export interface AddDealCustomField {
   id: string;
   label: string;
@@ -247,6 +273,13 @@ export interface WorkSurfaceProps {
   onLoadCardDetail: (cardId: string) => Promise<ApiResponse<CardDetail>>;
   onLoadDealDetail: (dealId: string) => Promise<ApiResponse<DealDetail>>;
   onRevealCardCredentials: (cardId: string) => Promise<ApiResponse<RevealedCredentials>>;
+  onUpdateCardRedemptionFields: (
+    cardId: string,
+    payload: RedemptionFieldsUpdatePayload,
+  ) => Promise<ApiResponse<RedemptionFieldsUpdateResult>>;
+  onBackfillRedemptionFields: (
+    payload?: RedemptionFieldsBackfillPayload,
+  ) => Promise<ApiResponse<RedemptionFieldsBackfillResult>>;
   onUseCard: (cardId: string, payload: ApiPayload) => Promise<ApiResponse<CardDetail>>;
   onUndoUsage: (cardId: string, payload: ApiPayload) => Promise<ApiResponse<CardMutationResult>>;
   onEditCard: (cardId: string, payload: ApiPayload) => Promise<ApiResponse<Card>>;

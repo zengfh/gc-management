@@ -421,6 +421,8 @@ export function WorkSurface({
   onLoadCardDetail,
   onLoadDealDetail,
   onRevealCardCredentials,
+  onUpdateCardRedemptionFields,
+  onBackfillRedemptionFields,
   onUseCard,
   onUndoUsage,
   onEditCard,
@@ -460,6 +462,9 @@ export function WorkSurface({
   const [revealedCardCredentials, setRevealedCardCredentials] = useState<Record<string, RevealedCredentials>>({});
   const [revealingCardCredentials, setRevealingCardCredentials] = useState(false);
   const [cardCredentialError, setCardCredentialError] = useState('');
+  const [redemptionBackfillMessage, setRedemptionBackfillMessage] = useState('');
+  const [redemptionBackfillError, setRedemptionBackfillError] = useState('');
+  const [redemptionBackfillRunning, setRedemptionBackfillRunning] = useState(false);
   const [dealError, setDealError] = useState('');
   const userCanAdmin = canAdmin(auth);
   const userCanManageInventory = canManageInventory(auth);
@@ -766,6 +771,25 @@ export function WorkSurface({
     }
   }
 
+  async function backfillRedemptionFields() {
+    setRedemptionBackfillError('');
+    setRedemptionBackfillMessage('');
+    setRedemptionBackfillRunning(true);
+    try {
+      const response = await onBackfillRedemptionFields({ mode: 'all' });
+      const { scannedCards, updatedCards, updatedFields } = response.data;
+      setRedemptionBackfillMessage(
+        `Backfilled ${updatedFields} field${updatedFields === 1 ? '' : 's'} on ${updatedCards} card${updatedCards === 1 ? '' : 's'} (${scannedCards} scanned).`,
+      );
+      setReserveSummary(null);
+      setRevealedCardCredentials({});
+    } catch (caught) {
+      setRedemptionBackfillError(errorMessage(caught));
+    } finally {
+      setRedemptionBackfillRunning(false);
+    }
+  }
+
   async function toggleCardCredentialVisibility() {
     setCardCredentialError('');
     if (cardCredentialsVisible) {
@@ -1011,20 +1035,33 @@ export function WorkSurface({
               <div className="section-heading-actions">
                 <span>{cards.length} records</span>
                 {userCanManageInventory ? (
-                  <button
-                    type="button"
-                    className="secondary-action"
-                    onClick={toggleCardCredentialVisibility}
-                    disabled={revealingCardCredentials}
-                    title="Show or hide full card credentials for the currently loaded table page."
-                  >
-                    {cardCredentialsVisible ? <EyeOff aria-hidden="true" size={17} /> : <Eye aria-hidden="true" size={17} />}
-                    {cardCredentialsVisible ? 'Hide card codes' : revealingCardCredentials ? 'Revealing...' : 'Show card codes'}
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      className="secondary-action"
+                      onClick={() => void backfillRedemptionFields()}
+                      disabled={redemptionBackfillRunning}
+                      title="Reset reservation-copy fields to safe defaults for existing cards."
+                    >
+                      {redemptionBackfillRunning ? 'Backfilling...' : 'Backfill redemption fields'}
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary-action"
+                      onClick={toggleCardCredentialVisibility}
+                      disabled={revealingCardCredentials}
+                      title="Show or hide full card credentials for the currently loaded table page."
+                    >
+                      {cardCredentialsVisible ? <EyeOff aria-hidden="true" size={17} /> : <Eye aria-hidden="true" size={17} />}
+                      {cardCredentialsVisible ? 'Hide card codes' : revealingCardCredentials ? 'Revealing...' : 'Show card codes'}
+                    </button>
+                  </>
                 ) : null}
               </div>
             </div>
             {cardCredentialError ? <FieldError message={cardCredentialError} /> : null}
+            {redemptionBackfillError ? <FieldError message={redemptionBackfillError} /> : null}
+            {redemptionBackfillMessage ? <p className="success-copy">{redemptionBackfillMessage}</p> : null}
             <CardSearchForm
               key={JSON.stringify(cardCriteria)}
               deals={deals}
@@ -1403,6 +1440,7 @@ export function WorkSurface({
           onEditCard={onEditCard}
           onUndoUsage={undoUsageFromDetail}
           onRevealCredentials={onRevealCardCredentials}
+          onUpdateRedemptionFields={onUpdateCardRedemptionFields}
         />
       ) : null}
       {dealDetailState ? (

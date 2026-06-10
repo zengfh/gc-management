@@ -10,7 +10,15 @@ import type {
   Usage,
 } from '../shared/domain';
 import { BarcodePreview } from './BarcodePreview';
-import type { ApiPayload, CardDetailState, CardSalePayload, DealDetailState, VoidHandler } from './appTypes';
+import type {
+  ApiPayload,
+  CardDetailState,
+  CardSalePayload,
+  DealDetailState,
+  RedemptionFieldSummary,
+  RedemptionFieldsUpdateResult,
+  VoidHandler,
+} from './appTypes';
 import { credentialSummaryText } from './credentialHelpers';
 import {
   dollarsToCents,
@@ -112,6 +120,7 @@ export function CardDetailPanel({
   onEditCard,
   onUndoUsage,
   onRevealCredentials,
+  onUpdateRedemptionFields,
 }: {
   detailState: CardDetailState;
   canManage: boolean;
@@ -120,6 +129,10 @@ export function CardDetailPanel({
   onEditCard: (cardId: string, payload: ApiPayload) => Promise<ApiResponse<Card>>;
   onUndoUsage: (usageId: string, reason: string) => Promise<unknown>;
   onRevealCredentials: (cardId: string) => Promise<ApiResponse<RevealedCredentials>>;
+  onUpdateRedemptionFields: (
+    cardId: string,
+    payload: { fieldKeys: string[] },
+  ) => Promise<ApiResponse<RedemptionFieldsUpdateResult>>;
 }) {
   const { card, data, error, loading } = detailState;
   const [editedCard, setEditedCard] = useState<Card | null>(null);
@@ -146,6 +159,9 @@ export function CardDetailPanel({
   const [credentials, setCredentials] = useState<RevealedCredentials | null>(null);
   const [credentialError, setCredentialError] = useState('');
   const [credentialMessage, setCredentialMessage] = useState('');
+  const [redemptionFields, setRedemptionFields] = useState<RedemptionFieldSummary[]>([]);
+  const [redemptionFieldKeys, setRedemptionFieldKeys] = useState<Set<string>>(new Set());
+  const [savingRedemptionFields, setSavingRedemptionFields] = useState(false);
   const [revealing, setRevealing] = useState(false);
   const dialogRef = useDialogFocus(onClose);
   const terminal = isTerminalCard(detailCard);
@@ -157,6 +173,8 @@ export function CardDetailPanel({
 
     const timer = setTimeout(() => {
       setCredentials(null);
+      setRedemptionFields([]);
+      setRedemptionFieldKeys(new Set());
       setCredentialMessage('');
     }, 5000);
     return () => clearTimeout(timer);
@@ -165,6 +183,8 @@ export function CardDetailPanel({
   useEffect(() => {
     function hideCredentials() {
       setCredentials(null);
+      setRedemptionFields([]);
+      setRedemptionFieldKeys(new Set());
       setCredentialMessage('');
     }
 
@@ -277,8 +297,23 @@ export function CardDetailPanel({
     setRevealing(true);
     try {
       const response = await onRevealCredentials(detailCard.id);
-      setCredentials(response.data);
-      return response.data;
+      const revealed = response.data;
+      const revealedFields = (revealed.credentials?.fields || [])
+        .map(normalizeCredentialDisplayField)
+        .filter((field) => field.value);
+      setCredentials(revealed);
+      setRedemptionFields(revealedFields.map((field) => ({
+        fieldKey: field.fieldKey,
+        label: field.label,
+        fieldKind: field.fieldKind,
+        copyable: field.copyable !== false,
+      })));
+      setRedemptionFieldKeys(new Set(
+        revealedFields
+          .filter((field) => field.copyable !== false)
+          .map((field) => field.fieldKey),
+      ));
+      return revealed;
     } catch (caught) {
       setCredentialError(errorMessage(caught));
       return null;
@@ -303,6 +338,60 @@ export function CardDetailPanel({
     setCredentialMessage(`${label} copied.`);
   }
 
+  function toggleRedemptionField(fieldKey: string, checked: boolean) {
+    setRedemptionFieldKeys((current) => {
+      const next = new Set(current);
+      if (checked) {
+        next.add(fieldKey);
+      } else {
+        next.delete(fieldKey);
+      }
+      return next;
+    });
+  }
+
+  async function saveRedemptionFields(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!credentials) {
+      return;
+    }
+    setCredentialError('');
+    setCredentialMessage('');
+    setSavingRedemptionFields(true);
+    try {
+      const fieldKeys = redemptionFields
+        .filter((field) => redemptionFieldKeys.has(field.fieldKey))
+        .map((field) => field.fieldKey);
+      const response = await onUpdateRedemptionFields(detailCard.id, { fieldKeys });
+      const copyableByKey = new Map(response.data.fields.map((field) => [field.fieldKey, field.copyable]));
+      setCredentials((current) => {
+        if (!current) {
+          return current;
+        }
+        const currentFields = current.credentials?.fields || [];
+        return {
+          ...current,
+          credentials: {
+            ...current.credentials,
+            fields: currentFields.map((field) => (
+              copyableByKey.has(field.fieldKey)
+                ? { ...field, copyable: copyableByKey.get(field.fieldKey) === true }
+                : field
+            )),
+          },
+        };
+      });
+      setRedemptionFields(response.data.fields);
+      setRedemptionFieldKeys(new Set(response.data.fields.filter((field) => field.copyable).map((field) => field.fieldKey)));
+      setEditedCard(response.data.card);
+      setCredentialMessage('Redemption fields updated.');
+    } catch (caught) {
+      setCredentialError(errorMessage(caught));
+    } finally {
+      setSavingRedemptionFields(false);
+    }
+  }
+
   async function copyCredential(fieldKey: string, label: string) {
     const currentCredentials = credentials || (await revealCredentials());
     const field = currentCredentials?.credentials?.fields?.find((item) => item.fieldKey === fieldKey);
@@ -325,6 +414,7 @@ export function CardDetailPanel({
   const revealedCredentialFields: CredentialField[] = credentials
     ? mergeRevealedCredentialFields(credentials)
     : [];
+  const editableRedemptionFields = redemptionFields;
 
   return (
     <div className="modal-backdrop" role="presentation">
@@ -568,6 +658,31 @@ export function CardDetailPanel({
                 </div>
               )}
             </div>
+            {canManage && editableRedemptionFields.length > 0 ? (
+              <form className="redemption-fields-editor" onSubmit={saveRedemptionFields}>
+                <div>
+                  <h4>Redemption fields</h4>
+                  <p className="muted-text">Choose the fields included when reserved cards are copied for redemption.</p>
+                </div>
+                <div className="redemption-field-list">
+                  {editableRedemptionFields.map((field) => (
+                    <label className="redemption-field-option" key={`redemption-${field.fieldKey}`}>
+                      <input
+                        type="checkbox"
+                        checked={redemptionFieldKeys.has(field.fieldKey)}
+                        onChange={(event) => toggleRedemptionField(field.fieldKey, event.target.checked)}
+                      />
+                      <span>Include {field.label} in reservation copy</span>
+                    </label>
+                  ))}
+                </div>
+                <div className="inline-form-actions">
+                  <button type="submit" className="primary-action compact" disabled={savingRedemptionFields}>
+                    {savingRedemptionFields ? 'Saving...' : 'Save redemption fields'}
+                  </button>
+                </div>
+              </form>
+            ) : null}
             <FieldError message={credentialError} />
             {credentialMessage ? <p className="success-copy">{credentialMessage}</p> : null}
           </section>

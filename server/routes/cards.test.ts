@@ -452,6 +452,136 @@ describe('card routes', () => {
     expect(auditText).not.toContain('94105');
   }, 45_000);
 
+  it('updates required redemption fields without exposing secrets', async () => {
+    const csrfToken = await setupOwner();
+    const createResponse = await postWithCsrf('/api/cards', csrfToken).send({
+      cards: [
+        sampleCard({
+          brand: 'Best Buy',
+          credentialProfile: 'merchant_number_pin',
+          cardNumber: '4333 3333 3333 3333',
+          pin: '9876',
+          billingZip: '94107',
+        }),
+      ],
+    });
+    const cardId = createResponse.body.data[0].id;
+
+    const updateResponse = await postWithCsrf(`/api/cards/${cardId}/redemption-fields`, csrfToken).send({
+      fieldKeys: ['card_number', 'pin'],
+    });
+
+    expect(updateResponse.status).toBe(200);
+    expect(updateResponse.body.data.card).toMatchObject({ id: cardId, brand: 'Best Buy' });
+    expect(updateResponse.body.data.fields).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ fieldKey: 'card_number', label: 'Card number', fieldKind: 'card_number', copyable: true }),
+        expect.objectContaining({ fieldKey: 'pin', label: 'PIN', fieldKind: 'pin', copyable: true }),
+        expect.objectContaining({ fieldKey: 'billing_postal_code', label: 'Billing ZIP', fieldKind: 'billing_postal_code', copyable: false }),
+      ]),
+    );
+    expect(JSON.stringify(updateResponse.body)).not.toContain('4333333333333333');
+    expect(JSON.stringify(updateResponse.body)).not.toContain('9876');
+    expect(JSON.stringify(updateResponse.body)).not.toContain('94107');
+
+    const revealResponse = await postWithCsrf(`/api/cards/${cardId}/reveal`, csrfToken).send({});
+    expect(revealResponse.status).toBe(200);
+    const revealedFields = revealResponse.body.data.credentials.fields;
+    expect(revealedFields).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ fieldKey: 'card_number', value: '4333333333333333', copyable: true }),
+        expect.objectContaining({ fieldKey: 'pin', value: '9876', copyable: true }),
+        expect.objectContaining({ fieldKey: 'billing_postal_code', value: '94107', copyable: false }),
+      ]),
+    );
+
+    const auditRows = db
+      .prepare("SELECT * FROM audit_log WHERE entityType = 'card' AND action = 'card.redemption_fields_update'")
+      .all();
+    expect(auditRows).toHaveLength(1);
+    const auditText = JSON.stringify(auditRows);
+    expect(auditText).toContain('card_number');
+    expect(auditText).toContain('pin');
+    expect(auditText).not.toContain('4333333333333333');
+    expect(auditText).not.toContain('9876');
+    expect(auditText).not.toContain('94107');
+  }, 45_000);
+
+  it('backfills required redemption fields from credential profile defaults', async () => {
+    const csrfToken = await setupOwner();
+    const createResponse = await postWithCsrf('/api/cards', csrfToken).send({
+      cards: [
+        sampleCard({
+          brand: 'Best Buy',
+          credentialProfile: 'merchant_number_pin',
+          cardNumber: '4333 3333 3333 3333',
+          pin: '9876',
+          billingZip: '94107',
+        }),
+        sampleCard({
+          brand: 'Visa',
+          cardType: 'prepaid',
+          network: 'visa',
+          credentialProfile: 'network_prepaid',
+          cardNumber: '4111 1111 1111 1111',
+          pin: null,
+          billingZip: '90210',
+          credentials: {
+            profile: 'network_prepaid',
+            fields: [
+              { fieldKey: 'card_number', label: 'Card number', fieldKind: 'card_number', value: '4111 1111 1111 1111' },
+              { fieldKey: 'expiration_month', label: 'Exp. month', fieldKind: 'expiration_month', value: '08' },
+              { fieldKey: 'expiration_year', label: 'Exp. year', fieldKind: 'expiration_year', value: '2029' },
+              { fieldKey: 'billing_postal_code', label: 'Billing ZIP', fieldKind: 'billing_postal_code', value: '90210' },
+            ],
+          },
+        }),
+      ],
+    });
+    expect(createResponse.status).toBe(201);
+
+    db.prepare('UPDATE card_credential_fields SET copyable = 1').run();
+
+    const backfillResponse = await postWithCsrf('/api/cards/redemption-fields/backfill', csrfToken).send({});
+
+    expect(backfillResponse.status).toBe(200);
+    expect(backfillResponse.body.data).toMatchObject({
+      scannedCards: 2,
+      updatedCards: 2,
+      updatedFields: 2,
+    });
+
+    const bestBuyId = createResponse.body.data[0].id;
+    const bestBuyReveal = await postWithCsrf(`/api/cards/${bestBuyId}/reveal`, csrfToken).send({});
+    expect(bestBuyReveal.body.data.credentials.fields).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ fieldKey: 'card_number', copyable: true }),
+        expect.objectContaining({ fieldKey: 'pin', copyable: true }),
+        expect.objectContaining({ fieldKey: 'billing_postal_code', copyable: false }),
+      ]),
+    );
+
+    const visaId = createResponse.body.data[1].id;
+    const visaReveal = await postWithCsrf(`/api/cards/${visaId}/reveal`, csrfToken).send({});
+    expect(visaReveal.body.data.credentials.fields).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ fieldKey: 'card_number', copyable: true }),
+        expect.objectContaining({ fieldKey: 'expiration_month', copyable: true }),
+        expect.objectContaining({ fieldKey: 'expiration_year', copyable: true }),
+        expect.objectContaining({ fieldKey: 'billing_postal_code', copyable: false }),
+      ]),
+    );
+
+    const auditRows = db
+      .prepare("SELECT * FROM audit_log WHERE entityType = 'card' AND action = 'card.redemption_fields_backfill'")
+      .all();
+    expect(auditRows).toHaveLength(1);
+    const auditText = JSON.stringify(auditRows);
+    expect(auditText).not.toContain('4333333333333333');
+    expect(auditText).not.toContain('9876');
+    expect(auditText).not.toContain('94107');
+  }, 45_000);
+
   it('reserves and unreserves an available card with audit records', async () => {
     const csrfToken = await setupOwner();
     const createResponse = await postWithCsrf('/api/cards', csrfToken).send({

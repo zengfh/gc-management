@@ -17,6 +17,10 @@ import type {
   CardMutationResult,
   CardSalePayload,
   CsvImportResult,
+  RedemptionFieldsBackfillPayload,
+  RedemptionFieldsBackfillResult,
+  RedemptionFieldsUpdatePayload,
+  RedemptionFieldsUpdateResult,
   CsvPreviewPayload,
   DealMutationResult,
 } from './appTypes';
@@ -152,6 +156,25 @@ export function useInventoryController({ csrfToken }: InventoryControllerOptions
     return apiFetch<ApiResponse<RevealedCredentials>>(`/api/cards/${cardId}/reveal`, {
       method: 'POST',
       body: {},
+      csrfToken: csrfToken(),
+    });
+  }
+
+  async function updateCardRedemptionFields(cardId: string, payload: RedemptionFieldsUpdatePayload) {
+    const response = await apiFetch<ApiResponse<RedemptionFieldsUpdateResult>>(`/api/cards/${cardId}/redemption-fields`, {
+      method: 'POST',
+      body: payload,
+      csrfToken: csrfToken(),
+    });
+    setCards((current) => replaceCardForCurrentCriteria(current, response.data.card, cardCriteria));
+    setCardSummary(null);
+    return response;
+  }
+
+  async function backfillRedemptionFields(payload: RedemptionFieldsBackfillPayload = { mode: 'all' }) {
+    return apiFetch<ApiResponse<RedemptionFieldsBackfillResult>>('/api/cards/redemption-fields/backfill', {
+      method: 'POST',
+      body: payload,
       csrfToken: csrfToken(),
     });
   }
@@ -325,6 +348,8 @@ export function useInventoryController({ csrfToken }: InventoryControllerOptions
     loadCardDetail,
     loadDealDetail,
     revealCardCredentials,
+    updateCardRedemptionFields,
+    backfillRedemptionFields,
     previewCsv,
     confirmCsv,
     analyzeAiImport,
