@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Bot,
   CaseUpper,
@@ -12,7 +12,7 @@ import {
   X,
 } from 'lucide-react';
 import type { FeatureFlags, ReferenceValue, ReferenceValueState } from '../shared/domain';
-import type { AiImportAnalyzePayload, AiImportAnalyzeResult, AiImportModelOption, ApiPayload, AsyncApiHandler } from './appTypes';
+import type { AiImportAnalyzeHandler, AiImportAnalyzePayload, AiImportAnalyzeResult, AiImportModelOption, ApiPayload, AsyncApiHandler } from './appTypes';
 import { aiImportErrorMessage, formatElapsedTime } from './aiImportUi';
 import {
   bulkImportExpirationDate,
@@ -109,7 +109,7 @@ export function AIImportWorkspace({
   onImportComplete,
 }: {
   onCreateDeal: AsyncApiHandler<ApiPayload, unknown>;
-  onAnalyzeAiImport: AsyncApiHandler<AiImportAnalyzePayload, { data: AiImportAnalyzeResult }>;
+  onAnalyzeAiImport: AiImportAnalyzeHandler;
   onLoadAiImportModels: () => Promise<{ data: { defaultSelection: string; options: AiImportModelOption[] } }>;
   referenceValues: ReferenceValueState;
   onLoadReferenceValues: () => Promise<ReferenceValueState>;
@@ -136,6 +136,7 @@ export function AIImportWorkspace({
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [analyzing, setAnalyzing] = useState(false);
+  const analysisController = useRef<AbortController | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [modelSelection, setModelSelection] = useState('auto');
   const [modelOptions, setModelOptions] = useState<AiImportModelOption[]>([
@@ -151,6 +152,8 @@ export function AIImportWorkspace({
   const newBrands = useMemo(() => newBrandValues(rows, referenceValues), [referenceValues, rows]);
   const newBrandKey = newBrands.join('\0');
   const newBrandsApproved = newBrands.length === 0 || approvedNewBrandKey === newBrandKey;
+
+  useEffect(() => () => analysisController.current?.abort(), []);
 
   useEffect(() => {
     let canceled = false;
@@ -238,6 +241,7 @@ export function AIImportWorkspace({
   }
 
   async function runAiAnalysis(withInstruction = false) {
+    if (analysisController.current) return;
     setError('');
     setSuccess('');
     if (!sourceText.trim()) {
@@ -254,6 +258,8 @@ export function AIImportWorkspace({
     const lineCount = textLineCount(sourceText);
     const startedAt = Date.now();
     const nextIteration = analysisCount + 1;
+    const controller = new AbortController();
+    analysisController.current = controller;
     setAnalyzing(true);
     setStatusText(currentInstruction ? 'Sending correction and current draft to the AI provider.' : 'Sending raw gift-card text to the AI provider.');
     appendEvent({
@@ -278,7 +284,8 @@ export function AIImportWorkspace({
         ...(currentInstruction ? { instruction: currentInstruction } : {}),
         ...(rows.length > 0 ? { previousRows: rows } : {}),
       };
-      const response = await onAnalyzeAiImport(payload);
+      const response = await onAnalyzeAiImport(payload, controller.signal);
+      controller.signal.throwIfAborted();
       const analysis = response.data;
       const elapsed = formatElapsedTime(Date.now() - startedAt);
       const source = `${analysis.provider || 'AI'}${analysis.model ? `/${analysis.model}` : ''}`;
@@ -325,6 +332,10 @@ export function AIImportWorkspace({
       });
       setSuccess(`AI parsed ${analysis.rows.length} cards with ${source} in ${elapsed}. Review and edit before import.`);
     } catch (caught) {
+      if (controller.signal.aborted) {
+        updateEvent(runningEventId, { status: 'warning', title: 'AI analysis cancelled', detail: 'The current draft is ready to edit or retry.' });
+        return;
+      }
       const message = aiImportErrorMessage(caught, Date.now() - startedAt);
       updateEvent(runningEventId, {
         status: 'error',
@@ -333,6 +344,7 @@ export function AIImportWorkspace({
       });
       setError(message);
     } finally {
+      analysisController.current = null;
       setStatusText('');
       setAnalyzing(false);
     }
@@ -458,6 +470,11 @@ export function AIImportWorkspace({
           ) : null}
           {success ? <p className="success-copy">{success}</p> : null}
           <div className="ai-composer-actions">
+            {analyzing ? (
+              <button type="button" className="secondary-action" onClick={() => analysisController.current?.abort()}>
+                Cancel analysis
+              </button>
+            ) : null}
             <button
               type="button"
               className="primary-action"

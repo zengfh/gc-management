@@ -79,6 +79,52 @@ describe('MCP routes', () => {
     return client;
   }
 
+  it('bounds tool validation and JSON-RPC batches while allowing a full supported bulk import', async () => {
+    const csrfToken = await setupOwner();
+    const token = await createMcpToken(csrfToken, ['cards:create', 'cards:read']);
+    const client = await mcpClient(token);
+    try {
+      const rejected = await client.callTool({
+        name: 'giftcards.create_cards',
+        arguments: { idempotencyKey: 'oversized-input', cards: Array.from({ length: 25_001 }, () => ({})) },
+      });
+      expect(rejected.isError).toBe(true);
+      expect(JSON.stringify(rejected.content)).toContain('maximum of 25000 elements');
+      expect(db.prepare('SELECT COUNT(*) AS count FROM cards').get().count).toBe(0);
+
+      const created = await client.callTool({
+        name: 'giftcards.create_cards',
+        arguments: {
+          idempotencyKey: 'full-supported-input',
+          cards: Array.from({ length: 100 }, (_, cardIndex) => ({
+            brand: 'Synthetic', cardType: 'merchant', faceValueCents: 1000,
+            credentialProfile: 'custom',
+            credentials: {
+              profile: 'custom',
+              fields: Array.from({ length: 20 }, (_, fieldIndex) => ({
+                fieldKey: `field_${fieldIndex}`, key: `field_${fieldIndex}`, label: `Field ${fieldIndex}`,
+                fieldKind: fieldIndex === 0 ? 'primary_code' : 'metadata',
+                value: `synthetic-${cardIndex}-${fieldIndex}`, barcodeFormat: null,
+                sortOrder: fieldIndex, copyable: fieldIndex === 0,
+              })),
+            },
+          })),
+        },
+      });
+      expect(created.isError, JSON.stringify(created.content)).not.toBe(true);
+      expect(db.prepare('SELECT COUNT(*) AS count FROM cards').get().count).toBe(100);
+
+      const batch = await request(app).post('/api/mcp')
+        .set('Authorization', `Bearer ${token}`)
+        .set('Accept', 'application/json, text/event-stream')
+        .send(Array.from({ length: 101 }, (_, id) => ({ jsonrpc: '2.0', id, method: 'tools/list' })));
+      expect(batch.status).toBe(400);
+      expect(JSON.stringify(batch.body)).toContain('Batch must not exceed 100 messages');
+    } finally {
+      await client.close();
+    }
+  }, 45_000);
+
   it('creates, lists, and revokes MCP tokens without storing plaintext token material', async () => {
     const csrfToken = await setupOwner();
 

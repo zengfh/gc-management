@@ -38,7 +38,39 @@ async function setupOrUnlockVault(page: Page) {
   await expect(dashboardHeading).toBeVisible();
 }
 
-test.describe.serial('MVP Release 1 critical flows', () => {
+async function writeTestData(page: Page, path: string, data: unknown) {
+  const origin = new URL(page.url()).origin;
+  // This helper deletes and seeds only the local Playwright test vault.
+  expect(new URL(origin).hostname).toBe('127.0.0.1');
+  const auth = await (await page.request.get('/api/auth/status')).json();
+  const response = await page.request.post(path, {
+    headers: { Origin: origin, 'X-CSRF-Token': auth.data.csrfToken }, data,
+  });
+  expect(response.ok(), await response.text()).toBe(true);
+}
+
+async function seedTarget(page: Page) {
+  await writeTestData(page, '/api/deals', {
+    name: 'Staples May promo', source: 'Staples', totalCostCents: 4500,
+    cards: [{ brand: 'Target', cardType: 'merchant', faceValueCents: 5000, cardNumber: '4111 1111 1111 1111' }],
+  });
+  await page.reload();
+}
+
+async function seedAmazon(page: Page) {
+  await writeTestData(page, '/api/cards', {
+    cards: [{ brand: 'Amazon', cardType: 'merchant', faceValueCents: 2500, cardNumber: '4222222222222222', pin: '9999' }],
+  });
+  await page.reload();
+}
+
+test.describe('MVP Release 1 critical flows', () => {
+  test.beforeEach(async ({ page }) => {
+    await setupOrUnlockVault(page);
+    await writeTestData(page, '/api/admin/data-delete', { unlockSecret, confirmation: 'DELETE_ACCOUNT_DATA' });
+    await page.reload();
+  });
+
   test('setup, add a deal, and search by exact card number', async ({ page }) => {
     await setupOrUnlockVault(page);
     await page.getByRole('button', { name: /add deal/i }).click();
@@ -65,6 +97,7 @@ test.describe.serial('MVP Release 1 critical flows', () => {
 
   test('reserve, sell, and undo sale from the card table', async ({ page }) => {
     await unlockExistingVault(page);
+    await seedTarget(page);
 
     await page.getByRole('button', { name: /^cards$/i }).click();
     await page.getByRole('button', { name: /reserve target/i }).click();
@@ -73,6 +106,7 @@ test.describe.serial('MVP Release 1 critical flows', () => {
     await page.getByRole('dialog', { name: /reserve card/i }).getByRole('button', { name: /^reserve card$/i }).click();
     await expect(page.getByRole('row', { name: /reserved.*target/i })).toBeVisible();
 
+    await page.getByRole('button', { name: /more actions.*target/i }).click();
     await page.getByRole('button', { name: /sell target/i }).click();
     await page.getByLabel(/^sale price$/i).fill('48.00');
     await page.getByLabel(/^buyer$/i).fill('Dealer A');
@@ -94,11 +128,10 @@ test.describe.serial('MVP Release 1 critical flows', () => {
 
   test('record usage and undo the usage from card detail', async ({ page }) => {
     await unlockExistingVault(page);
+    await seedTarget(page);
 
     await page.getByRole('button', { name: /^cards$/i }).click();
-    await page.getByRole('button', { name: /unreserve target/i }).click();
-    await expect(page.getByRole('row', { name: /available.*target/i })).toBeVisible();
-
+    await page.getByRole('button', { name: /more actions.*target/i }).click();
     await page.getByRole('button', { name: /use target/i }).click();
     await page.getByLabel(/^amount$/i).fill('12.50');
     await page.getByLabel(/^merchant$/i).fill('Target');
@@ -122,16 +155,21 @@ test.describe.serial('MVP Release 1 critical flows', () => {
   test('cards table is compact on phone and keeps source cost in detail', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await unlockExistingVault(page);
+    await seedTarget(page);
 
     await page.getByRole('button', { name: /^cards$/i }).click();
-    await expect(page.getByRole('columnheader').nth(1)).toHaveText(/card/i);
-    await expect(page.getByRole('columnheader').nth(2)).toHaveText(/status/i);
-    await expect(page.getByRole('columnheader').nth(3)).toHaveText(/remaining/i);
+    const target = page.getByRole('row', { name: /available.*target/i });
+    await expect(target.locator('td[data-label="Card"]')).toContainText('Target');
+    await expect(target.locator('td[data-label="Status"]')).toContainText('Available');
+    await expect(target.locator('td[data-label="Remaining"]')).toContainText('$50.00');
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
     await expect(page.getByRole('columnheader', { name: /^reservation$/i })).toHaveCount(0);
     await expect(page.getByRole('columnheader', { name: /^source$/i })).toHaveCount(0);
     await expect(page.getByRole('columnheader', { name: /^cost$/i })).toHaveCount(0);
     await expect(page.getByRole('button', { name: /open target details/i })).toBeVisible();
+    await page.getByRole('button', { name: /more actions.*target/i }).click();
     await expect(page.getByRole('button', { name: /use target/i })).toBeVisible();
+    await page.getByRole('button', { name: /more actions.*target/i }).click();
 
     await page.getByRole('button', { name: /open target details/i }).click();
     const detail = page.getByRole('dialog', { name: /card details/i });
@@ -144,6 +182,7 @@ test.describe.serial('MVP Release 1 critical flows', () => {
 
   test('preview and confirm CSV import without rendering full credentials', async ({ page }) => {
     await unlockExistingVault(page);
+    await seedTarget(page);
 
     await page.getByRole('button', { name: /^backup$/i }).click();
     const invalidCsv = [
@@ -225,6 +264,7 @@ test.describe.serial('MVP Release 1 critical flows', () => {
 
   test('plaintext export requires confirmation controls', async ({ page }) => {
     await unlockExistingVault(page);
+    await seedTarget(page);
 
     await page.getByRole('button', { name: /^backup$/i }).click();
     await page.getByLabel(/^fresh unlock secret$/i).fill(unlockSecret);
@@ -238,6 +278,8 @@ test.describe.serial('MVP Release 1 critical flows', () => {
   test('encrypted export can be restored through replace import', async ({ page }) => {
     test.setTimeout(120_000);
     await unlockExistingVault(page);
+    await seedTarget(page);
+    await seedAmazon(page);
 
     await page.getByRole('button', { name: /^backup$/i }).click();
     await page.getByLabel(/^encrypted export unlock secret$/i).fill(unlockSecret);
@@ -275,6 +317,7 @@ test.describe.serial('MVP Release 1 critical flows', () => {
 
   test('revealed credentials disappear after logout', async ({ page }) => {
     await unlockExistingVault(page);
+    await seedAmazon(page);
 
     await page.getByRole('button', { name: /^cards$/i }).click();
     await page.getByRole('button', { name: /open amazon details/i }).click();

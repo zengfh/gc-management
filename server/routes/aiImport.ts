@@ -1,11 +1,12 @@
 import { Router } from 'express';
 import type Database from 'better-sqlite3';
 import { z } from 'zod';
+import { rateLimit } from 'express-rate-limit';
 import { insertAuditEvent } from '../audit/index.js';
-import { analyzeGiftCardsWithAi, listAiImportModelOptions } from '../aiImport.js';
+import { aiImportLimit, analyzeGiftCardsWithAi, listAiImportModelOptions } from '../aiImport.js';
 import { requireUnlockedSession } from '../auth/requireAuth.js';
 import { requireOperatorRole } from '../auth/roles.js';
-import { asyncHandler, badRequest } from '../http/errors.js';
+import { asyncHandler, badRequest, rateLimited } from '../http/errors.js';
 import { objectResponse } from '../http/response.js';
 
 const aiImportAnalyzeSchema = z.object({
@@ -49,6 +50,15 @@ function errorDetails(error: unknown): { code: string; status: number | null; pr
 export function createAiImportRouter({ db }: { db: Database.Database }) {
   const router = Router();
   router.use(requireUnlockedSession);
+  const activeUsers = new Set<string>();
+  const analyzeLimit = rateLimit({
+    windowMs: 60_000,
+    limit: aiImportLimit('GC_AI_REQUESTS_PER_MINUTE', 10, 60),
+    keyGenerator: (req) => `${req.auth.accountId}:${req.auth.userId}`,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+    handler: (_req, _res, next) => next(rateLimited('AI_IMPORT_RATE_LIMITED', 'Too many AI analyses. Try again in a minute.')),
+  });
 
   router.get(
     '/models',
@@ -61,6 +71,7 @@ export function createAiImportRouter({ db }: { db: Database.Database }) {
   router.post(
     '/analyze',
     requireOperatorRole,
+    analyzeLimit,
     asyncHandler(async (req, res) => {
       const parsed = aiImportAnalyzeSchema.safeParse(req.body || {});
       if (!parsed.success) {
@@ -68,8 +79,19 @@ export function createAiImportRouter({ db }: { db: Database.Database }) {
       }
 
       const startedAt = Date.now();
+      const userKey = `${req.auth.accountId}:${req.auth.userId}`;
+      if (activeUsers.has(userKey)) {
+        throw rateLimited('AI_IMPORT_BUSY', 'An AI analysis is already running for this user. Cancel it or wait for it to finish.');
+      }
+      activeUsers.add(userKey);
+      const controller = new AbortController();
+      const abortOnClose = () => {
+        if (!res.writableEnded) controller.abort();
+      };
+      res.once('close', abortOnClose);
       try {
         const analysis = await analyzeGiftCardsWithAi(parsed.data.text, {
+          signal: controller.signal,
           instruction: parsed.data.instruction,
           previousRows: parsed.data.previousRows,
           modelSelection: parsed.data.modelSelection,
@@ -122,6 +144,9 @@ export function createAiImportRouter({ db }: { db: Database.Database }) {
           timestamp: new Date().toISOString(),
         });
         throw caught;
+      } finally {
+        activeUsers.delete(userKey);
+        res.off('close', abortOnClose);
       }
     }),
   );

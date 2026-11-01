@@ -69,6 +69,7 @@ export interface AiImportAnalysis {
 }
 
 export interface AiImportPromptOptions {
+  signal?: AbortSignal;
   instruction?: string;
   previousRows?: unknown[];
   modelSelection?: string;
@@ -295,6 +296,7 @@ const aiCardSchema = z.object({
   source: looseString,
   notes: looseString,
   rawLine: looseString,
+  networkSecurityCode: looseString,
   cvv: looseString,
   cvc: looseString,
   cid: looseString,
@@ -304,7 +306,7 @@ const aiCardSchema = z.object({
   const expiration = splitExpiration(firstPresent(row.expiration, row.exp, row.validThrough));
   const primaryCode = firstPresent(row.primaryCode, row.cardNumber, row.number, row.pan, row.code);
   const secondaryCode = firstPresent(row.secondaryCode, row.pin, row.password, row.accessCode);
-  const networkSecurityCode = firstPresent(row.cvv, row.cvc, row.cid, row.securityCode);
+  const networkSecurityCode = firstPresent(row.networkSecurityCode, row.cvv, row.cvc, row.cid, row.securityCode);
   const securityCodePresent = Boolean(networkSecurityCode);
   const credentialProfile = (
     row.credentialProfile === 'claim_code'
@@ -338,8 +340,36 @@ const aiCardSchema = z.object({
 });
 
 const aiResponseSchema = z.object({
-  cards: z.array(aiCardSchema).min(1),
+  cards: z.array(aiCardSchema).max(200),
 });
+
+const outputStringFields = [
+  'brand', 'faceValue', 'primaryCode', 'secondaryCode', 'expirationMonth', 'expirationYear',
+  'billingZip', 'networkSecurityCode', 'barcodeFormat', 'source', 'notes', 'rawLine',
+];
+const aiOutputJsonSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['cards'],
+  properties: {
+    cards: {
+      type: 'array', maxItems: 200,
+      items: {
+        type: 'object', additionalProperties: false,
+        required: [...outputStringFields, 'credentialProfile', 'requiredRedemptionFields', 'confidence'],
+        properties: {
+          ...Object.fromEntries(outputStringFields.map((field) => [field, { type: 'string' }])),
+          credentialProfile: { type: 'string', enum: Object.keys(defaultRequiredRedemptionFieldsByProfile) },
+          requiredRedemptionFields: {
+            type: 'array',
+            items: { type: 'string', enum: ['primary_code', 'card_number', 'pin', 'barcode_value', 'expiration_month', 'expiration_year', 'network_security_code', 'billing_postal_code'] },
+          },
+          confidence: { type: 'number', minimum: 0, maximum: 1 },
+        },
+      },
+    },
+  },
+};
 
 const modelCache = new Map<AiProviderName, AiModelSelection>();
 const modelOptionsCache = new Map<AiProviderName, { refreshedAt: number; options: AiImportModelOption[] }>();
@@ -370,6 +400,34 @@ function env(name: string): string {
   return process.env[name]?.trim() || '';
 }
 
+export function aiImportLimit(name: string, fallback: number, maximum: number): number {
+  const value = Number(env(name));
+  return Number.isSafeInteger(value) && value > 0 ? Math.min(value, maximum) : fallback;
+}
+
+function boundedSignal(parent: AbortSignal | null | undefined, timeoutMs: number) {
+  const controller = new AbortController();
+  const abort = () => controller.abort(parent?.reason);
+  const timer = setTimeout(() => controller.abort(new DOMException('AI request timed out.', 'TimeoutError')), timeoutMs);
+  if (parent?.aborted) abort();
+  else parent?.addEventListener('abort', abort, { once: true });
+  return {
+    signal: controller.signal,
+    dispose() {
+      clearTimeout(timer);
+      parent?.removeEventListener('abort', abort);
+    },
+  };
+}
+
+function requestTimeoutMs(): number {
+  return aiImportLimit('GC_AI_REQUEST_TIMEOUT_MS', 60_000, 180_000);
+}
+
+function maxOutputTokens(): number {
+  return aiImportLimit('GC_AI_MAX_OUTPUT_TOKENS', 8192, 32_768);
+}
+
 function customProviderConfig() {
   const apiKey = env('GC_AI_CUSTOM_API_KEY');
   const baseUrl = env('GC_AI_CUSTOM_BASE_URL') || env('GC_AI_CUSTOM_API_URL');
@@ -381,10 +439,12 @@ function customProviderConfig() {
     apiKey,
     baseUrl: baseUrl.replace(/\/+$/, ''),
     model,
+    models: Array.from(new Set([model, ...env('GC_AI_CUSTOM_MODELS').split(',').map((value) => value.trim()).filter(Boolean)])),
     name: env('GC_AI_CUSTOM_PROVIDER_NAME') || 'custom',
     protocol: (env('GC_AI_CUSTOM_PROTOCOL') || 'openai').toLowerCase(),
     wireApi: (env('GC_AI_CUSTOM_WIRE_API') || 'chat').toLowerCase(),
     reasoningEffort: env('GC_AI_CUSTOM_MODEL_REASONING_EFFORT'),
+    structuredOutputs: env('GC_AI_CUSTOM_STRUCTURED_OUTPUTS') === 'true',
   };
 }
 
@@ -473,16 +533,23 @@ function cachedSelection(provider: AiProviderName): AiModelSelection | null {
   return null;
 }
 
-async function fetchJson(url: string, init: RequestInit = {}) {
-  const response = await fetch(url, init);
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new AiProviderError(`AI provider request failed with ${response.status}.`, {
-      status: response.status,
-      retryable: response.status === 429 || response.status >= 500,
-    });
+async function fetchJson(url: string, init: RequestInit = {}, timeoutMs = 10_000) {
+  const request = boundedSignal(init.signal, timeoutMs);
+  try {
+    request.signal.throwIfAborted();
+    const response = await fetch(url, { ...init, signal: request.signal });
+    const payload = await response.json().catch(() => ({}));
+    request.signal.throwIfAborted();
+    if (!response.ok) {
+      throw new AiProviderError(`AI provider request failed with ${response.status}.`, {
+        status: response.status,
+        retryable: response.status === 429 || response.status >= 500,
+      });
+    }
+    return payload as unknown;
+  } finally {
+    request.dispose();
   }
-  return payload as unknown;
 }
 
 function chooseByPreference(modelIds: string[], preferred: string[]): string | null {
@@ -490,7 +557,7 @@ function chooseByPreference(modelIds: string[], preferred: string[]): string | n
   return preferred.find((model) => normalized.has(model.toLowerCase())) || modelIds[0] || null;
 }
 
-async function selectGoogleModel(apiKey: string): Promise<AiModelSelection> {
+async function selectGoogleModel(apiKey: string, signal?: AbortSignal): Promise<AiModelSelection> {
   const cached = cachedSelection('google');
   if (cached) {
     return cached;
@@ -498,7 +565,7 @@ async function selectGoogleModel(apiKey: string): Promise<AiModelSelection> {
 
   let model = googlePreference[0]!;
   try {
-    const payload = await fetchJson(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`);
+    const payload = await fetchJson(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`, { signal: signal || null });
     const models = Array.isArray((payload as { models?: unknown[] }).models)
       ? (payload as { models: Array<{ name?: string; supportedGenerationMethods?: string[] }> }).models
       : [];
@@ -508,6 +575,7 @@ async function selectGoogleModel(apiKey: string): Promise<AiModelSelection> {
       .filter(Boolean);
     model = chooseByPreference(ids, googlePreference) || model;
   } catch {
+    signal?.throwIfAborted();
     model = googlePreference[0]!;
   }
 
@@ -520,7 +588,7 @@ function openRouterDiscoveryKey(): string {
   return env('GC_AI_OPENROUTER_API_KEY') || env('GC_AI_OPENROUTER_DISCOVERY_API_KEY');
 }
 
-async function selectOpenRouterModel(): Promise<AiModelSelection> {
+async function selectOpenRouterModel(signal?: AbortSignal): Promise<AiModelSelection> {
   const cached = cachedSelection('openrouter');
   if (cached) {
     return cached;
@@ -531,6 +599,7 @@ async function selectOpenRouterModel(): Promise<AiModelSelection> {
   if (discoveryKey) {
     try {
       const payload = await fetchJson('https://openrouter.ai/api/v1/models', {
+        signal: signal || null,
         headers: {
           Authorization: `Bearer ${discoveryKey}`,
           Accept: 'application/json',
@@ -545,6 +614,7 @@ async function selectOpenRouterModel(): Promise<AiModelSelection> {
         .filter(Boolean);
       model = chooseByPreference(freeIds, openRouterFreePreference) || model;
     } catch {
+      signal?.throwIfAborted();
       model = openRouterFreePreference[0]!;
     }
   }
@@ -554,7 +624,7 @@ async function selectOpenRouterModel(): Promise<AiModelSelection> {
   return selection;
 }
 
-async function selectGroqModel(apiKey: string): Promise<AiModelSelection> {
+async function selectGroqModel(apiKey: string, signal?: AbortSignal): Promise<AiModelSelection> {
   const cached = cachedSelection('groq');
   if (cached) {
     return cached;
@@ -563,6 +633,7 @@ async function selectGroqModel(apiKey: string): Promise<AiModelSelection> {
   let model = groqPreference[0]!;
   try {
     const payload = await fetchJson('https://api.groq.com/openai/v1/models', {
+      signal: signal || null,
       headers: {
         Authorization: `Bearer ${apiKey}`,
         Accept: 'application/json',
@@ -573,6 +644,7 @@ async function selectGroqModel(apiKey: string): Promise<AiModelSelection> {
       : [];
     model = chooseByPreference(ids, groqPreference) || model;
   } catch {
+    signal?.throwIfAborted();
     model = groqPreference[0]!;
   }
 
@@ -594,19 +666,19 @@ async function selectCustomModel(): Promise<AiModelSelection> {
   };
 }
 
-async function selectModel(provider: AiProviderName): Promise<AiModelSelection> {
+async function selectModel(provider: AiProviderName, signal?: AbortSignal): Promise<AiModelSelection> {
   const apiKey = providerKey(provider);
   if (!apiKey) {
     throw new AiProviderError(`Missing ${provider} API key.`, { retryable: false });
   }
   if (provider === 'google') {
-    return selectGoogleModel(apiKey);
+    return selectGoogleModel(apiKey, signal);
   }
   if (provider === 'openrouter') {
-    return selectOpenRouterModel();
+    return selectOpenRouterModel(signal);
   }
   if (provider === 'groq') {
-    return selectGroqModel(apiKey);
+    return selectGroqModel(apiKey, signal);
   }
   return selectCustomModel();
 }
@@ -637,7 +709,7 @@ function topPreferredAvailableModels(availableModels: string[], preferredModels:
     .slice(0, maxDisplayedModelsPerProvider);
 }
 
-async function googleModelOptions(apiKey: string): Promise<AiImportModelOption[]> {
+async function googleModelOptions(apiKey: string, signal?: AbortSignal): Promise<AiImportModelOption[]> {
   const cached = modelOptionsCache.get('google');
   if (cached && Date.now() - cached.refreshedAt < modelCacheTtlMs) {
     return cached.options;
@@ -646,7 +718,7 @@ async function googleModelOptions(apiKey: string): Promise<AiImportModelOption[]
   const fallbackModels = override ? [override] : googlePreference;
   let models: string[];
   try {
-    const payload = await fetchJson(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`);
+    const payload = await fetchJson(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`, { signal: signal || null });
     const rows = Array.isArray((payload as { models?: unknown[] }).models)
       ? (payload as { models: Array<{ name?: string; supportedGenerationMethods?: string[] }> }).models
       : [];
@@ -656,6 +728,7 @@ async function googleModelOptions(apiKey: string): Promise<AiImportModelOption[]
       .filter(Boolean);
     models = override ? [override] : topPreferredAvailableModels(ids, googlePreference);
   } catch {
+    signal?.throwIfAborted();
     models = fallbackModels.slice(0, maxDisplayedModelsPerProvider);
   }
   const options = uniqueOptions('google', models);
@@ -663,7 +736,7 @@ async function googleModelOptions(apiKey: string): Promise<AiImportModelOption[]
   return options;
 }
 
-async function openRouterModelOptions(): Promise<AiImportModelOption[]> {
+async function openRouterModelOptions(signal?: AbortSignal): Promise<AiImportModelOption[]> {
   const cached = modelOptionsCache.get('openrouter');
   if (cached && Date.now() - cached.refreshedAt < modelCacheTtlMs) {
     return cached.options;
@@ -674,6 +747,7 @@ async function openRouterModelOptions(): Promise<AiImportModelOption[]> {
   if (discoveryKey) {
     try {
       const payload = await fetchJson('https://openrouter.ai/api/v1/models', {
+        signal: signal || null,
         headers: {
           Authorization: `Bearer ${discoveryKey}`,
           Accept: 'application/json',
@@ -688,6 +762,7 @@ async function openRouterModelOptions(): Promise<AiImportModelOption[]> {
         .filter(Boolean);
       models = override ? [override] : topPreferredAvailableModels(freeIds, openRouterFreePreference);
     } catch {
+      signal?.throwIfAborted();
       models = override ? [override] : openRouterFreePreference;
     }
   }
@@ -696,7 +771,7 @@ async function openRouterModelOptions(): Promise<AiImportModelOption[]> {
   return options;
 }
 
-async function groqModelOptions(apiKey: string): Promise<AiImportModelOption[]> {
+async function groqModelOptions(apiKey: string, signal?: AbortSignal): Promise<AiImportModelOption[]> {
   const cached = modelOptionsCache.get('groq');
   if (cached && Date.now() - cached.refreshedAt < modelCacheTtlMs) {
     return cached.options;
@@ -706,6 +781,7 @@ async function groqModelOptions(apiKey: string): Promise<AiImportModelOption[]> 
   let models: string[];
   try {
     const payload = await fetchJson('https://api.groq.com/openai/v1/models', {
+      signal: signal || null,
       headers: {
         Authorization: `Bearer ${apiKey}`,
         Accept: 'application/json',
@@ -716,6 +792,7 @@ async function groqModelOptions(apiKey: string): Promise<AiImportModelOption[]> 
       : [];
     models = override ? [override] : topPreferredAvailableModels(ids, groqPreference);
   } catch {
+    signal?.throwIfAborted();
     models = fallbackModels.slice(0, maxDisplayedModelsPerProvider);
   }
   const options = uniqueOptions('groq', models);
@@ -725,10 +802,10 @@ async function groqModelOptions(apiKey: string): Promise<AiImportModelOption[]> 
 
 function customModelOptions(): AiImportModelOption[] {
   const config = customProviderConfig();
-  return config ? [modelOption('custom', config.model)] : [];
+  return config ? uniqueOptions('custom', config.models) : [];
 }
 
-export async function listAiImportModelOptions(): Promise<{ defaultSelection: string; options: AiImportModelOption[] }> {
+export async function listAiImportModelOptions(signal?: AbortSignal): Promise<{ defaultSelection: string; options: AiImportModelOption[] }> {
   const providers = configuredProviders();
   const customOptions = customModelOptions();
   const defaultSelection = customOptions[0]?.id || 'auto';
@@ -736,13 +813,14 @@ export async function listAiImportModelOptions(): Promise<{ defaultSelection: st
     { id: 'auto', label: 'Auto', provider: 'Auto', model: 'Auto', auto: true },
   ];
   for (const provider of providers) {
+    signal?.throwIfAborted();
     const apiKey = providerKey(provider);
     if (provider === 'google') {
-      options.push(...await googleModelOptions(apiKey));
+      options.push(...await googleModelOptions(apiKey, signal));
     } else if (provider === 'openrouter') {
-      options.push(...await openRouterModelOptions());
+      options.push(...await openRouterModelOptions(signal));
     } else if (provider === 'groq') {
-      options.push(...await groqModelOptions(apiKey));
+      options.push(...await groqModelOptions(apiKey, signal));
     } else {
       options.push(...customModelOptions());
     }
@@ -756,7 +834,7 @@ export async function refreshAiImportModelOptions(): Promise<{ defaultSelection:
   return listAiImportModelOptions();
 }
 
-async function resolveSelectedModel(selection: string | undefined): Promise<AiModelSelection | null> {
+async function resolveSelectedModel(selection: string | undefined, signal?: AbortSignal): Promise<AiModelSelection | null> {
   const selected = selection?.trim();
   if (!selected || selected === 'auto') {
     return null;
@@ -764,16 +842,16 @@ async function resolveSelectedModel(selection: string | undefined): Promise<AiMo
   const [providerText, encodedModel] = selected.split(':', 2);
   const provider = providerText as AiProviderName;
   if (!['google', 'openrouter', 'groq', 'custom'].includes(provider) || !encodedModel) {
-    throw new AiProviderError('Selected AI model is not available.', { retryable: false });
+    throw new HttpError(400, 'AI_IMPORT_MODEL_UNAVAILABLE', 'Selected AI model is not available. Refresh the model list.');
   }
   if (!configuredProviders().includes(provider)) {
-    throw new AiProviderError('Selected AI provider is not configured.', { retryable: false });
+    throw new HttpError(400, 'AI_IMPORT_MODEL_UNAVAILABLE', 'Selected AI provider is not configured. Refresh the model list.');
+  }
+  const available = (await listAiImportModelOptions(signal)).options.some((option) => option.id === selected);
+  if (!available) {
+    throw new HttpError(400, 'AI_IMPORT_MODEL_UNAVAILABLE', 'Selected AI model is not available. Refresh the model list.');
   }
   const model = decodeURIComponent(encodedModel);
-  const available = (await listAiImportModelOptions()).options.some((option) => option.id === selected);
-  if (!available) {
-    throw new AiProviderError('Selected AI model is not available.', { retryable: false });
-  }
   return { provider, providerLabel: providerLabel(provider), model, refreshedAt: Date.now() };
 }
 
@@ -792,6 +870,12 @@ function safePreviousRows(previousRows: unknown[] | undefined): unknown[] {
       requiredRedemptionFields: Array.isArray(draft.requiredRedemptionFields) ? draft.requiredRedemptionFields : [],
       notes: draft.notes || '',
       rawLine: draft.rawLine || '',
+      expirationMonth: draft.expirationMonth || '',
+      expirationYear: draft.expirationYear || '',
+      billingZip: draft.billingZip || '',
+      networkSecurityCode: draft.networkSecurityCode || '',
+      barcodeFormat: draft.barcodeFormat || '',
+      source: draft.source || '',
     };
   });
 }
@@ -801,7 +885,7 @@ function aiPrompt(text: string, options: AiImportPromptOptions = {}): string {
   const existingSources = (options.existingSources || []).map((source) => source.trim()).filter(Boolean).slice(0, 120);
   const lines = [
     'Extract gift card inventory from the user text.',
-    'Return ONLY strict JSON with this shape: {"cards":[{"brand":"","faceValue":"","credentialProfile":"claim_code|claim_link|merchant_number_pin|barcode|network_prepaid|custom","primaryCode":"","secondaryCode":"","requiredRedemptionFields":["primary_code"],"notes":"","source":"","rawLine":"","confidence":0.0}]}',
+    'Return ONLY strict JSON with this shape: {"cards":[{"brand":"","faceValue":"","credentialProfile":"claim_code|claim_link|merchant_number_pin|barcode|network_prepaid|custom","primaryCode":"","secondaryCode":"","requiredRedemptionFields":["primary_code"],"expirationMonth":"","expirationYear":"","billingZip":"","networkSecurityCode":"","barcodeFormat":"","notes":"","source":"","rawLine":"","confidence":0.0}]}',
     existingBrands.length > 0
       ? `Existing indexed brands, use exact spelling/casing when the user text appears to refer to one of these: ${existingBrands.join(', ')}.`
       : '',
@@ -812,6 +896,7 @@ function aiPrompt(text: string, options: AiImportPromptOptions = {}): string {
     '- Do not invent missing values. Leave uncertain optional fields empty and mention uncertainty in notes.',
     '- If the merchant/brand is missing but the card is clearly network prepaid, infer only the card network when obvious from the number: Visa starts with 4, Mastercard commonly starts with 51-55 or 2221-2720, Amex starts with 34 or 37, Discover commonly starts with 6011/65/644-649.',
     '- Ignore table header rows, separator rows, blank rows, labels, and other non-gift-card text. Do not return them as cards.',
+    '- If there are no gift cards in the input, return {"cards":[]}.',
     '- For one-code cards such as Uber, DoorDash, Instacart, Amazon, and Apple, use credentialProfile "claim_code", primaryCode as the redeemable code, and no secondaryCode.',
     '- For claim-link cards, use credentialProfile "claim_link" and put the full HTTP/HTTPS URL exactly as written in primaryCode. Never alter URL casing.',
     '- For merchant cards with a number plus a secondary PIN, use credentialProfile "merchant_number_pin", primaryCode as card number, secondaryCode as PIN.',
@@ -1077,15 +1162,18 @@ async function callGoogle(
     `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(selection.model)}:generateContent?key=${encodeURIComponent(apiKey)}`,
     {
       method: 'POST',
+      signal: options.signal || null,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{ role: 'user', parts: [{ text: aiPrompt(text, options) }] }],
         generationConfig: {
           temperature: 0,
           responseMimeType: 'application/json',
+          maxOutputTokens: maxOutputTokens(),
         },
       }),
     },
+    requestTimeoutMs(),
   );
   return extractJsonObject(textFromGooglePayload(payload));
 }
@@ -1114,11 +1202,15 @@ async function callOpenAiCompatible(
 
   const payload = await fetchJson(url, {
     method: 'POST',
+    signal: options.signal || null,
     headers,
     body: JSON.stringify({
       model: selection.model,
       temperature: 0,
-      response_format: { type: 'json_object' },
+      max_tokens: maxOutputTokens(),
+      response_format: customConfig?.structuredOutputs
+        ? { type: 'json_schema', json_schema: { name: 'gift_card_import', strict: true, schema: aiOutputJsonSchema } }
+        : { type: 'json_object' },
       messages: [
         {
           role: 'system',
@@ -1130,7 +1222,7 @@ async function callOpenAiCompatible(
         },
       ],
     }),
-  });
+  }, requestTimeoutMs());
   return extractJsonObject(textFromOpenAiPayload(payload));
 }
 
@@ -1146,6 +1238,8 @@ async function callOpenAiResponsesCompatible(
   }
   const body: Record<string, unknown> = {
     model: selection.model,
+    max_output_tokens: maxOutputTokens(),
+    store: false,
     input: [
       {
         role: 'system',
@@ -1157,7 +1251,9 @@ async function callOpenAiResponsesCompatible(
       },
     ],
     text: {
-      format: { type: 'json_object' },
+      format: config.structuredOutputs
+        ? { type: 'json_schema', name: 'gift_card_import', strict: true, schema: aiOutputJsonSchema }
+        : { type: 'json_object' },
     },
   };
   if (config.reasoningEffort) {
@@ -1165,12 +1261,13 @@ async function callOpenAiResponsesCompatible(
   }
   const payload = await fetchJson(`${config.baseUrl}/responses`, {
     method: 'POST',
+    signal: options.signal || null,
     headers: {
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(body),
-  });
+  }, requestTimeoutMs());
   return extractJsonObject(textFromResponsesPayload(payload));
 }
 
@@ -1245,7 +1342,24 @@ export async function analyzeGiftCardsWithAi(
   text: string,
   options: AiImportPromptOptions = {},
 ): Promise<AiImportAnalysis> {
-  const selectedModel = await resolveSelectedModel(options.modelSelection);
+  const request = boundedSignal(options.signal, requestTimeoutMs());
+  try {
+    return await analyzeGiftCards(text, { ...options, signal: request.signal });
+  } catch (error) {
+    if (request.signal.aborted) {
+      const timedOut = request.signal.reason?.name === 'TimeoutError';
+      throw new HttpError(timedOut ? 504 : 499, timedOut ? 'AI_IMPORT_TIMEOUT' : 'AI_IMPORT_CANCELLED',
+        timedOut ? 'AI analysis timed out. Try a smaller batch or another model.' : 'AI analysis was cancelled.');
+    }
+    throw error;
+  } finally {
+    request.dispose();
+  }
+}
+
+async function analyzeGiftCards(text: string, options: AiImportPromptOptions): Promise<AiImportAnalysis> {
+  options.signal?.throwIfAborted();
+  const selectedModel = await resolveSelectedModel(options.modelSelection, options.signal);
   if (selectedModel) {
     const apiKey = providerKey(selectedModel.provider);
     try {
@@ -1263,6 +1377,7 @@ export async function analyzeGiftCardsWithAi(
         diagnostics,
       };
     } catch (caught) {
+      options.signal?.throwIfAborted();
       const failure = safeFailureReason(selectedModel.providerLabel, caught);
       const quotaHit = /\b429\b|quota|rate/i.test(failure);
       throw new HttpError(
@@ -1283,9 +1398,10 @@ export async function analyzeGiftCardsWithAi(
 
   const failures: string[] = [];
   for (const provider of providers) {
+    options.signal?.throwIfAborted();
     const apiKey = providerKey(provider);
     try {
-      const selection = await selectModel(provider);
+      const selection = await selectModel(provider, options.signal);
       const raw = provider === 'google'
         ? await callGoogle(text, selection, apiKey, options)
         : provider === 'custom' && customProviderConfig()?.wireApi === 'responses'
@@ -1300,6 +1416,7 @@ export async function analyzeGiftCardsWithAi(
         diagnostics,
       };
     } catch (caught) {
+      options.signal?.throwIfAborted();
       const error = caught as Error & { retryable?: boolean };
       failures.push(safeFailureReason(providerLabel(provider), caught));
       if (error.retryable === false) {

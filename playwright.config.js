@@ -13,7 +13,7 @@ export default defineConfig({
   reporter: [['list']],
   use: {
     baseURL: appOrigin,
-    trace: 'on-first-retry',
+    trace: 'retain-on-failure',
   },
   projects: [
     {

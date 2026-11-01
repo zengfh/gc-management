@@ -29,6 +29,9 @@ export function aiImportErrorMessage(caught: unknown, elapsedMs: number): string
   const providerDetail = providerFailures.length > 0
     ? ` Provider details: ${providerFailures.join(' ')}.`
     : '';
+  if (error.code === 'AI_IMPORT_BUSY' || error.code === 'AI_IMPORT_RATE_LIMITED' || error.code === 'AI_IMPORT_TIMEOUT') {
+    return baseMessage;
+  }
   if (error.code === 'AI_IMPORT_QUOTA_EXHAUSTED' || error.status === 429) {
     return `AI import failed after ${elapsed}: all configured AI providers are out of quota or rate-limited. You can retry later or use Fast parse (rules). ${baseMessage}${providerDetail}`;
   }

@@ -199,11 +199,12 @@ export function useInventoryController({ csrfToken }: InventoryControllerOptions
     return response;
   }
 
-  async function analyzeAiImport(payload: AiImportAnalyzePayload) {
+  async function analyzeAiImport(payload: AiImportAnalyzePayload, signal?: AbortSignal) {
     return apiFetch<ApiResponse<AiImportAnalyzeResult>>('/api/ai-import/analyze', {
       method: 'POST',
       body: payload,
       csrfToken: csrfToken(),
+      ...(signal ? { signal } : {}),
     });
   }
 

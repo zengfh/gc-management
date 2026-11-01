@@ -331,7 +331,7 @@ describe('backup routes', () => {
     expect(response.status).toBe(200);
     expect(response.headers['cache-control']).toContain('no-store');
     expect(response.headers['content-disposition']).toMatch(
-      /attachment; filename="gift-card-raw-db-export-\d{4}-\d{2}-\d{2}\.sqlite"/,
+      /attachment; filename="?gift-card-raw-db-export-\d{4}-\d{2}-\d{2}\.sqlite"?$/,
     );
     expect(Buffer.isBuffer(response.body)).toBe(true);
 

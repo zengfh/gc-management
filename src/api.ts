@@ -4,6 +4,7 @@ export interface ApiOptions {
   method?: string;
   body?: unknown;
   csrfToken?: string | null;
+  signal?: AbortSignal;
 }
 
 export class ApiError extends Error {
@@ -70,9 +71,9 @@ function errorFromResponse(response: Response, payload: JsonEnvelope): ApiError 
 
 export async function apiFetch<T = unknown>(
   path: string,
-  { method = 'GET', body, csrfToken }: ApiOptions = {},
+  { method = 'GET', body, csrfToken, signal }: ApiOptions = {},
 ): Promise<T> {
-  const response = await fetch(path, requestInit(method, body, csrfToken, 'application/json'));
+  const response = await fetch(path, { ...requestInit(method, body, csrfToken, 'application/json'), ...(signal ? { signal } : {}) });
   const payload = await response.json().catch(() => ({}));
 
   if (!response.ok) {
@@ -103,6 +104,6 @@ function filenameFromContentDisposition(header: string | null): string | null {
     return null;
   }
 
-  const match = /filename="([^"]+)"/.exec(header);
-  return match?.[1] || null;
+  const match = /(?:^|;)\s*filename\s*=\s*(?:"([^"]+)"|([^;\s]+))/i.exec(header);
+  return match?.[1] || match?.[2] || null;
 }

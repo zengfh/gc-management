@@ -83,7 +83,7 @@ const navItems: Array<{ id: ViewId; label: string; icon: LucideIcon }> = [
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
 
-const mcpDocsUrl = 'https://github.com/zengfh/gc-management/blob/feat/sota-ui-redesign/docs/mcp_server_usage.md';
+const mcpDocsUrl = 'https://github.com/zengfh/gc-management/blob/main/docs/mcp_server_usage.md';
 
 const adminRoleSet = new Set(['owner', 'admin']);
 const operatorRoleSet = new Set(['owner', 'admin', 'operator']);
@@ -869,7 +869,7 @@ export function WorkSurface({
           href={mcpDocsUrl}
           target="_blank"
           rel="noreferrer"
-          aria-label="Open MCP server usage documentation"
+          aria-label="MCP Docs: open server usage documentation"
         >
           <ScrollText aria-hidden="true" size={18} />
           MCP Docs

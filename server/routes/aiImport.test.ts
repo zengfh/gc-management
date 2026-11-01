@@ -27,6 +27,9 @@ describe('AI import routes', () => {
       GC_AI_CUSTOM_PROTOCOL: process.env.GC_AI_CUSTOM_PROTOCOL,
       GC_AI_CUSTOM_WIRE_API: process.env.GC_AI_CUSTOM_WIRE_API,
       GC_AI_CUSTOM_MODEL_REASONING_EFFORT: process.env.GC_AI_CUSTOM_MODEL_REASONING_EFFORT,
+      GC_AI_CUSTOM_MODELS: process.env.GC_AI_CUSTOM_MODELS,
+      GC_AI_CUSTOM_STRUCTURED_OUTPUTS: process.env.GC_AI_CUSTOM_STRUCTURED_OUTPUTS,
+      GC_AI_REQUESTS_PER_MINUTE: process.env.GC_AI_REQUESTS_PER_MINUTE,
     };
   });
 
@@ -52,6 +55,71 @@ describe('AI import routes', () => {
   function postWithCsrf(path, csrfToken) {
     return agent.post(path).set('Origin', appOrigin).set('X-CSRF-Token', csrfToken);
   }
+
+  function configureCustomProvider() {
+    delete process.env.GC_AI_GOOGLE_API_KEY;
+    delete process.env.GC_AI_OPENROUTER_API_KEY;
+    delete process.env.GC_AI_GROQ_API_KEY;
+    process.env.GC_AI_CUSTOM_API_KEY = 'synthetic-key';
+    process.env.GC_AI_CUSTOM_BASE_URL = 'https://gateway.example/v1';
+    process.env.GC_AI_CUSTOM_MODEL = 'test-model';
+    process.env.GC_AI_CUSTOM_WIRE_API = 'responses';
+  }
+
+  function syntheticResponse() {
+    return new Response(JSON.stringify({ output_text: JSON.stringify({
+      cards: [{ brand: 'Amazon', faceValue: '25', credentialProfile: 'claim_code', primaryCode: 'synthetic-code' }],
+    }) }));
+  }
+
+  it('limits repeated AI requests per authenticated user before incurring provider work', async () => {
+    configureCustomProvider();
+    process.env.GC_AI_REQUESTS_PER_MINUTE = '2';
+    agent = request.agent(createApp({ db }));
+    const csrfToken = await setupOwner();
+    const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => syntheticResponse());
+    for (let i = 0; i < 2; i++) {
+      expect((await postWithCsrf('/api/ai-import/analyze', csrfToken).send({ text: 'Synthetic card' })).status).toBe(200);
+    }
+    const rejected = await postWithCsrf('/api/ai-import/analyze', csrfToken).send({ text: 'Synthetic card' });
+    expect(rejected.status).toBe(429);
+    expect(rejected.body.error.code).toBe('AI_IMPORT_RATE_LIMITED');
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects overlapping analyses and releases the user slot after completion', async () => {
+    configureCustomProvider();
+    const csrfToken = await setupOwner();
+    let finish: (response: Response) => void = () => {};
+    const fetch = vi.spyOn(globalThis, 'fetch').mockImplementationOnce(() => new Promise<Response>((resolve) => { finish = resolve; }))
+      .mockImplementation(async () => syntheticResponse());
+    const first = postWithCsrf('/api/ai-import/analyze', csrfToken).send({ text: 'Synthetic card' }).then(response => response);
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    const overlapping = await postWithCsrf('/api/ai-import/analyze', csrfToken).send({ text: 'Synthetic card' });
+    expect(overlapping.status).toBe(429);
+    expect(overlapping.body.error.code).toBe('AI_IMPORT_BUSY');
+    finish(syntheticResponse());
+    expect((await first).status).toBe(200);
+    expect((await postWithCsrf('/api/ai-import/analyze', csrfToken).send({ text: 'Synthetic card' })).status).toBe(200);
+  });
+
+  it('aborts provider work when the caller disconnects and allows the next analysis', async () => {
+    configureCustomProvider();
+    const csrfToken = await setupOwner();
+    let signal: AbortSignal | null | undefined;
+    vi.spyOn(globalThis, 'fetch').mockImplementationOnce(async (_url, init) => {
+      signal = init?.signal;
+      return new Promise<Response>((_resolve, reject) => signal?.addEventListener('abort', () => reject(signal?.reason), { once: true }));
+    }).mockImplementation(async () => syntheticResponse());
+    const call = postWithCsrf('/api/ai-import/analyze', csrfToken).send({ text: 'Synthetic card' });
+    const pending = call.then(() => null, () => null);
+    await vi.waitFor(() => expect(signal).toBeDefined());
+    call.abort();
+    await pending;
+    await vi.waitFor(() => expect(signal?.aborted).toBe(true));
+    await vi.waitFor(() => expect(db.prepare("SELECT COUNT(*) AS count FROM audit_log WHERE action = 'ai_import.analyze'").get().count).toBe(1));
+    expect((await postWithCsrf('/api/ai-import/analyze', csrfToken).send({ text: 'Synthetic card' })).status).toBe(200);
+  });
 
   it('analyzes pasted gift card text with a configured AI provider without auditing secrets', async () => {
     process.env.GC_AI_GOOGLE_API_KEY = 'test-google-key';
@@ -393,7 +461,7 @@ describe('AI import routes', () => {
       candidates: [
         {
           content: {
-            parts: [{ text: JSON.stringify({ cards: [] }) }],
+            parts: [{ text: JSON.stringify({ cards: 'malformed provider output' }) }],
           },
         },
       ],

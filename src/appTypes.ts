@@ -43,6 +43,11 @@ export type AiImportAnalyzeResult = BulkImportAnalysis & {
   diagnostics?: AiImportDiagnostics;
 };
 
+export type AiImportAnalyzeHandler = (
+  payload: AiImportAnalyzePayload,
+  signal?: AbortSignal,
+) => Promise<ApiResponse<AiImportAnalyzeResult>>;
+
 export interface AiImportModelOption {
   id: string;
   label: string;
@@ -251,7 +256,7 @@ export interface WorkSurfaceProps {
   onExportRawDatabase: AsyncApiHandler<ApiPayload, { blob: Blob; filename: string | null }>;
   onPreviewCsv: AsyncApiHandler<{ csv: string }, ApiResponse<CsvPreviewPayload>>;
   onConfirmCsv: AsyncApiHandler<{ csv: string }, ApiResponse<CsvImportResult>>;
-  onAnalyzeAiImport: AsyncApiHandler<AiImportAnalyzePayload, ApiResponse<AiImportAnalyzeResult>>;
+  onAnalyzeAiImport: AiImportAnalyzeHandler;
   onLoadAiImportModels: () => Promise<ApiResponse<AiImportModelsResult>>;
   onImportBackup: AsyncApiHandler<ApiPayload, ApiResponse<{ summary: ImportSummary }>>;
   onChangeUnlockSecret: AsyncApiHandler<ApiPayload, ApiResponse<unknown>>;

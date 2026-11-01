@@ -198,6 +198,8 @@ function createServer({ db, auth, requestId }: { db: Database.Database; auth: Mc
       version: '0.1.0',
     },
     {
+      // Allow the supported 100 cards x 20 credential fields while bounding validation work.
+      maxToolInputElements: 25_000,
       capabilities: {
         tools: {},
         resources: {},
